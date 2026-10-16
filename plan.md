@@ -3,7 +3,7 @@
 > **Design:** see [ARCHITECTURE.md](ARCHITECTURE.md) (v2, approved). This file is our **step-by-step to-do list**.
 > **Rule:** do one step, report back, then move on. Tick the box when its "Done when" is true.
 
-**Current step:** ▶ **Step 8: Builder API skeleton (Laptop A)**
+**Current step:** ▶ **Step 9: State machine + Sync Barrier**
 
 ---
 
@@ -34,7 +34,7 @@ Every step has four parts:
 
 ## Phase 3: Orchestrator on Laptop A
 
-- [ ] **Step 8: Builder API skeleton.** Express + MongoDB, `projects` / `jobs` / `contracts` models, upload endpoint.
+- [x] **Step 8: Builder API skeleton.** ✅ 16 Oct: on the Mac, MongoDB `builder_db`, upload → `UPLOADED`, `/api/health` reaches the Gateway. Express + MongoDB, `projects` / `jobs` / `contracts` models, upload endpoint.
 - [ ] **Step 9: State machine + Sync Barrier.** Upload → Contract → both branches run → the Barrier checks `contractHash`.
 
 ## Phase 4: Generate, wire, verify
@@ -76,3 +76,7 @@ Every step has four parts:
 | 16 Oct 2026 | Cloud checks. Extractor `--cloud`: `gemini-2.5-flash` retired; `gemini-3.8-flash` and `gemini-flash-latest` gave 503 "high demand"; **`gemini-3-flash-preview` works: 9.6 s, all checks passed**, same fields as local (only `required` flags differ, so a different hash). Added retries (2/5/10 s) for 500/502/503/504. |
 | 16 Oct 2026 | Gateway `auto` fallback verified: with local broken, the job switched to `provider: cloud` by itself. Gateway `cloud` reached Gemini (key passed correctly) but got **429: free tier = 20 requests/day per model** (`GenerateRequestsPerDayPerProjectPerModel-FreeTier`); one S2C agent page uses several requests. A successful cloud page through the Gateway is still unverified. **Demo needs billing on the Google project or cached demo results.** |
 | 16 Oct 2026 | Step 8 Builder API written (`builder-api/`: Express 5, Mongoose 9, multer, sharp) and tested on Laptop B against a test DB: upload → `UPLOADED`, image shrunk to ≤1280 px under `runs/<id>/`, hash of original file, 400/404 cases, `/api/health` sees the Gateway over Tailscale. Waiting for the Mac run. |
+| 16 Oct 2026 | Step 9 on Laptop B (test DB): upload → `CONTRACT_DRAFT` → `BUILDING` → **`SYNCED` in 194 s**. Instructions are now generated from the Contract (`shared/instructions.mjs`), and with the exact example button the local model **added `data-action="create"` for the first time**. Edits: invalid → 400, unchanged → no rebuild, v2 → v3 + Builder API kill → resumed and `SYNCED` on v3 with both label edits in the page. |
+| 16 Oct 2026 | Fixed: a restart left the superseded v2 frontend job `running` forever; each build round now marks such jobs `cancelled`. Known limit: an edit during a build still waits for the stale page (~2 min) because the Gateway has no cancel yet and S2C keeps running anyway. |
+| 16 Oct 2026 | Laptop B's MongoDB Windows service was stopped; tests use a private `mongod` on port 27018. Added `scripts/start-laptop-b.ps1` (starts Ollama, S2C, Gateway; skips what is already running). |
+| 16 Oct 2026 | Sync Barrier verified (no restart): edit → v2, edit → v3 while v2 built → `Barrier refused: built for bf26fac3a246, Contract is now v3` → rebuilt → `SYNCED` v3, no jobs left running, served page has both edits and all 4 actions. Same screenshot + same Contract hash returns the Gateway's cached page in ~2 s. Waiting for the Mac run. |

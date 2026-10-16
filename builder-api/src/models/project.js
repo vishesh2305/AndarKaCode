@@ -24,7 +24,9 @@ const projectSchema = new mongoose.Schema(
     imageWidth: Number,
     imageHeight: Number,
     state: { type: String, enum: PROJECT_STATES, default: "UPLOADED" },
+    mode: { type: String, enum: ["local", "cloud", "auto"], default: "local" }, // which AI providers to use
     currentContractVersion: { type: Number, default: 0 }, // 0 = no Contract yet
+    error: String, // why the project is NEEDS_ATTENTION
   },
   schemaOptions
 );

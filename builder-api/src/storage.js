@@ -31,3 +31,11 @@ export async function saveScreenshot(projectId, buffer) {
     imageHeight: info.height,
   };
 }
+
+/** Writes a generated file under runs/<projectId>/ and returns its repo-relative path. */
+export async function saveArtifact(projectId, relativePath, content) {
+  const filePath = path.join(RUNS_DIR, projectId.toString(), relativePath);
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(filePath, content);
+  return path.relative(REPO_ROOT, filePath).split(path.sep).join("/");
+}
