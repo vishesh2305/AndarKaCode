@@ -15,7 +15,7 @@ delete schema.$comment;
 const OLLAMA_URL = process.env.OLLAMA_URL ?? "http://localhost:11434";
 // The -instruct variant: the thinking variant returns structured output in `thinking` and leaves `content` empty.
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? "qwen3-vl:8b-instruct";
-const GEMINI_MODEL = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
+const GEMINI_MODEL = process.env.GEMINI_MODEL ?? "gemini-3-flash-preview";
 const TIMEOUT_MS = Number(process.env.TIMEOUT_MS ?? 180_000);
 
 const PROMPT = `You are reading a screenshot of a data-management web page (a table, a form, buttons).
@@ -57,9 +57,25 @@ async function callOllama(imageB64, think) {
   return data.message.content || data.message.thinking;
 }
 
+// Gemini often answers 503 "high demand" for a few seconds; retry those, fail fast on anything else.
+const GEMINI_RETRY_DELAYS_MS = [2000, 5000, 10000];
+const GEMINI_TRANSIENT = new Set([500, 502, 503, 504]);
+
 async function callGemini(imageB64, mimeType) {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new Error("Set GEMINI_API_KEY to use --cloud");
+  for (const delay of [...GEMINI_RETRY_DELAYS_MS, null]) {
+    try {
+      return await callGeminiOnce(imageB64, mimeType, key);
+    } catch (err) {
+      if (delay === null || !GEMINI_TRANSIENT.has(err.status)) throw err;
+      console.log(`Gemini ${err.status}, retrying in ${delay / 1000} s`);
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+}
+
+async function callGeminiOnce(imageB64, mimeType, key) {
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
     {
@@ -73,7 +89,11 @@ async function callGemini(imageB64, mimeType) {
     }
   );
   const data = await res.json();
-  if (!res.ok) throw new Error(`Gemini ${res.status}: ${data.error?.message ?? JSON.stringify(data)}`);
+  if (!res.ok) {
+    const err = new Error(`Gemini ${res.status}: ${data.error?.message ?? JSON.stringify(data)}`);
+    err.status = res.status;
+    throw err;
+  }
   return data.candidates[0].content.parts[0].text;
 }
 

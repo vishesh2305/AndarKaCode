@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "resource": {
+    "name": "employee",
+    "plural": "employees",
+    "label": "Employee Management"
+  },
+  "fields": [
+    {
+      "name": "fullName",
+      "label": "Full Name",
+      "type": "string",
+      "required": true
+    },
+    {
+      "name": "email",
+      "label": "Email",
+      "type": "email",
+      "required": true
+    },
+    {
+      "name": "department",
+      "label": "Department",
+      "type": "enum",
+      "required": false,
+      "options": [
+        "Engineering",
+        "HR"
+      ]
+    },
+    {
+      "name": "salary",
+      "label": "Salary",
+      "type": "number",
+      "required": false
+    }
+  ],
+  "actions": [
+    "list",
+    "create",
+    "update",
+    "delete",
+    "search"
+  ],
+  "rules": {
+    "delete": "soft",
+    "auth": "none"
+  },
+  "openQuestions": [
+    "What are all the possible values for the Department dropdown?",
+    "Is there a minimum or maximum limit for the Salary field?",
+    "Are there any specific formatting requirements for the Full Name field?"
+  ],
+  "ui": {
+    "sampleConst": "SAMPLE_EMPLOYEES"
+  }
+}
