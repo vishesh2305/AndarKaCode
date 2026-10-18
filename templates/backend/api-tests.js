@@ -251,10 +251,13 @@ before(async () => {
   base = "http://127.0.0.1:" + server.address().port;
 });
 
+// Close only what was opened, so a failed start can't make the cleanup hang.
 after(async () => {
-  server.close();
-  await mongoose.connection.dropDatabase();
-  await mongoose.disconnect();
+  server?.close();
+  if (mongoose.connection.readyState === 1) {
+    await mongoose.connection.dropDatabase();
+    await mongoose.disconnect();
+  }
 });
 
 async function call(method, route, body) {
@@ -276,6 +279,15 @@ async function call(method, route, body) {
 const missingId = () => new mongoose.Types.ObjectId().toString();
 
 ${entities.map((e) => sampleFunctions(e, pascal)).join("\n\n")}
+
+// Every app has at least this test, even one whose screenshots show only a login screen.
+describe("Server", () => {
+  it("answers GET /health", async () => {
+    const res = await call("GET", "/health");
+    assert.equal(res.status, 200);
+    assert.equal(res.body.ok, true);
+  });
+});
 
 ${entities.map((e) => entityTests(e, pascal, comment)).join("\n\n")}
 ${spec.stats.length ? `\n${statsTests(spec, camelCase, comment)}\n` : ""}`;
