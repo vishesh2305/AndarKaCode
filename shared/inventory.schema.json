@@ -1,0 +1,105 @@
+{
+  "$comment": "What the vision model must return for ONE screenshot: only what is visible (ARCHITECTURE.md v3.1 §4.1). builder-api/src/spec/inventory.js normalizes it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["title", "kind", "tables", "forms", "buttons", "search", "filters", "pagination", "statCards", "auth"],
+  "properties": {
+    "title": { "type": "string" },
+    "kind": { "type": "string", "enum": ["list", "form", "dashboard", "login", "detail", "other"] },
+    "tables": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["entityHint", "columns", "rowActions"],
+        "properties": {
+          "entityHint": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["singular", "plural"],
+            "properties": { "singular": { "type": "string" }, "plural": { "type": "string" } }
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["label", "values", "badge"],
+              "properties": {
+                "label": { "type": "string" },
+                "values": { "type": "array", "items": { "type": "string" } },
+                "badge": { "type": "boolean" }
+              }
+            }
+          },
+          "rowActions": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "forms": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["inputs", "submitLabel"],
+        "properties": {
+          "inputs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["label", "kind", "required"],
+              "properties": {
+                "label": { "type": "string" },
+                "kind": { "type": "string", "enum": ["text", "textarea", "email", "number", "date", "select", "checkbox", "password"] },
+                "required": { "type": "boolean" },
+                "options": { "type": "array", "items": { "type": "string" } }
+              }
+            }
+          },
+          "submitLabel": { "type": "string" }
+        }
+      }
+    },
+    "buttons": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["label", "scope"],
+        "properties": { "label": { "type": "string" }, "scope": { "type": "string", "enum": ["page", "row"] } }
+      }
+    },
+    "search": { "type": "boolean" },
+    "filters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["label", "options"],
+        "properties": { "label": { "type": "string" }, "options": { "type": "array", "items": { "type": "string" } } }
+      }
+    },
+    "pagination": { "type": "boolean" },
+    "statCards": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["label", "value"],
+        "properties": { "label": { "type": "string" }, "value": { "type": "string" } }
+      }
+    },
+    "auth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["loginForm", "signupLink", "userMenu", "roleIndicators"],
+      "properties": {
+        "loginForm": { "type": "boolean" },
+        "signupLink": { "type": "boolean" },
+        "userMenu": { "type": "boolean" },
+        "roleIndicators": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}
