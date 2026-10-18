@@ -55,6 +55,9 @@ const plural = (word) => (/[^aeiou]y$/.test(word) ? word.replace(/y$/, "ies") : 
 const ALL_PREFIX = /^all\s+/i;
 const filterName = (label) => (ALL_PREFIX.test(label) ? singular(camelCase(label.replace(ALL_PREFIX, ""))) : camelCase(label));
 
+// The model's `kind` varies between machines ("form" vs "login"); a login form with no table is the stronger evidence.
+const isLoginScreen = (s) => s.kind === "login" || (s.auth?.loginForm === true && s.tables.length === 0);
+
 // The entity a table/form is about: the vision pass's hint, else the screen title without noise words.
 function entityName(hint, title) {
   if (hint?.singular) return { name: camelCase(hint.singular), plural: camelCase(hint.plural || plural(hint.singular)) };
@@ -77,7 +80,7 @@ export function deriveSpec(screens) {
   // Entities that have their own table somewhere: a column/select naming one of them is a relation.
   const managed = new Map();
   screens.forEach((s, i) => {
-    if (s.kind === "login") return;
+    if (isLoginScreen(s)) return;
     for (const table of s.tables) {
       const id = entityName(table.entityHint, s.title);
       if (!id) continue;
@@ -142,8 +145,8 @@ export function deriveSpec(screens) {
           : null,
       };
     }
-    if (s.kind === "login") {
-      pages.push({ screenshot: n, kind: s.kind });
+    if (isLoginScreen(s)) {
+      pages.push({ screenshot: n, kind: "login" });
       return;
     }
 
@@ -160,7 +163,8 @@ export function deriveSpec(screens) {
         const base = { name, label: col.label, required: false, evidence: at(`column '${col.label}'`) };
         const target = relationFor(col.label, entity);
         if (target) addField(entity, { ...base, type: "ref", ref: target.name, evidence: `${base.evidence}; ${target.where}` });
-        else if (col.badge) addField(entity, { ...base, type: "enum", options: [...new Set(col.values)] });
+        // Yes/No shown as coloured badges is still true/false; other badges are a fixed set of values.
+        else if (col.badge && inferType(col.values) !== "boolean") addField(entity, { ...base, type: "enum", options: [...new Set(col.values)] });
         else addField(entity, { ...base, type: inferType(col.values) });
       }
 

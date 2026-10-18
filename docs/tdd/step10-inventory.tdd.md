@@ -50,3 +50,19 @@
 ## Merge evidence
 
 RED `a839e58` → GREEN `9d748b7` → vision tests `f787974` → bug RED `132180c` → bug GREEN `9583e47` → eval 27/27 + this report (next commit).
+
+## Follow-up: Mac eval (same model, different hardware)
+
+| Stage | Command | Result |
+|---|---|---|
+| Mac eval | `npm run eval:inventory -- local` on Laptop A | **25/27**. Mac's saved answers: "In Stock" = `values ["Yes","No","Yes"], badge: true` (→ enum); login page = `kind: "form"` with `auth.loginForm: true` (→ entity `login`). The model gave enough correct evidence both times; the rules trusted the weaker part. |
+| RED | `npm test` | 2 reproducers built from the Mac's exact answers fail; 53 pass. Commit `0822b91`. |
+| GREEN | `npm test` | Yes/No badges stay boolean; a login form on a screen without a table is a login page whatever `kind` says. `# pass 55`. |
+| Regression (Laptop B) | `npm run eval:inventory -- local` | 27/27 |
+
+| # | What is guaranteed | Test | Type | Result |
+|---|---|---|---|---|
+| 13 | Yes/No values shown as coloured badges are boolean, not enum | `derive.test.js` rules rely on the strongest evidence | unit (reproducer) | PASS |
+| 14 | A login form with no table is a login page (no entity), even when the model says `kind: "form"` | same | unit (reproducer) | PASS |
+
+**Lesson:** the same model on different hardware gives slightly different answers, so the rules must rely on the strongest evidence (values, a login form) rather than on one label (`badge`, `kind`). The eval should be run on both laptops after any rule change.
