@@ -27,9 +27,12 @@ const CONVERT = {
 
 export default ({ entity, comment }) => {
   const types = [...new Set(entity.fields.map((f) => f.type))];
+  // Each value is written with JSON.stringify and never edited afterwards, so options stay exact.
   const rules = entity.fields.map((f) => {
-    const rule = { type: f.type, ...(f.required && { required: true }), ...(f.type === "enum" && { options: f.options }) };
-    return `  ${f.name}: ${JSON.stringify(rule).replace(/"(\w+)":/g, "$1: ").replace(/,/g, ", ")}, // ${comment(f.evidence)}`;
+    const parts = [`type: ${JSON.stringify(f.type)}`];
+    if (f.required) parts.push("required: true");
+    if (f.type === "enum") parts.push(`options: ${JSON.stringify(f.options)}`);
+    return `  ${f.name}: { ${parts.join(", ")} }, // ${comment(f.evidence)}`;
   });
   const constants = [
     types.includes("email") && "const EMAIL = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;",

@@ -1,0 +1,6 @@
+{
+  "name": "andarkacode-templates",
+  "private": true,
+  "description": "Code templates the Backend Generator fills from the App Spec (used by builder-api/src/generator)",
+  "type": "module"
+}
