@@ -21,7 +21,8 @@
 | RED | `npm test` | `not ok 1 - test\derive.test.js` · `ERR_MODULE_NOT_FOUND ... src/spec/derive.js` · `# fail 1` (the intended missing implementation; the runner and test file loaded correctly). Commit `af43e9d`. |
 | GREEN | `npm test` | `# tests 26` · `# pass 26` · `# fail 0`. Commit `ad471cd`. |
 | Refactor | `npm test` | Moved `getEntityForForm` out of the loop callback (no reliance on hoisting); `# pass 26` · `# fail 0`. |
-| Coverage | `npm run test:coverage` | `derive.js` lines 99.25 %, branches 84.78 %, functions 100 % |
+| Coverage | `npm run test:coverage` | `derive.js` lines 99.25 %, branches 84.78 %, functions 100 %; uncovered lines 172 and 190 |
+| Gap tests | `npm run test:coverage` | Two tests added **after** the code for lines 172 (View → `get`) and 190 (unknown page button → `custom`, scope `page`). They passed on first run, so they lock in existing behaviour rather than prove a RED/GREEN cycle. `# tests 28` · `# pass 28`; `derive.js` lines 100 %, branches 86.52 %, functions 100 %. |
 
 ## Test specification
 
@@ -41,13 +42,16 @@
 | 12 | A column naming another page's entity → `ref` with evidence from both screenshots; one page per screenshot | `two related pages` (2 tests) | unit | PASS |
 | 13 | "Approve"/"Reject" next to a Status badge → `setStatus`; "Export CSV" → `export`; unknown → `custom` | `row buttons beyond edit and delete` (4 tests) | unit | PASS |
 | 14 | Entity name from the screen title when no hint; Actions/ID/# columns skipped | `naming` (2 tests) | unit | PASS |
+| 15 | A View row button builds `get` without `update` | `View and page-level buttons` | unit (added after code) | PASS |
+| 16 | An unknown page-level button becomes a page-wide `custom` operation | same group | unit (added after code) | PASS |
 
 ## Coverage and known gaps
 
-- `derive.js` uncovered lines 172 and 190: guard clauses for a table or button on a screen where no entity name can be derived at all (empty title, no hint). Behaviour: skipped, no spec item. Worth a test once real inventories show whether it happens.
+- Final: `derive.js` lines 100 %, branches 86.52 %. An earlier draft of this report wrongly called lines 172 and 190 guard clauses; they were the View and page-button rules, now tested (rows 15–16).
+- Remaining untested branches are mostly defaults and guards, e.g. a table or button on a screen where no entity name can be derived (empty title, no hint): skipped, no spec item.
 - Charts (§4.2 "group-by aggregate") and sortable headers (`?sort=`) are in the architecture but not yet in the deriver or its tests; to be added with the inventory schema.
 - The UI inventory itself comes from a vision model; its accuracy is tested separately with real and mock screenshots (next piece of Step 10).
 
 ## Merge evidence
 
-RED `af43e9d` → GREEN `ad471cd` → refactor (this commit). If these are squashed, keep this file.
+RED `af43e9d` → GREEN `ad471cd` → refactor `ce6584f` → gap tests + report correction (next commit). If these are squashed, keep this file.

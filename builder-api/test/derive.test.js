@@ -320,3 +320,20 @@ describe("deriveSpec: naming", () => {
     assert.deepEqual(entity(spec, "employee").fields.map((f) => f.name), ["fullName"]);
   });
 });
+
+describe("deriveSpec: View and page-level buttons", () => {
+  it("builds get (but not update) for a View row button", () => {
+    const spec = deriveSpec([screen({ tables: [employeeTable({ rowActions: ["View"] })] })]);
+    assert.deepEqual(Object.keys(entity(spec, "employee").endpoints).sort(), ["get", "list"]);
+  });
+
+  it("sends an unknown page-level button to the AI layer as a page-wide operation", () => {
+    const spec = deriveSpec([
+      screen({ tables: [employeeTable({ rowActions: [] })], buttons: [{ label: "Recalculate Bonuses", scope: "page" }] }),
+    ]);
+    assert.deepEqual(
+      { kind: spec.operations[0].kind, scope: spec.operations[0].scope, button: spec.operations[0].button },
+      { kind: "custom", scope: "page", button: "Recalculate Bonuses" }
+    );
+  });
+});
