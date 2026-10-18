@@ -353,3 +353,27 @@ describe("deriveSpec: bugs found with real screenshots", () => {
     assert.deepEqual(entity(spec, "employee").endpoints.list.filters, ["category"]);
   });
 });
+
+// Found by the real-model eval on the Mac (same model, different answers than on Laptop B).
+describe("deriveSpec: rules rely on the strongest evidence", () => {
+  it("treats Yes/No values shown as coloured badges as boolean, not enum", () => {
+    const spec = deriveSpec([
+      screen({ tables: [employeeTable({ columns: [{ label: "In Stock", values: ["Yes", "No", "Yes"], badge: true }] })] }),
+    ]);
+    assert.equal(field(spec, "employee", "inStock").type, "boolean");
+  });
+
+  it("treats a screen with a login form and no table as a login page, even if its kind says 'form'", () => {
+    const spec = deriveSpec([
+      screen({
+        title: "Sign in",
+        kind: "form",
+        forms: [{ inputs: [{ label: "Email *", kind: "text", required: true }, { label: "Password *", kind: "password", required: true }], submitLabel: "Sign in" }],
+        auth: { loginForm: true, signupLink: true, userMenu: false, roleIndicators: [] },
+      }),
+    ]);
+    assert.deepEqual(spec.entities, []);
+    assert.ok(spec.auth.login);
+    assert.deepEqual(spec.pages, [{ screenshot: 1, kind: "login" }]);
+  });
+});
