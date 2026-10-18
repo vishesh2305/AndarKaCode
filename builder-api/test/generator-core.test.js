@@ -245,3 +245,21 @@ describe("generated server", () => {
     }
   });
 });
+
+// Found by reading generated code: a formatting step added spaces after commas INSIDE enum values.
+describe("generated validation: values are copied exactly", () => {
+  it("keeps an enum option that contains a comma unchanged", async () => {
+    const spec = {
+      ...editDeleteSpec,
+      entities: [
+        {
+          ...editDeleteSpec.entities[0],
+          fields: [{ name: "region", label: "Region", type: "enum", options: ["Sales, EMEA", "HR"], required: true, evidence: ev("column 'Region'") }],
+        },
+      ],
+    };
+    await writeBackend(path.join(OUT, "comma"), generateBackend(spec, { name: "x" }));
+    const { validateEmployee } = await load("comma", "backend/validation/employee.validation.js");
+    assert.equal(validateEmployee({ region: "Sales, EMEA" }).ok, true);
+  });
+});
