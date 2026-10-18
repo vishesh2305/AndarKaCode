@@ -1,30 +1,38 @@
-# Architecture v2: Synced Two-Laptop Builder → Working App → User's GitHub
+# Architecture v3.1: Screenshots → Exactly the App They Show → User's GitHub
 
-> **One-line summary:** From one screenshot we first extract a small **Contract** (resource, fields, actions). **Both laptops build against that same Contract at the same time**: Laptop B builds the frontend (Screenshot-to-Code, GPU) and Laptop A builds the backend (our templates). A **Sync Barrier** waits until both are built for the *same* Contract version. Then we **wire, verify, preview** and **push a working app to the user's GitHub**. Local free models are the default, and a cloud API key is the automatic backup.
+> **One-line summary:** The user uploads **screenshots** of a UI. We read every visible element into a **UI inventory**, and derive from it an **App Spec** containing **only what the screens need to work**: if there is a table, there is a list endpoint; if there is no login screen, there is no auth. Every spec item carries its **evidence** (which element on which screenshot requires it). **Both laptops build against that same App Spec**: Laptop B builds each page from its screenshot (Screenshot-to-Code, GPU), and Laptop A generates the backend from **templates**, using an **AI code model only for buttons no template can handle**. A **Sync Barrier** waits until everything is built for the *same* spec version. Then we **wire, verify, preview** and **push a working app to the user's GitHub**. Repeats and similar screenshots reuse verified work.
 
-**Status:** v2, approved · **Date:** 14 Oct 2026 · Replaces v1 · Related: [plan.md](plan.md)
+**Status:** v3.1, approved 16 Oct 2026 · Phase 1 of AndarKaCode (screenshot-only) · Replaces v3 and v2 · Related: [plan.md](plan.md)
 
 ---
 
-## 0. What's new compared with v1
+## 0. The guiding rule: no evidence, no code
 
-| v1 | v2 (this document) | Why |
+> **Every backend component must be traceable to a visible UI element. Every visible interactive element must be backed by a working component.**
+
+| The screenshot shows | We build | We do **not** build |
 |---|---|---|
-| Frontend and backend built separately, reconciled at the end | **Contract-first:** both sides build from one shared Contract | The frontend and backend agree *by design*, not by guessing afterwards |
-| No real "sync" | **State machine + Contract version + Sync Barrier** | Neither side can ship with a version that doesn't match the other |
-| Local models only | **Provider Router:** local first, cloud key as an automatic backup | The demo can't fail just because a local model struggled |
-| Developer downloads a zip | **Verify → Live preview → Push to the user's GitHub** | The user gets a working app in their own repo |
+| A table of employees with Edit/Delete | list, update, delete for `employee` | create (no Add button), login, roles, stats |
+| The same, plus "Add Employee" and a search box | + create + validation + search | pagination (not shown), auth |
+| A login form | users, `POST /auth/login`, token, protected routes | registration (no sign-up link), roles (none visible) |
+| Cards "Total: 42 · Pending: 5" | one stats endpoint with exactly those two numbers | charts or reports that aren't on screen |
+| An "Approve" button on each row | one approve operation | approval history, notifications |
+
+Two checks enforce this rule automatically (§8): **every frontend control has a working endpoint**, and **every generated endpoint is used by some control**.
+
+**Phase 1** (this document) is screenshot-only. Text requests ("also email the manager"), extra features and chat-style refinement are **Phase 2** of AndarKaCode, and the design leaves room for them (§16).
 
 ---
 
-## 1. The six core ideas
+## 1. The core ideas
 
-1. **The Contract is the single source of truth.** A small JSON document (§4) says what the app is: the resource, fields, actions and rules. Everything else is built *from* it.
-2. **Laptop A is the orchestrator; Laptop B is a worker.** A owns all state (MongoDB) and decides what happens next. B only does what A asks, and **A always calls B, never the reverse**. Only B needs an open port, and A always knows the true state.
-3. **Every artifact is stamped with the Contract hash.** Frontend HTML, backend code and tests each record which Contract version they were built from.
-4. **The Sync Barrier.** Integration starts only when `frontend.contractHash == backend.contractHash == contract.currentHash`. This rule is what keeps the two laptops in sync.
-5. **Guide the frontend, don't guess it.** Screenshot-to-Code accepts text instructions along with the image (verified in its source). We send it the Contract's exact field names plus fixed `data-field` and `data-action` markers. The frontend then has the hooks the backend expects.
-6. **Ship only what passed verification.** Automated checks run before a preview or a GitHub push.
+1. **UI inventory first.** A vision pass lists what each screenshot contains: tables and their columns, forms and their inputs, buttons and where they sit, search and filter boxes, pagination, badges, stat cards, login forms, navigation. It describes *what is there*, not what the app should do.
+2. **Derivation rules, not guessing.** A deterministic rule table (§4) maps each kind of element to the backend parts it needs. Ambiguities become short **open questions**, not assumptions.
+3. **The App Spec (Contract) is the single source of truth**, and every item carries its evidence. Frontend, backend, tests and wiring are all generated from it; every artifact is stamped with its hash.
+4. **The Sync Barrier.** Integration starts only when every page and the whole backend carry the current spec hash (verified in Step 9).
+5. **Laptop A orchestrates, Laptop B works.** A owns all state and always initiates calls; B is a stateless worker behind one Gateway.
+6. **Templates first, AI only where no template fits.** Standard elements (tables, forms, search, badges, status buttons, stat cards, login) map to tested templates. A button whose meaning no template covers is the only thing an AI code model writes, and it ships only if its tests pass.
+7. **Ship only what passed verification**, and **remember verified work** for repeats and similar screenshots.
 
 ---
 
@@ -32,178 +40,188 @@
 
 ```mermaid
 flowchart LR
-    USER[User's browser] -->|HTTPS/REST + login with GitHub| UI
+    USER[User's browser] -->|screenshots| UI
 
     subgraph A["Laptop A — Orchestrator (Apple M5, 16 GB)"]
         UI[Our React UI]
-        ORCH[Builder API + Orchestrator<br/>Node/Express<br/>state machine]
-        DB[(MongoDB<br/>builder_db)]
-        CX[Contract Extractor]
-        ROUTER_A[Provider Router]
-        OA[Ollama qwen3-vl:8b]
-        GEN[Backend Generator<br/>templates, no AI]
-        WIRE[Wirer + Verifier<br/>Babel AST + tests]
-        RUN[Preview Runner<br/>Docker sandbox]
+        ORCH[Builder API + Orchestrator<br/>state machine + Sync Barrier]
+        DB[(MongoDB builder_db)]
+        INV[UI Inventory<br/>vision pass per screenshot]
+        DER[Spec Deriver<br/>rule table + evidence]
+        MEM[Memory<br/>cache · dHash · embeddings · patterns]
+        TPL[Template generator]
+        AIG[AI code generator<br/>unmatched buttons only]
+        SBX[Sandbox]
+        WIRE[Wirer + Verifier]
         PUB[GitHub Publisher]
+        OA[Ollama on Mac]
         UI --> ORCH --> DB
-        ORCH --> CX --> ROUTER_A --> OA
-        ROUTER_A -.backup.-> CLOUD
-        ORCH --> GEN
-        ORCH --> WIRE
-        ORCH --> RUN
+        ORCH --> INV --> OA
+        INV --> DER
+        ORCH --> MEM
+        ORCH --> TPL
+        ORCH --> AIG --> OA
+        AIG --> SBX
+        ORCH --> WIRE --> SBX
         ORCH --> PUB
     end
 
-    subgraph B["Laptop B — UI Worker (RTX 4060 8 GB VRAM, 16 GB RAM)"]
-        GW[S2C Gateway<br/>our REST API<br/>queue + Provider Router]
-        S2C[Screenshot-to-Code<br/>pinned a813977 + 2-line patch]
-        OB[Ollama on CUDA<br/>qwen3-vl:8b, alias gpt-5.5]
-        GW -->|WebSocket localhost| S2C
-        S2C -->|local mode| OB
-        S2C -.cloud mode.-> CLOUD
+    subgraph B["Laptop B — UI Worker (RTX 4060 8 GB)"]
+        GW[Gateway :8787]
+        S2C[Screenshot-to-Code<br/>a813977 + local patch]
+        OB[Ollama CUDA<br/>gpt-5.5 = qwen3-vl:8b-instruct]
+        GW -->|WebSocket localhost| S2C --> OB
     end
 
-    CLOUD[(Cloud LLM API<br/>backup key, e.g. Gemini)]
-    ORCH -->|REST over Tailscale<br/>X-API-Key| GW
-    PUB -->|GitHub REST API| GH[(User's GitHub repo)]
+    CLOUD[(Gemini backup)]
+    ORCH -->|REST over Tailscale + X-API-Key| GW
+    OA -.backup.-> CLOUD
+    S2C -.cloud mode.-> CLOUD
+    PUB -->|GitHub REST API| GH[(User's repo)]
 ```
 
 ---
 
 ## 3. The build lifecycle (state machine)
 
-Every project moves through these states. A stores them in MongoDB, and the UI shows them live.
-
 ```mermaid
 stateDiagram-v2
     [*] --> UPLOADED
-    UPLOADED --> CONTRACT_DRAFT: Contract Extractor (A)
-    CONTRACT_DRAFT --> BUILDING: fan-out
+    UPLOADED --> CONTRACT_DRAFT: memory lookup, UI inventory, derivation
+    CONTRACT_DRAFT --> BUILDING: fan-out (user reviews the spec in parallel)
 
     state BUILDING {
-        [*] --> FE_BUILDING
-        [*] --> BE_BUILDING
-        FE_BUILDING --> FE_READY: Laptop B finished
-        BE_BUILDING --> BE_READY: templates finished
+        [*] --> PAGES
+        [*] --> BACKEND
+        PAGES: Laptop B, one Gateway job per screenshot
+        BACKEND: templates, then AI only for unmatched buttons
     }
 
-    BUILDING --> SYNCED: Sync Barrier passes (same contractHash)
-    SYNCED --> INTEGRATING: Wirer connects HTML to API
+    BUILDING --> SYNCED: Sync Barrier
+    SYNCED --> INTEGRATING: Wirer
     INTEGRATING --> VERIFYING
-    VERIFYING --> REPAIRING: check failed (max 2 tries)
+    VERIFYING --> REPAIRING: check failed (max 2 rounds)
     REPAIRING --> VERIFYING
     VERIFYING --> READY: all checks pass
-    READY --> PREVIEW_LIVE: user clicks Preview
-    READY --> SHIPPED: user clicks Push to GitHub
+    READY --> PREVIEW_LIVE: Preview
+    READY --> SHIPPED: Push to GitHub
     PREVIEW_LIVE --> SHIPPED
-    VERIFYING --> NEEDS_ATTENTION: still failing after repairs
+    VERIFYING --> NEEDS_ATTENTION: still failing
 ```
 
-**Step by step:**
-
-| Step | Where | What happens | Typical time* |
+| Step | Where | What happens | Measured / expected |
 |---|---|---|---|
-| 1. Upload | A | Hash the image (SHA-256), shrink it to at most 1280 px wide, save it | instant |
-| 2. Contract draft | A | Vision model → Contract JSON (§4), forced to match a schema | seconds |
-| 3a. Frontend build | **B** | Gateway → Screenshot-to-Code with **image + Contract instructions** → `index.html` | the slow part |
-| 3b. Backend build | A | Templates fill in from the Contract → Express + Mongoose code + tests | instant |
-| 3c. Human review | User | Reviews and edits the Contract and answers open questions **while 3a runs** | in parallel |
-| 4. Sync Barrier | A | Proceed only if both artifacts match the current Contract hash | instant |
-| 5. Integrate | A | Wirer replaces sample data with API calls and hooks up the action buttons | instant |
-| 6. Verify | A (sandbox) | Contract check + API tests + browser smoke test (§7) | under a minute |
-| 7. Preview / Ship | A | Live preview link, zip download, or **push to GitHub** | seconds |
+| 1. Upload | A | Hash each screenshot (SHA-256 + perceptual dHash), shrink to ≤ 1280 px, store | instant |
+| 2. Spec | A | **Memory lookup** (§9); **UI inventory** per screenshot (vision); **derivation** (rules, no AI); open questions for real ambiguities | 15–20 s per screenshot (measured for the current extractor) |
+| 3a. Pages | **B** | One Gateway job per screenshot, with instructions generated from that page's part of the spec | ~2–3 min per page locally (measured), ~30 s cloud |
+| 3b. Backend | A | Templates (ms); AI only for unmatched buttons (tests + repair each) | target < 1 min per AI piece |
+| 3c. Review | User | Sees each spec item with its evidence; can correct types, options, enum-vs-relation, or remove an item | parallel |
+| 4. Barrier | A | Proceed only if every artifact has the current spec hash | instant (verified) |
+| 5–7. | A | Wire, verify, preview / push | under a minute |
 
-\* Measure the real times in Checkpoints 1–2; don't promise numbers before then.
-
-### What if the user edits the Contract mid-build?
-
-Each edit creates **Contract version N+1** with a new hash. The Barrier then **refuses** any artifact built for version N, and the right part is rebuilt:
-
-| Kind of edit | Backend | Frontend |
-|---|---|---|
-| Rename a label, change validation or rules | Regenerate (instant, free) | Wirer patches the labels. No AI call |
-| Add or remove a field or action | Regenerate (instant) | Gateway job with `generationType: "update"`: Screenshot-to-Code edits the existing HTML |
+Spec edits during a build create a new version; the Barrier refuses anything built for the old one (verified in Step 9). Each entity and operation has its own sub-hash, so an edit only rebuilds what it touches.
 
 ---
 
-## 4. The Contract (the "sync language" between the laptops)
+## 4. From screenshot to App Spec
 
-```json
+### 4.1 UI inventory (vision pass, one per screenshot)
+
+Structured output (JSON Schema), describing only what is visible:
+
+```jsonc
 {
-  "version": 2,
-  "resource": { "name": "employee", "plural": "employees", "label": "Employees" },
-  "fields": [
-    { "name": "fullName",   "label": "Full Name",  "type": "string", "required": true },
-    { "name": "email",      "label": "Email",      "type": "email",  "required": true, "unique": true },
-    { "name": "department", "label": "Department", "type": "enum",   "options": ["HR", "Engineering", "Sales"] },
-    { "name": "salary",     "label": "Salary",     "type": "number", "min": 0 }
-  ],
-  "actions": ["list", "create", "update", "delete", "search"],
-  "rules": { "delete": "soft", "auth": "none" },
-  "openQuestions": ["Who may delete employees?"],
-  "ui": { "sampleConst": "SAMPLE_EMPLOYEES" }
+  "screen": { "title": "Employee Management", "kind": "list" },          // list | form | dashboard | login | detail
+  "tables": [ { "id": "t1", "columns": ["Full Name", "Email", "Department", "Salary", "Status"],
+                "sampleRows": [["Ann Lee", "ann@x.com", "HR", "52,000", "Active"]],
+                "rowActions": ["Edit", "Delete", "Approve"] } ],
+  "forms": [ { "id": "f1", "inputs": [ { "label": "Full Name", "kind": "text", "requiredMark": true },
+                                       { "label": "Department", "kind": "select", "options": ["HR", "Engineering"] } ],
+               "submit": "Save" } ],
+  "buttons": [ { "label": "Add Employee", "scope": "page" } ],
+  "search": true, "filters": [ { "label": "Department", "options": ["All", "HR", "Engineering"] } ],
+  "pagination": { "visible": true, "text": "Showing 1–10 of 42" },
+  "statCards": [ { "label": "Total Employees", "value": "42" } ],
+  "auth": { "loginForm": false, "signupLink": false, "userMenu": false, "roleIndicators": [] },
+  "navigation": ["Employees", "Departments"]
 }
 ```
 
-**How the Contract keeps both sides aligned:**
+### 4.2 Derivation rules (deterministic)
 
-| The Contract says | Laptop B (frontend) is told to | Laptop A (backend) generates |
+| UI element (evidence) | Spec item → backend component | Default when not shown |
 |---|---|---|
-| field `fullName` | label a column "Full Name" with `data-field="fullName"`, and a form input `name="fullName"` | Mongoose field `fullName: { type: String, required: true }` + validation |
-| action `create` | add an "Add Employee" button with `data-action="create"` | `POST /api/employees` |
-| action `delete` | add per-row Delete buttons with `data-action="delete"` | `DELETE /api/employees/:id` (soft delete) |
-| `ui.sampleConst` | keep the sample rows in `const SAMPLE_EMPLOYEES = [...]` | the Wirer replaces exactly that constant with a `fetch` call |
+| Table columns + sample values | entity fields; type from values (email, date, number, currency → number, Yes/No → boolean) | — |
+| Badge column with a few values | `enum` field with those options | — |
+| Row-level Edit | `GET /:id`, `PUT /:id` | not built |
+| Row-level Delete / trash icon | `DELETE /:id` (hard) | not built |
+| "Archive" / "Restore" / "Deleted" tab | soft delete + restore | hard delete |
+| "Add X" button or empty form | `POST` + validation (`*` marks → required) | not built |
+| Search box | `?q=` over text fields | not built |
+| Filter dropdown | `?<field>=` filter | not built |
+| Pagination / "1–10 of 42" | `page`, `limit`, `total` | return all (capped) |
+| Sortable headers (arrows) | `?sort=` | fixed order |
+| Stat card ("Total", "Pending") | one `GET /stats` returning exactly those numbers (count / sum / count-by-status) | not built |
+| Chart (e.g. per department) | group-by aggregate for that chart only | not built |
+| Dropdown whose options are records shown in **another screenshot's table** | `ref` relation + populate | — |
+| Dropdown with fixed options and no page for them | `enum` | — |
+| Row button matching a status value ("Approve" ↔ `approved`) | **template**: status-transition operation | — |
+| Row/page button with no template pattern ("Recalculate", "Duplicate") | **AI**: custom operation | — |
+| "Export CSV" | **template**: export endpoint | not built |
+| Login form | users + `POST /auth/login` + token + protected routes + a seeded first user | **no auth at all** |
+| Sign-up link/form | `POST /auth/register` | not built |
+| User menu / Logout | `GET /auth/me`; logout clears the token | not built |
+| Role badges / "Admin" labels / role column | `role` on users; role checks only on elements shown as restricted | no roles |
+| Static text, images, nav links | nothing on the backend | — |
 
-Because the markers are agreed in advance, the Wirer and Verifier don't have to guess. They look for `data-field`, `data-action` and `SAMPLE_EMPLOYEES` in the code tree.
+If the rules can't decide (for example a Department dropdown with no Departments screen: fixed list or managed data?), the spec gets an **open question** with a sensible default (fixed list), and the user can change it during review.
+
+### 4.3 App Spec (Contract v3) with evidence
+
+```jsonc
+{
+  "app": { "name": "employeeManagement", "label": "Employee Management" },
+  "entities": [
+    { "name": "employee", "plural": "employees", "label": "Employees",
+      "fields": [
+        { "name": "fullName", "label": "Full Name", "type": "string", "required": true,
+          "evidence": "s1: column 'Full Name', form input marked *" },
+        { "name": "status", "label": "Status", "type": "enum", "options": ["pending", "approved", "rejected"],
+          "evidence": "s1: badge column 'Status'" } ],
+      "endpoints": {
+        "list":   { "search": true, "pagination": true, "evidence": "s1: table, search box, 'Showing 1–10 of 42'" },
+        "create": { "evidence": "s1: button 'Add Employee'" },
+        "update": { "evidence": "s1: row action 'Edit'" },
+        "delete": { "soft": false, "evidence": "s1: row action 'Delete'" } } } ],
+  "operations": [
+    { "name": "approveEmployee", "entity": "employee", "kind": "setStatus", "set": { "status": "approved" },
+      "button": "Approve", "evidence": "s1: row action 'Approve'" } ],
+  "stats": [],
+  "auth": null,
+  "pages": [ { "screenshot": 1, "entity": "employee", "kind": "list" } ],
+  "openQuestions": []
+}
+```
+
+`operations[].kind` is `setStatus` or `export` (templates) or `custom` (AI). `auth` is `null` unless a login screen is in a screenshot.
 
 ---
 
-## 5. Laptop B: UI Worker (RTX 4060 8 GB)
+## 5. Laptop B: UI Worker (RTX 4060 8 GB) — built and verified (Steps 1–7)
 
-### 5.1 What runs
-
-- **Ollama (CUDA)** with `qwen3-vl:8b` (about 6.1 GB at 4-bit), aliased as `gpt-5.5`.
-  - **The model must fit entirely in the 8 GB of VRAM.** If part of it spills to the CPU it becomes several times slower.
-  - Check with `ollama ps`: the PROCESSOR column must say `100% GPU`.
-  - If it doesn't fit, lower the context length, or switch to `qwen3-vl:4b`.
-- **Screenshot-to-Code** pinned at commit `a813977`, with **a 2-line patch** (documented, not a fork):
-  - `NUM_VARIANTS = 1` in `config.py` (default 4).
-  - The update-mode variant count set to 1 in `routes/generate_code.py` (hard-coded 2).
-  - It runs in **non-production mode**, which it needs to accept a custom model address (`openAiBaseURL`).
-  - **No API keys in its `.env`.** The Gateway passes keys per request (see 5.3).
-- **S2C Gateway** (ours, Node/Express): the only service other laptops can reach.
-
-### 5.2 GPU speed settings (Ollama environment)
-
-| Setting | Value | Why |
-|---|---|---|
-| `OLLAMA_FLASH_ATTENTION` | `1` | Faster attention, less VRAM |
-| `OLLAMA_KV_CACHE_TYPE` | `q8_0` | Halves the memory needed for long prompts, so the model stays fully on the GPU |
-| `OLLAMA_KEEP_ALIVE` | `-1` | Model stays loaded; no cold start |
-| `OLLAMA_NUM_PARALLEL` | `1` | One job at a time gets the whole GPU |
-| `OLLAMA_MAX_LOADED_MODELS` | `1` | No second model competing for 8 GB |
-| Context length | 16k to start | Screenshot-to-Code's prompts are long; tune it while watching `ollama ps` |
-
-### 5.3 Gateway API (Laptop B)
+- **Ollama (CUDA)**: `gpt-5.5` = `qwen3-vl:8b-instruct`, `num_ctx` 16384, temperature 0.5; flash attention, `q8_0` KV cache, keep-alive forever, one model loaded. Measured **78% GPU** (Windows keeps ~1 GB VRAM), 29.6 tokens/s.
+- **Screenshot-to-Code** at `a813977` with a local patch ([docs/s2c-local.patch](docs/s2c-local.patch)): 1 variant, Windows fixes, retry without `reasoning` for Ollama, Gemini 503 retry, **max 6 agent steps**. **No keys in its `.env`**; the Gateway passes them per request. After patching, restart it manually (auto-reload hangs on Windows).
+- **Gateway** ([gateway/](gateway/)): listens only on Laptop B's Tailscale address; `X-API-Key`; one job at a time; the same (image, specHash) returns the same job; `local` / `cloud` / `auto`; takes the last complete page 60 s after `</html>` appears.
+- Start everything with [scripts/start-laptop-b.ps1](scripts/start-laptop-b.ps1).
 
 | Method | Path | Body / Result |
 |---|---|---|
-| `POST` | `/v1/generations` | `{ image, instructions, contractHash, type: create\|update, baseHtml?, mode: auto\|local\|cloud }` → `202 { jobId }` |
-| `GET` | `/v1/generations/:id` | `{ status, progress, provider: local\|cloud, contractHash, html?, error? }` |
-| `POST` | `/v1/generations/:id/cancel` | Stops a job that is out of date (an old Contract version) |
-| `GET` | `/v1/health` | `{ s2cUp, modelLoaded, gpu: "100% GPU", queueLength, s2cCommit }` |
+| `POST` | `/v1/generations` | `{ image, instructions, contractHash, type: "create", mode }` → `202 { jobId }` (`200` for a known request) |
+| `GET` | `/v1/generations/:id` | `{ status, progress, chars, provider, contractHash, finishedEarly?, html?, error? }` |
+| `GET` | `/v1/health` | `{ s2cUp, ollamaUp, models: [{ name, gpu }], queueLength, cloudAvailable }` |
+| *planned* `POST` | `/v1/generations/:id/cancel` | stop a job for an outdated spec |
 
-**How the Gateway switches between local and cloud per request.** Screenshot-to-Code reads keys and the model address from each WebSocket message (verified in its source):
-
-- **Local mode:** sends `openAiApiKey: "ollama"` and `openAiBaseURL: "http://localhost:11434/v1"`. Screenshot-to-Code asks for "gpt-5.5", and Ollama serves our local model.
-- **Cloud mode:** sends only `geminiApiKey: <backup key>`. Screenshot-to-Code picks Gemini automatically.
-- **No restart is needed to switch.**
-
-Other Gateway rules:
-- `X-API-Key` on every call.
-- A queue with one job at a time.
-- Idempotency: the same `(imageHash, contractHash, type)` returns the same job, so retries are safe.
-- Output cache by that same key.
+Measured: **104–194 s per page locally**. With instructions generated from the spec (exact example button), the local model now includes every marker, including `data-action="create"`.
 
 ---
 
@@ -211,143 +229,135 @@ Other Gateway rules:
 
 | Component | Job | AI? |
 |---|---|---|
-| **Builder API + Orchestrator** | Runs the state machine (§3), polls B every 2 s, enforces the Barrier, serves the UI | No |
-| **Contract Extractor** | Image → Contract JSON using Ollama's **structured output** (`format` = JSON Schema), `think: false` | **Yes** (local `qwen3-vl:8b`, cloud backup) |
-| **Provider Router** | For each AI step: local first; switch to cloud on error, timeout or invalid output; daily cloud budget cap | No |
-| **Backend Generator** | Contract → Express + Mongoose code + generated tests, from templates we wrote | No |
-| **Wirer** | Babel AST: replace `SAMPLE_*` with `fetch`, connect `data-action` buttons, add loading and error states | No (narrow AI fallback only) |
-| **Verifier** | Runs the checks in §7 inside the sandbox | No |
-| **Preview Runner** | Docker sandbox (§8) | No |
-| **GitHub Publisher** | Creates the repo and pushes one commit (§9) | No |
+| **Builder API + Orchestrator** | State machine, MongoDB as source of truth, resume after restart, polls B every 2 s, Sync Barrier (built in Steps 8–9) | No |
+| **UI Inventory** | Vision pass per screenshot → inventory JSON (§4.1), schema-checked | Yes |
+| **Spec Deriver** | Rule table (§4.2) → App Spec with evidence; merges screenshots (same entity on two pages; relations between pages) | No |
+| **Template generator** | Spec → only the components the spec lists | No |
+| **AI code generator** | Only `custom` operations → `custom/*.js` + tests; safety check; sandbox; repair loop | Yes |
+| **Memory** | Exact cache, image dHash, spec embeddings, pattern library (§9) | Embeddings only |
+| **Wirer** | Runtime binder `app.js` + `api-map.json` per page | No |
+| **Verifier** | Checks in §8, including the evidence checks | No |
+| **Sandbox** | Runs generated tests and previews (§10) | No |
+| **GitHub Publisher** | New repo, one commit, CI | No |
 
-**The Provider Router's policy, the same on both laptops:**
+**Models on the Mac (Ollama), one loaded at a time to fit 16 GB:** vision `qwen3-vl:8b-instruct` (measured 15–20 s; cloud backup `gemini-3-flash-preview`, measured 9.6 s); a coding model for `custom` operations (chosen in Step 13's spike, e.g. `qwen2.5-coder:7b`; cloud backup Gemini); a small embedding model for memory (e.g. `nomic-embed-text`).
 
-```
-for each AI step:
-  try LOCAL  (timeout: Contract 90 s, UI 8 min)
-  if error / timeout / output fails the schema or markers check:
-      if cloudBudgetLeft > 0: retry with CLOUD, mark artifact.provider = "cloud"
-      else: NEEDS_ATTENTION
-"Demo mode" switch in the UI: force CLOUD for every step (most reliable for evaluation day).
-```
-
-The UI shows a badge on each artifact, such as **"built locally on GPU"** or **"cloud backup"**. That's honest, and it's a good talking point in the viva.
+**Provider Router:** local first; on error, timeout, or output that fails its schema/tests → cloud if a key and budget remain, else `NEEDS_ATTENTION`. "Demo mode" forces cloud. Every artifact records its provider. Gemini's free tier allows **20 requests/day per model** (measured); the demo needs billing or a warm cache.
 
 ---
 
-## 7. Verify before shipping
+## 7. The backend generator
+
+```
+App Spec ──▶ Template generator ──▶ only what the spec lists:
+             │                       models (+ relations) · validation · list (+ search / filter / page / sort)
+             │                       · get · create · update · delete (hard or soft) · setStatus ops · export
+             │                       · stats · auth (only if a login screen) · server · tests for each part
+             │
+             └─▶ AI code generator ─▶ custom/operations/<name>.js + tests     (only for `custom` operations)
+                       │
+                 safety check (AST) ─▶ sandbox test run ─▶ pass → keep
+                       │ fail
+                 repair: error + code back to the model (max 3 tries, then cloud)
+                       │ still failing
+                 that endpoint answers 501 "needs attention"; everything else works
+```
+
+**Templates are composable building blocks**, each emitted only when the spec contains it. An employees table with only Edit/Delete produces a model, `GET /`, `GET /:id`, `PUT /:id`, `DELETE /:id`, the validation for update, and tests for exactly those routes. Nothing else.
+
+**AI code boundaries** (for `custom` operations only):
+- **Fixed signature:** `export default async function ({ params, body, models, errors }) { … return { status, body } }`. The template layer generates the route that calls it; the AI never touches routing, auth or the database connection.
+- **Context given:** the button label and where it sits, the entity's generated model code, the helper API.
+- **Safety check before running:** parse with `acorn`; reject `import`/`require`, `process`, `eval`, `Function`, `fetch`, timers and anything outside the allowlist (screenshot text could try to steer the model).
+- **Tests decide:** the model writes tests from the operation's meaning, using generated fixtures; the code ships only if all tests pass in the sandbox.
+
+**API shape** (what the binder relies on): `GET /api/<plural>` → `{ items, total }` (`page`/`limit`/`q`/filters/`sort` only if the spec has them); records use `id`, never `_id`; relations come populated as `{ id, label }`; errors are `400 { error, details: { field: message } }`, `401`, `404`, `409` (duplicate), `501` (operation not available).
+
+---
+
+## 8. Verify before shipping
 
 | # | Check | How | If it fails |
 |---|---|---|---|
-| 1 | **Frontend matches the Contract** | Babel AST: every Contract field has `data-field`, every action has `data-action`, and `SAMPLE_*` exists | **Repair:** Gateway `update` job asking for exactly the missing markers (max 2 tries, then cloud) |
-| 2 | **JSX still parses after wiring** | Re-parse with `@babel/parser` | Undo the wiring step and show the diff to the user |
-| 3 | **Backend boots** | Start it in the sandbox; `GET /health` returns 200 | Template bug, so fix the template (ours) |
-| 4 | **API behaves as the Contract says** | Generated tests (Jest + Supertest): create, list, update, delete, search, and a validation error | Same as above |
-| 5 | **Browser smoke test** | Headless Playwright: open the page → add a record → see it in the table → edit → delete | Mark NEEDS_ATTENTION and show a screenshot |
+| 1 | **Pages match the spec** | Headless browser: after the page's own scripts run, every field has `data-field` and every endpoint/operation has its `data-action` (some models add markers with JavaScript) | Repair: Gateway `update` job for the missing markers (max 2), then cloud |
+| 2 | **Every control is backed** | Each `data-action` / `data-field` in the pages maps to an endpoint in `api-map.json` | Generator bug → fix; or the spec missed an element → re-derive |
+| 3 | **Nothing unnecessary** | Each generated endpoint is used by at least one control; each spec item has evidence | Remove the unused component |
+| 4 | **Backend boots + template tests** | Sandbox; `GET /health`; generated tests for exactly the listed parts | Template bug → fix the template |
+| 5 | **AI code tests** | Per `custom` operation, in the sandbox | Repair loop (§7) |
+| 6 | **End-to-end smoke** | Playwright: use every visible control once (add, edit, search, the status button, log in if present) | `NEEDS_ATTENTION` with a screenshot |
 
-Only a project whose checks all pass (status `READY`) can be previewed or pushed. The user can force a push, and the commit message then says that verification failed.
+Only `READY` projects can be previewed or pushed.
 
 ---
 
-## 8. Live preview (sandbox)
+## 9. Memory: cache and similarity
 
-- **Why it's needed now:** you want the user to *see* the working app before pushing.
-- **Risk:** the backend comes from **our own templates**, so the server-side risk is low. The frontend HTML is model-generated, and it runs in the browser.
-- **Where:** a Docker sandbox on Laptop A (OrbStack or Docker Desktop on macOS).
+| Level | Key | What is reused |
+|---|---|---|
+| **Exact repeat** | screenshot SHA-256; spec hash; per-entity / per-operation sub-hash | UI inventory, pages (Gateway cache, verified), template output, verified AI code |
+| **Near-duplicate screenshot** | 64-bit perceptual **dHash**, Hamming distance ≤ 6 | the earlier inventory and spec as a starting point ("looks like *Employee Management*") |
+| **Similar content** | embedding of the inventory (titles, columns, buttons), stored in MongoDB, cosine similarity | suggest the earlier spec's decisions (types, enum vs relation) |
+| **Pattern library** | embedding of a `custom` operation's button + context | **verified** code offered to the AI generator first; it must still pass the new app's tests |
+
+Only verified artifacts enter memory. Memory never adds features: a reused spec is still filtered through the current screenshot's evidence.
+
+---
+
+## 10. Sandbox (tests and preview)
 
 | Rule | Why |
 |---|---|
-| Two containers (app + mongo) on a private Docker network | The app can't reach our `builder_db` or the internet |
-| Memory limit (app 512 MB, mongo 512 MB), 1 CPU, non-root user, read-only filesystem | A runaway app can't take over the laptop |
-| **No secrets inside**: no GitHub token, no API keys | Nothing to steal |
-| Served on a **separate port**, so a different web origin (e.g. `:7100`), not our UI's origin | Generated JS can't read our UI's cookies |
-| Auto-stop after 30 min; one preview at a time | 16 GB of memory is shared with Ollama |
+| Docker on Laptop A (OrbStack or Docker Desktop); app + its own MongoDB on a private network, **no internet** | Generated code can't reach `builder_db`, the network or the laptop |
+| 512 MB memory per container, 1 CPU, non-root, read-only filesystem, time limit per test run | Runaway code can't take over the laptop |
+| **No secrets inside** | Nothing to steal |
+| Previews on a separate port/origin (e.g. `:7100`), auto-stop after 30 min, one at a time | Generated JS can't read our UI's cookies; 16 GB is shared with Ollama |
+
+Needed from Step 13 (the first AI-written code); templates-only backends are tested the same way.
 
 ---
 
-## 9. Push to the user's GitHub
+## 11. Push to the user's GitHub
 
-### 9.1 Login and permissions
-- **"Sign in with GitHub"** (a GitHub **OAuth App**) is also *our product's* login, so one feature covers user accounts too.
-- **Ask for the minimum, and only when needed:**
-  - At login: `read:user`.
-  - When the user first clicks Publish: `public_repo` (or `repo` for private repos) plus `workflow`. `workflow` is required to push a `.github/workflows/` file.
-- **Token storage:** encrypted with AES-256-GCM in MongoDB, using a key from `.env`. It never leaves Laptop A, never goes to Laptop B, and never enters a sandbox.
+- **"Sign in with GitHub"** (OAuth App) is our product's own login, unrelated to the generated app's auth. Scopes: `read:user` at login; `public_repo` (or `repo`) + `workflow` only on first publish. Tokens encrypted with AES-256-GCM, only on Laptop A.
+- Push via the REST API: create a **new** repo → blobs → tree → commit → `refs/heads/main`. CI runs the generated tests.
 
-### 9.2 How the push works (GitHub REST API, no git commands on the server)
-1. The user picks a repo name and public or private.
-2. `POST /user/repos` creates a **new** repo. The MVP never overwrites an existing repo.
-3. Create one *blob* per file → one *tree* → one *commit* ("Initial app generated from screenshot") → update `refs/heads/main`.
-4. Show the repo link. GitHub Actions runs the included tests, so the user sees a green check.
-
-### 9.3 What the user receives
+**What the user receives** (example: one employees screenshot with Add, Edit, Delete, search and an Approve button; no login screen):
 
 ```
-employee-app/
-├── README.md              how to run, the Contract, "generated by …" credits
-├── contract.json          the agreed Contract (version + hash)
-├── docker-compose.yml     app + mongo, one command to run
-├── .env.example
+employee-management/
+├── README.md              how to run; each feature and the screenshot element it came from
+├── app-spec.json          the agreed spec (version + hash + evidence)
+├── docker-compose.yml     app + mongo
+├── .env.example           MONGODB_URI, PORT  (JWT_SECRET only if there is a login screen)
 ├── frontend/
-│   ├── index.html         generated by Screenshot-to-Code, wired by us
-│   └── api.js             small fetch helper (ours, from a template)
+│   ├── index.html         from the screenshot (Screenshot-to-Code), wired
+│   ├── app.js             runtime binder (ours)
+│   └── api-map.json       which data-action calls which endpoint
 ├── backend/
-│   ├── server.js          also serves frontend/, so same origin and no CORS problems
+│   ├── server.js
 │   ├── models/employee.model.js
-│   ├── routes/employee.routes.js
-│   ├── controllers/employee.controller.js
-│   └── validation/employee.validation.js
-├── tests/
-│   ├── api.test.js        generated from the Contract
-│   └── smoke.spec.js      Playwright browser test
+│   ├── validation/employee.validation.js
+│   ├── controllers/employee.controller.js   list(q, page) · get · create · update · delete · approve
+│   └── routes/employee.routes.js
+├── tests/                 one test per generated endpoint + smoke.spec.js
 └── .github/workflows/ci.yml
 ```
 
----
-
-## 10. Networking and security summary
-
-| Item | Rule |
-|---|---|
-| Link between the laptops | **Tailscale** (free), so the private address works on any Wi-Fi, including college networks that block device-to-device traffic |
-| Exposed services | Laptop A: our UI/API. Laptop B: **only the Gateway**. Screenshot-to-Code `:7001` and Ollama `:11434` stay on localhost |
-| Laptop-to-laptop auth | `X-API-Key` header; key in `.env` on both laptops |
-| Secrets | `.env` git-ignored. Cloud key only on the machine that needs it. GitHub tokens encrypted, only on A |
-| Cloud cost | Daily cap in the Provider Router; demo screenshots cached |
-| Untrusted code | Runs only in the sandbox (§8), never with secrets |
+No `auth/` folder, no users, no stats: none of them were on the screen.
 
 ---
 
-## 11. Our database (`builder_db` on Laptop A)
+## 12. Our database (`builder_db` on Laptop A)
 
 | Collection | Key fields |
 |---|---|
-| `users` | `githubId`, `login`, `avatarUrl`, `tokenEncrypted`, `scopes` |
-| `projects` | `userId`, `name`, `imageHash`, `state` (§3), `currentContractVersion` |
-| `contracts` | `projectId`, `version`, `hash`, `body` (§4), `approved`, `answers` |
-| `jobs` | `projectId`, `kind: contract\|frontend\|backend\|verify\|preview\|publish`, `status`, `provider`, `contractHash`, `remoteJobId`, `error`, timestamps |
-| `artifacts` | `projectId`, `kind: html\|backend\|zip`, `contractHash`, `path`, `provider`, `model` |
-| `publishes` | `projectId`, `repoFullName`, `commitSha`, `verified`, `createdAt` |
+| `users` | `githubId`, `login`, `avatarUrl`, `tokenEncrypted`, `scopes` (our product's users) |
+| `projects` | `userId`, `name`, `screenshots[] {path, sha256, dHash, inventory}`, `state`, `mode`, `currentContractVersion`, `error` |
+| `contracts` | `projectId`, `version`, `hash`, `body` (App Spec with evidence), `subHashes`, `approved`, `answers` |
+| `jobs` | `projectId`, `kind: inventory\|frontend\|backend\|operation\|verify\|preview\|publish`, `status`, `provider`, `contractHash`, `remoteJobId`, `artifactPath`, `attempts`, `error`, timestamps |
+| `memory` | `kind: screenshot\|spec\|operation`, `key`, `dHash`, `embedding`, `verified`, `sourceProjectId`, `payload` |
 
-> This database holds **our product's** data. The generated app has its **own** database (`employee_app`), set in its own `.env`.
-
----
-
-## 12. Build plan (one checkpoint at a time)
-
-| # | Checkpoint | Done when | Owner |
-|---|---|---|---|
-| 1 | **Laptop B GPU spike** | Ollama shows `100% GPU`. Screenshot-to-Code (patched) + local model + **Contract instructions** produces HTML containing the `data-field` markers. The cloud-key path is also tested | A |
-| 2 | **Contract Extractor spike (A)** | 3 screenshots → valid Contract JSON; time each run; cloud backup works | B |
-| 3 | **Gateway + link between the laptops** | `curl` from A over Tailscale: POST an image, poll, get the HTML; `/v1/health` works | A |
-| 4 | **Orchestrator + state machine + Barrier** | Upload → both branches run → Barrier rejects a mismatched hash in a test | B |
-| 5 | **Backend Generator + generated tests** | Contract → backend whose generated tests pass | C |
-| 6 | **Wirer + Verifier + repair loop** | Wired HTML talks to the backend; checks 1–4 pass | C |
-| 7 | **Sandbox preview + Playwright smoke** | Preview link works and auto-stops; check 5 passes | D |
-| 8 | **GitHub login + Publish** | A new repo appears in the user's account, and its CI turns green | D |
-| 9 | **UI + demo rehearsal** | Full run end to end, with demo mode, a cache, and a backup video | All |
-
-**Team roles:** A = Laptop B / Gateway · B = Orchestrator / Contract · C = Generator / Wirer / Verifier · D = Sandbox / GitHub / UI.
+> This database holds **our product's** data. Each generated app has its **own** database, set in its own `.env`.
 
 ---
 
@@ -355,44 +365,61 @@ employee-app/
 
 | Risk | Level | Mitigation |
 |---|---|---|
-| Small local model doesn't follow the marker instructions, or fails Screenshot-to-Code's tool-calling loop | **High** | Checkpoint 1 tests it first; repair loop; Provider Router falls back to cloud |
-| `qwen3-vl:8b` + long prompts don't fit in 8 GB of VRAM, so it slows down a lot | Medium | Q8 KV cache, flash attention, smaller context, or `qwen3-vl:4b` |
-| Ollama doesn't accept a Responses API field that Screenshot-to-Code sends | Medium | Found in Checkpoint 1; the Gateway can use cloud mode while it's fixed |
-| 16 GB on Laptop A: Ollama + MongoDB + Docker sandbox | Medium | One preview at a time, memory limits, unload the model before previews if needed |
-| GitHub push of the workflow file rejected | Low | Request the `workflow` scope, or skip CI if the user declines |
-| Laptop B offline on demo day | Low | Health indicator, cached results, demo mode (cloud), recorded backup video |
-| Cloud bill | Low | Daily cap + cache + local-first |
+| The vision pass misreads an element (misses a button, wrong type) | **High** | Structured inventory; evidence shown in review; user corrects; check 2 catches controls without endpoints |
+| Rules guess wrong on enum vs relation | Medium | Open question with a default; relation only when the other entity has its own screen |
+| A 7B local coding model writes wrong `custom` code | Medium (rarely used now) | Templates cover common buttons; tests decide; repair loop; cloud backup; pattern library; 501 isolation |
+| Prompt injection via screenshot text | Medium | AST allowlist, sandbox without network or secrets |
+| Mac memory: vision + coder + embeddings + MongoDB + Docker in 16 GB | Medium | One model loaded at a time; sandbox limits |
+| Local UI model misses markers or keeps editing | Medium (measured) | Generated instructions, 60 s finish rule, max 6 agent steps, repair loop |
+| Spec edit during a page build waits for the stale page (~2 min) | Low (measured) | Gateway cancel endpoint |
+| Gemini free tier: 20 requests/day per model | Medium (measured) | Local-first, cache, billing for demo day |
 
 ---
 
-## 14. Demo-day runbook
+## 14. Build plan
 
-1. The day before: run all demo screenshots once, so the cache is warm.
-2. Both laptops on Tailscale; check `/v1/health` → `100% GPU`.
-3. Turn on **Demo mode** if the room's network or time is unreliable.
-4. Flow to show: upload → Contract appears in seconds → edit one rule while the frontend builds → Barrier turns green → checks pass → live preview: add and delete an employee → **Push to GitHub** → open the repo and show the green CI.
+See [plan.md](plan.md). Steps 1–9 (Laptop B, Gateway, link, Builder API, state machine, Barrier) are **done and verified**. Remaining:
+
+| # | Step | Done when |
+|---|---|---|
+| 10 | **UI inventory + Spec Deriver** (with a set of test screenshots) | Each test screenshot gives a spec containing exactly its elements, with evidence; the employees screenshot still reaches `SYNCED` |
+| 11 | **Template layer** (entities, relations, each endpoint as a building block, setStatus, export, stats, tests) | Backends for every test screenshot contain only their listed parts and pass their tests |
+| 12 | **Login templates** (used only when a login screen is present) | A login screenshot gives working login + protected routes; screenshots without one give no auth code |
+| 13 | **AI layer for `custom` buttons** (model spike, safety check, Docker sandbox, repair, 501) | A custom button is generated and passes; a broken case is repaired or isolated |
+| 14 | **Memory** | A repeat is instant; a near-duplicate screenshot reuses the earlier spec |
+| 15 | **Wirer** (binder + `api-map.json`, multiple pages, token if login) | Every control on every page works against the backend |
+| 16 | **Verifier + repair** | Checks 1–6 pass, including "every control backed" and "nothing unnecessary" |
+| 17 | **React UI** | Upload screenshots, review the spec with evidence, live status, download |
+| 18 | **Preview** | Sandboxed preview works and auto-stops |
+| 19 | **GitHub publish** | New repo with green CI |
+| 20 | **Demo rehearsal** | Full run in under 5 minutes; warm cache; backup video |
+
+**Cut line for a working prototype: Steps 10–17.**
 
 ---
 
-## 15. Viva cheat-sheet
+## 15. Demo-day runbook
 
-- **How are the laptops kept in sync?** A shared, versioned Contract; every artifact is stamped with its hash; and a Barrier that only proceeds when the hashes match. A orchestrates, B is a stateless worker, and A always initiates calls.
-- **How do you know the frontend matches the backend?** The frontend is *instructed* with the Contract's field names and markers. We *verify* this by parsing the code, and *repair* it automatically if needed.
-- **Where is the AI?** Reading the screenshot into a Contract, and generating the UI. The backend is template-generated on purpose, so it's predictable and explainable.
-- **Why local plus a cloud backup?** Free and private by default; reliable when it matters. The Provider Router decides per step and records which one was used.
-- **How is it fast?** GPU fully loaded, one variant, short structured AI outputs, parallel laptops, the human review overlapping the build, and caching.
-- **How is it safe?** Minimal GitHub scopes, encrypted tokens, sandboxed previews without secrets, only the Gateway exposed, and an API key between the laptops.
+1. The day before: run every demo project once so the cache is warm (and Gemini billing is on, if used).
+2. Laptop B: `scripts/start-laptop-b.ps1`; Mac: MongoDB, Ollama, Builder API; check `/api/health`.
+3. Flow: upload a list screenshot → the spec appears, each item with its evidence → note what was *not* built (no login on screen, so no auth) → pages build while you review → Barrier turns green → checks pass → preview: use every control → upload a login screenshot to show auth appearing only when needed → **Push to GitHub** → green CI.
 
 ---
 
-## 16. Open decisions
+## 16. Viva cheat-sheet
 
-1. **Laptop B's operating system** (Windows or Linux)? It affects the install steps, not the design.
-2. **Which backup key?** Recommended: **Gemini**, because Screenshot-to-Code supports it natively and it has a free tier. OpenAI or Anthropic keys also work.
-3. Allow **private** repos in the MVP? That needs the broader `repo` scope.
+- **What does it build?** Exactly what the screenshots show. Every backend part points to the element that needs it; two automatic checks prove every control works and nothing unnecessary was generated.
+- **How does it decide?** A vision model lists what is on screen; a deterministic rule table turns elements into backend parts; real ambiguities become questions.
+- **Where is AI used?** Reading screenshots (inventory), building the pages, and writing code only for buttons no template covers. Everything else is template-generated: predictable and testable.
+- **How are the laptops kept in sync?** A versioned App Spec; every artifact stamped with its hash; a Barrier that only proceeds when hashes match.
+- **How does it get faster?** Exact cache, near-duplicate screenshots, similar specs, and a library of verified code.
+- **How is it safe?** AST allowlist for AI code, sandbox without network or secrets, minimal GitHub scopes, encrypted tokens, only the Gateway exposed, API key between laptops.
+- **What comes next (Phase 2)?** Text requests and chat-style refinement on top of the same spec, evidence and verification machinery.
 
-### Verified facts used here (Screenshot-to-Code @ `a813977`)
-- Each WebSocket request accepts `openAiApiKey`, `anthropicApiKey`, `geminiApiKey` and `openAiBaseURL` (the last one only in non-production mode).
-- Image mode uses `prompt.text` as extra instructions alongside the image.
-- `NUM_VARIANTS = 4`; update mode is hard-coded to 2 variants.
-- It uses the OpenAI Responses API with tool calls (`create_file`, `edit_file`).
+---
+
+## 17. Verified facts used here
+
+**Screenshot-to-Code @ `a813977`:** each WebSocket request accepts `openAiApiKey`, `anthropicApiKey`, `geminiApiKey`, `openAiBaseURL` (non-production only); image mode uses `prompt.text` as extra instructions; it picks models by which keys it has (Gemini first when Gemini + OpenAI-style keys are present); agent mode streams the page as repeated full `setCode` messages; it **keeps running after the client disconnects**.
+
+**Measured in Steps 1–9:** vision extraction 12–20 s local, 9.6 s cloud; local page 104–194 s; the model sometimes adds markers with `setAttribute`; same screenshot + same spec hash served from the Gateway cache in ~2 s; Gemini free tier = 20 requests/day per model.

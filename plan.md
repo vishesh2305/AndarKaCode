@@ -1,9 +1,9 @@
 # Roadmap: AI Frontend-to-Backend Builder
 
-> **Design:** see [ARCHITECTURE.md](ARCHITECTURE.md) (v2, approved). This file is our **step-by-step to-do list**.
+> **Design:** see [ARCHITECTURE.md](ARCHITECTURE.md) (v3.1, approved 16 Oct: Phase 1 builds exactly what the screenshots show; every backend part has visible evidence). This file is our **step-by-step to-do list**.
 > **Rule:** do one step, report back, then move on. Tick the box when its "Done when" is true.
 
-**Current step:** ▶ **Step 9: State machine + Sync Barrier**
+**Current step:** ▶ **Step 10: UI inventory + Spec Deriver**
 
 ---
 
@@ -35,20 +35,28 @@ Every step has four parts:
 ## Phase 3: Orchestrator on Laptop A
 
 - [x] **Step 8: Builder API skeleton.** ✅ 16 Oct: on the Mac, MongoDB `builder_db`, upload → `UPLOADED`, `/api/health` reaches the Gateway. Express + MongoDB, `projects` / `jobs` / `contracts` models, upload endpoint.
-- [ ] **Step 9: State machine + Sync Barrier.** Upload → Contract → both branches run → the Barrier checks `contractHash`.
+- [x] **Step 9: State machine + Sync Barrier.** ✅ 16 Oct: on the Mac, upload → `SYNCED` (Contract 15 s, frontend ~3 min 50 s); edit → v2 → `SYNCED` in ~2 min 50 s with the new label in the page. Upload → Contract → both branches run → the Barrier checks `contractHash`.
 
-## Phase 4: Generate, wire, verify
+## Phase 4: Generate exactly what the screenshots show (the core)
 
-- [ ] **Step 10: Backend Generator.** Contract → Express/Mongoose code + generated API tests (from our templates).
-- [ ] **Step 11: Wirer.** Babel AST: replace `SAMPLE_*` with `fetch`, connect `data-action` buttons.
-- [ ] **Step 12: Verifier + repair loop.** Contract check, boot check, API tests; automatic repair with an "update" job.
+*Rule: no evidence, no code. Every backend part points to the screenshot element that needs it.*
 
-## Phase 5: Ship to the user
+- [ ] **Step 10: UI inventory + Spec Deriver.** A set of test screenshots (list, form, dashboard with stat cards, login, a second page for a relation, a row "Approve" button). Vision pass → UI inventory JSON; rule table → App Spec with evidence; open questions for real ambiguities; instructions per page. *Done when:* each test screenshot gives a spec with exactly its elements, and the employees screenshot still reaches `SYNCED`.
+- [ ] **Step 11: Template layer.** Each endpoint as a building block (list with search / filter / pagination / sort only if shown, get, create, update, hard or soft delete), relations, `setStatus` and `export` operations, stats, validation, one test per generated part. *Done when:* every test screenshot's backend contains only its listed parts and passes its tests.
+- [ ] **Step 12: Login templates (only when a login screen is shown).** Users, login, token, protected routes, sign-up/roles only if visible. *Done when:* the login screenshot gives working auth; the others give no auth code.
+- [ ] **Step 13: AI layer for `custom` buttons.** Coding-model spike on the Mac; `custom/*.js` + tests; AST safety check; Docker sandbox; repair loop (3 tries, then cloud); 501 isolation. *Done when:* a custom button works; a broken case is repaired or isolated.
+- [ ] **Step 14: Memory.** Exact cache, screenshot dHash, inventory embeddings, pattern library of verified code. *Done when:* a repeat is instant; a near-duplicate reuses the earlier spec.
 
-- [ ] **Step 13: Our React UI.** Upload, live status, Contract review and edit, download.
-- [ ] **Step 14: Sandbox preview.** Docker, with limits and no secrets, plus a Playwright smoke test.
-- [ ] **Step 15: GitHub login + Publish.** OAuth App, encrypted token, create a repo and push one commit, CI turns green.
-- [ ] **Step 16: Demo rehearsal.** Demo mode, warm cache, backup video, viva practice.
+## Phase 5: Wire, verify, ship
+
+- [ ] **Step 15: Wirer.** Runtime binder `app.js` + `api-map.json`; multiple pages; token only if login. *Done when:* every control on every page works against the backend.
+- [ ] **Step 16: Verifier + repair loop.** Headless-browser marker check, "every control backed", "nothing unnecessary", tests, Playwright smoke; repair with Gateway `update` jobs.
+- [ ] **Step 17: Our React UI.** Upload screenshots, review the spec with its evidence, live status, download.
+- [ ] **Step 18: Sandbox preview.** Docker, limits, no secrets, auto-stop.
+- [ ] **Step 19: GitHub login + Publish.** OAuth App, encrypted token, new repo, CI turns green.
+- [ ] **Step 20: Demo rehearsal.** Demo mode, warm cache, backup video, viva practice.
+
+**Cut line for a working prototype: Steps 10–17.** Phase 2 of AndarKaCode (later): text requests and chat-style refinement on the same spec machinery.
 
 ---
 
@@ -80,3 +88,5 @@ Every step has four parts:
 | 16 Oct 2026 | Fixed: a restart left the superseded v2 frontend job `running` forever; each build round now marks such jobs `cancelled`. Known limit: an edit during a build still waits for the stale page (~2 min) because the Gateway has no cancel yet and S2C keeps running anyway. |
 | 16 Oct 2026 | Laptop B's MongoDB Windows service was stopped; tests use a private `mongod` on port 27018. Added `scripts/start-laptop-b.ps1` (starts Ollama, S2C, Gateway; skips what is already running). |
 | 16 Oct 2026 | Sync Barrier verified (no restart): edit → v2, edit → v3 while v2 built → `Barrier refused: built for bf26fac3a246, Contract is now v3` → rebuilt → `SYNCED` v3, no jobs left running, served page has both edits and all 4 actions. Same screenshot + same Contract hash returns the Gateway's cached page in ~2 s. Waiting for the Mac run. |
+| 16 Oct 2026 | **Design v3** (user request): the backend must follow the user's needs, not one fixed shape. App Spec with several entities, relations, operations, rules, login + roles; optional text request next to the screenshots; hybrid generator (templates for the standard part, AI code model on the Mac with Gemini backup for operations/rules, tested + repaired + isolated); memory (exact cache, dHash, embeddings, pattern library). Old Steps 10–16 replaced by Steps 10–20. |
+| 16 Oct 2026 | **Design v3.1** (user decision): Phase 1 is screenshot-only and builds **only what the screenshots show**: UI inventory → deterministic rule table → App Spec with evidence; login only if a login screen is visible; AI only for buttons no template covers; checks "every control backed" and "nothing unnecessary". Text requests moved to Phase 2. |
