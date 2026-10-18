@@ -68,6 +68,6 @@ describe("generated stats", () => {
 
   it("names each number after its card, matching the page's data-stat markers", () => {
     const stats = generateBackend(opsSpec, { name: "x" })["backend/routes/stats.routes.js"];
-    for (const key of ["totalRequests", "pending", "totalDays", "happinessIndex"]) assert.match(stats, new RegExp(`\b${key}\b`));
+    for (const key of ["totalRequests", "pending", "totalDays", "happinessIndex"]) assert.match(stats, new RegExp(`\\b${key}\\b`));
   });
 });

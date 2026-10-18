@@ -2,12 +2,14 @@
 // Only the files the spec needs are generated (ARCHITECTURE.md v3.1 §7).
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { camelCase } from "../spec/derive.js";
 import controller from "../../../templates/backend/controller.js";
 import envExample from "../../../templates/backend/env-example.js";
 import model from "../../../templates/backend/model.js";
 import packageJson from "../../../templates/backend/package-json.js";
 import routes from "../../../templates/backend/routes.js";
 import server from "../../../templates/backend/server.js";
+import statsRoutes from "../../../templates/backend/stats-routes.js";
 import validation from "../../../templates/backend/validation.js";
 
 const pascal = (name) => name.charAt(0).toUpperCase() + name.slice(1);
@@ -19,6 +21,19 @@ function appInfo(name) {
   return { title: comment(name) || "Generated app", slug, dbName: slug.replace(/-/g, "_") };
 }
 
+// "syncPayrollLeaveRequest" on leaveRequest -> "sync-payroll" (the URL part of an operation).
+function operationSegment(op, entityName) {
+  const base = op.name.endsWith(pascal(entityName)) ? op.name.slice(0, -entityName.length) : op.name;
+  return (base || op.name).replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+}
+
+// Where each operation is served. Row buttons act on one record; page buttons and export on the whole list.
+export function operationRoute(op, entityName) {
+  if (op.kind === "export") return { method: "get", path: "/export.csv", row: false };
+  const row = op.kind === "setStatus" || op.scope !== "page";
+  return { method: "post", path: `${row ? "/:id" : ""}/${operationSegment(op, entityName)}`, row };
+}
+
 /** Returns { "relative/path": "file contents" }. Pure: same spec + name -> same files. */
 export function generateBackend(spec, { name }) {
   const app = appInfo(name);
@@ -28,7 +43,8 @@ export function generateBackend(spec, { name }) {
     "backend/server.js": server({ app, spec }),
   };
   for (const e of spec.entities) {
-    const entity = { ...e, Model: pascal(e.name) };
+    const operations = spec.operations.filter((o) => o.entity === e.name).map((o) => ({ ...o, route: operationRoute(o, e.name) }));
+    const entity = { ...e, Model: pascal(e.name), operations };
     files[`backend/models/${e.name}.model.js`] = model({ entity, comment, pascal });
     if (e.endpoints.create || e.endpoints.update) {
       files[`backend/validation/${e.name}.validation.js`] = validation({ entity, comment });
@@ -36,6 +52,7 @@ export function generateBackend(spec, { name }) {
     files[`backend/controllers/${e.name}.controller.js`] = controller({ entity, spec, comment, pascal });
     files[`backend/routes/${e.name}.routes.js`] = routes({ entity, comment });
   }
+  if (spec.stats.length) files["backend/routes/stats.routes.js"] = statsRoutes({ spec, comment, pascal, camelCase });
   return files;
 }
 

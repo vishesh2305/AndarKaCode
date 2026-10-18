@@ -15,6 +15,10 @@ const OUT = path.join(path.dirname(fileURLToPath(import.meta.url)), ".generated"
 
 const servers = [];
 async function boot(name, spec) {
+  // Each generated app runs alone in real life; here they share one connection, so start each one clean
+  // (two specs may both define e.g. a LeaveRequest model with different fields).
+  await mongoose.connection.dropDatabase();
+  for (const modelName of mongoose.modelNames()) mongoose.deleteModel(modelName);
   await writeBackend(path.join(OUT, name), generateBackend(spec, { name }));
   const { app } = await import(pathToFileURL(path.join(OUT, name, "backend/server.js")).href);
   const server = app.listen(0);
