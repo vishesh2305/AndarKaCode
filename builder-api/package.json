@@ -10,9 +10,10 @@
   "scripts": {
     "start": "node --env-file=.env src/server.js",
     "dev": "node --env-file=.env --watch src/server.js",
-    "test": "node --test",
-    "test:coverage": "node --test --experimental-test-coverage",
-    "eval:inventory": "node --env-file-if-exists=.env scripts/eval-inventory.mjs"
+    "test": "node --test \"test/**/*.test.js\"",
+    "test:coverage": "node --test --experimental-test-coverage \"test/**/*.test.js\"",
+    "eval:inventory": "node --env-file-if-exists=.env scripts/eval-inventory.mjs",
+    "test:integration": "node --test --test-concurrency=1 \"integration/**/*.test.js\""
   },
   "dependencies": {
     "express": "^5.3.0",
