@@ -2,9 +2,11 @@
 // Only the files the spec needs are generated (ARCHITECTURE.md v3.1 §7).
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import controller from "../../../templates/backend/controller.js";
 import envExample from "../../../templates/backend/env-example.js";
 import model from "../../../templates/backend/model.js";
 import packageJson from "../../../templates/backend/package-json.js";
+import routes from "../../../templates/backend/routes.js";
 import server from "../../../templates/backend/server.js";
 import validation from "../../../templates/backend/validation.js";
 
@@ -31,6 +33,8 @@ export function generateBackend(spec, { name }) {
     if (e.endpoints.create || e.endpoints.update) {
       files[`backend/validation/${e.name}.validation.js`] = validation({ entity, comment });
     }
+    files[`backend/controllers/${e.name}.controller.js`] = controller({ entity, spec, comment, pascal });
+    files[`backend/routes/${e.name}.routes.js`] = routes({ entity, comment });
   }
   return files;
 }

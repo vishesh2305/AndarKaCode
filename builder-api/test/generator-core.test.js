@@ -94,10 +94,12 @@ before(async () => {
 after(() => rm(OUT, { recursive: true, force: true }));
 
 describe("generateBackend: only the files the spec needs", () => {
-  it("makes package.json, .env.example, server, model and validation for an entity with update", () => {
+  it("makes package.json, .env.example, server, model, validation, controller and routes for an entity with update", () => {
     assert.deepEqual(Object.keys(generateBackend(editDeleteSpec, { name: "x" })).sort(), [
       ".env.example",
+      "backend/controllers/employee.controller.js",
       "backend/models/employee.model.js",
+      "backend/routes/employee.routes.js",
       "backend/server.js",
       "backend/validation/employee.validation.js",
       "package.json",
