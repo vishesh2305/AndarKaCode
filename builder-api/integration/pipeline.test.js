@@ -225,3 +225,20 @@ describe("pipeline: editing the spec", () => {
     assert.match(await (await fetch(`${base}/projects/${id}/frontend`)).text(), /<html>/);
   });
 });
+
+describe("pipeline: real backend from the generator", () => {
+  it("writes a generated backend for the current spec and stamps the job with its hash", async () => {
+    const id = await upload(["m5a-employees-dept.png", "m5b-departments.png"], [employeesScreen, departmentsScreen]);
+    const project = await waitFor(id, settled);
+    assert.equal(project.state, "SYNCED", project.error);
+
+    const backend = project.jobs.find((j) => j.kind === "backend" && j.contractHash === project.contract.hash);
+    assert.equal(backend.status, "done");
+    assert.doesNotMatch(backend.note ?? "", /placeholder/i);
+    const fs = await import("node:fs/promises");
+    const root = path.resolve(API_DIR, "..", backend.artifactPath);
+    for (const file of ["package.json", "backend/server.js", "backend/routes/employee.routes.js", "backend/routes/department.routes.js", "tests/api.test.js"]) {
+      await fs.access(path.join(root, file));
+    }
+  });
+});
