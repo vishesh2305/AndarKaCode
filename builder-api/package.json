@@ -11,7 +11,8 @@
     "start": "node --env-file=.env src/server.js",
     "dev": "node --env-file=.env --watch src/server.js",
     "test": "node --test",
-    "test:coverage": "node --test --experimental-test-coverage"
+    "test:coverage": "node --test --experimental-test-coverage",
+    "eval:inventory": "node --env-file-if-exists=.env scripts/eval-inventory.mjs"
   },
   "dependencies": {
     "express": "^5.3.0",

@@ -337,3 +337,19 @@ describe("deriveSpec: View and page-level buttons", () => {
     );
   });
 });
+
+// Found by the real-model eval (samples/mocks/m2-add-search-page): the model read the screen correctly.
+describe("deriveSpec: bugs found with real screenshots", () => {
+  it("treats a '+ Add Product' button as create, not as a custom operation", () => {
+    const spec = deriveSpec([screen({ tables: [employeeTable()], buttons: [{ label: "+ Add Product", scope: "page" }] })]);
+    assert.ok(entity(spec, "employee").endpoints.create);
+    assert.deepEqual(spec.operations, []);
+  });
+
+  it("names a filter shown as 'All categories' after the field it filters ('category')", () => {
+    const spec = deriveSpec([
+      screen({ tables: [employeeTable()], filters: [{ label: "All categories", options: [] }] }),
+    ]);
+    assert.deepEqual(entity(spec, "employee").endpoints.list.filters, ["category"]);
+  });
+});

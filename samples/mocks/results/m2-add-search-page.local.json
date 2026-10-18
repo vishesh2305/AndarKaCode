@@ -1,0 +1,160 @@
+{
+  "inventories": [
+    {
+      "title": "Products",
+      "kind": "list",
+      "tables": [
+        {
+          "columns": [
+            {
+              "label": "Name",
+              "values": [
+                "Gel Pen",
+                "USB Cable",
+                "Notebook"
+              ],
+              "badge": false
+            },
+            {
+              "label": "Category",
+              "values": [
+                "Stationery",
+                "Electronics",
+                "Stationery"
+              ],
+              "badge": false
+            },
+            {
+              "label": "Price",
+              "values": [
+                "$2.50",
+                "$8.99",
+                "$4.00"
+              ],
+              "badge": false
+            },
+            {
+              "label": "In Stock",
+              "values": [
+                "Yes",
+                "No",
+                "Yes"
+              ],
+              "badge": false
+            }
+          ],
+          "rowActions": [
+            "Edit",
+            "Delete"
+          ],
+          "entityHint": {
+            "singular": "product",
+            "plural": "products"
+          }
+        }
+      ],
+      "forms": [],
+      "buttons": [
+        {
+          "label": "+ Add Product",
+          "scope": "page"
+        }
+      ],
+      "search": true,
+      "filters": [
+        {
+          "label": "All categories",
+          "options": []
+        }
+      ],
+      "pagination": true,
+      "statCards": [],
+      "auth": {
+        "loginForm": false,
+        "signupLink": false,
+        "userMenu": false,
+        "roleIndicators": []
+      }
+    }
+  ],
+  "spec": {
+    "entities": [
+      {
+        "name": "product",
+        "plural": "products",
+        "label": "Products",
+        "sampleConst": "SAMPLE_PRODUCTS",
+        "fields": [
+          {
+            "name": "name",
+            "label": "Name",
+            "required": false,
+            "evidence": "s1: column 'Name'",
+            "type": "string"
+          },
+          {
+            "name": "category",
+            "label": "Category",
+            "required": false,
+            "evidence": "s1: column 'Category'",
+            "type": "string"
+          },
+          {
+            "name": "price",
+            "label": "Price",
+            "required": false,
+            "evidence": "s1: column 'Price'",
+            "type": "number"
+          },
+          {
+            "name": "inStock",
+            "label": "In Stock",
+            "required": false,
+            "evidence": "s1: column 'In Stock'",
+            "type": "boolean"
+          }
+        ],
+        "endpoints": {
+          "list": {
+            "search": true,
+            "filters": [
+              "allCategories"
+            ],
+            "pagination": true,
+            "evidence": "s1: table 'Products'"
+          },
+          "update": {
+            "evidence": "s1: row action 'Edit'"
+          },
+          "get": {
+            "evidence": "s1: row action 'Edit' (loads the record)"
+          },
+          "delete": {
+            "soft": false,
+            "evidence": "s1: row action 'Delete'"
+          }
+        }
+      }
+    ],
+    "operations": [
+      {
+        "name": "addProductProduct",
+        "entity": "product",
+        "kind": "custom",
+        "scope": "page",
+        "button": "+ Add Product",
+        "evidence": "s1: button '+ Add Product'"
+      }
+    ],
+    "stats": [],
+    "auth": null,
+    "pages": [
+      {
+        "screenshot": 1,
+        "kind": "list",
+        "entity": "product"
+      }
+    ],
+    "openQuestions": []
+  }
+}
