@@ -14,14 +14,14 @@ describe("generated tests/api.test.js", () => {
 
   it("tests exactly the visible endpoints: Edit/Delete screen has no create test", () => {
     const tests = testsOf(editDeleteSpec);
-    for (const name of ["lists", "gets one", "updates", "deletes"]) assert.match(tests, new RegExp(`it\("${name}`));
+    for (const name of ["lists", "gets one", "updates", "deletes"]) assert.ok(tests.includes(`it("${name}`), name);
     assert.doesNotMatch(tests, /it\("creates/);
     assert.doesNotMatch(tests, /it\("searches|it\("filters|it\("pages/);
   });
 
   it("tests search, filter and paging only when the screenshot shows them", () => {
     const tests = testsOf(catalogSpec);
-    for (const name of ["creates", "searches", "filters by category", "pages"]) assert.match(tests, new RegExp(`it\("${name}`));
+    for (const name of ["creates", "searches", "filters by category", "pages"]) assert.ok(tests.includes(`it("${name}`), name);
     assert.doesNotMatch(tests, /it\("(updates|deletes)/);
   });
 

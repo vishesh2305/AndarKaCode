@@ -123,7 +123,7 @@ export async function update(req, res) {
   if (!isId(req.params.id)) return notFound(res);
   const { ok, errors, value } = validate${M}(req.body, { partial: true });
 ${refModels.length ? "  await checkRelations(value, errors);\n" : ""}  if (!ok || Object.keys(errors).length) return invalid(res, errors);
-  const record = await ${M}.findOneAndUpdate({ ${alive}_id: req.params.id }, { $set: value }, { new: true, runValidators: true })${populate};
+  const record = await ${M}.findOneAndUpdate({ ${alive}_id: req.params.id }, { $set: value }, { returnDocument: "after", runValidators: true })${populate};
   return record ? res.json(record) : notFound(res);
 }`);
   }
@@ -145,7 +145,7 @@ export async function remove(req, res) {
       handlers.push(`// ${comment(op.evidence)}
 export async function ${op.name}(req, res) {
   if (!isId(req.params.id)) return notFound(res);
-  const record = await ${M}.findOneAndUpdate({ ${alive}_id: req.params.id }, { $set: ${JSON.stringify(op.set)} }, { new: true })${populate};
+  const record = await ${M}.findOneAndUpdate({ ${alive}_id: req.params.id }, { $set: ${JSON.stringify(op.set)} }, { returnDocument: "after" })${populate};
   return record ? res.json(record) : notFound(res);
 }`);
     } else if (op.kind === "export") {

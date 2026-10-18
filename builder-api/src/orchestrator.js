@@ -3,6 +3,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { contractHash } from "../../shared/hash.mjs";
+import { generateBackend, writeBackend } from "./generator/index.js";
 import { getFrontend, submitFrontend } from "./gateway-client.js";
 import { Contract } from "./models/contract.js";
 import { Job } from "./models/job.js";
@@ -11,7 +12,7 @@ import { checkSpec } from "./spec/check.js";
 import { deriveSpec } from "./spec/derive.js";
 import { pageInstructions } from "./spec/instructions.js";
 import { readInventory } from "./spec/inventory.js";
-import { REPO_ROOT, saveArtifact } from "./storage.js";
+import { REPO_ROOT, RUNS_DIR, saveArtifact } from "./storage.js";
 
 const POLL_MS = Number(process.env.GATEWAY_POLL_MS ?? 2000); // A polls B every 2 s (ARCHITECTURE.md §6)
 const MAX_POLL_ERRORS = 30; // about a minute of Gateway/Tailscale trouble before giving up
@@ -142,13 +143,19 @@ async function frontendBranch(project, contract, n) {
   }
 }
 
-// Backend branch: a placeholder until Step 10 (Backend Generator) so the Barrier can be tested now.
+// Backend branch: the template generator (no AI, deterministic). Writes runs/<id>/app/v<N>/.
 async function backendBranch(project, contract) {
-  const query = { projectId: project._id, kind: "backend", contractHash: contract.hash, status: "done" };
-  const existing = await Job.findOne(query);
+  const existing = await Job.findOne({ projectId: project._id, kind: "backend", contractHash: contract.hash, status: "done" });
   if (existing) return existing;
-  const now = new Date();
-  return Job.create({ ...query, startedAt: now, finishedAt: now, note: "Placeholder until Step 10 (Backend Generator)" });
+  return runJob(project, "backend", async (job) => {
+    job.contractHash = contract.hash;
+    const files = generateBackend(contract.body, { name: project.name });
+    const dir = path.join(RUNS_DIR, project.id, "app", `v${contract.version}`);
+    await writeBackend(dir, files);
+    job.artifactPath = path.relative(REPO_ROOT, dir).split(path.sep).join("/");
+    job.note = `${Object.keys(files).length} files generated from templates`;
+    return job;
+  });
 }
 
 // CONTRACT_DRAFT -> BUILDING -> SYNCED. Every page and the backend are built at the same time.

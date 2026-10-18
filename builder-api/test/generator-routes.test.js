@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { generateBackend, writeBackend } from "../src/generator/index.js";
 import { catalogSpec, editDeleteSpec, relationSpec } from "./fixtures/specs.js";
 
-const OUT = path.join(path.dirname(fileURLToPath(import.meta.url)), ".generated", "routes");
+const OUT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", ".generated", "routes"); // outside test/: generated apps contain their own *.test.js
 const load = (dir, file) => import(pathToFileURL(path.join(OUT, dir, file)).href);
 
 // "GET /", "GET /:id", ... from an Express router.

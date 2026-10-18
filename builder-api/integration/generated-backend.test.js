@@ -11,7 +11,7 @@ import { catalogSpec, editDeleteSpec, opsSpec, relationSpec } from "../test/fixt
 
 const MONGODB_URI = process.env.TEST_MONGODB_URI;
 if (!MONGODB_URI) throw new Error("Set TEST_MONGODB_URI (a throwaway database; it is dropped before the tests)");
-const OUT = path.join(path.dirname(fileURLToPath(import.meta.url)), ".generated");
+const OUT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", ".generated", "backend"); // outside integration/: generated apps contain their own *.test.js
 
 const servers = [];
 async function boot(name, spec) {

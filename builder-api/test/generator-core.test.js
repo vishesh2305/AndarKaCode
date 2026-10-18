@@ -8,7 +8,7 @@ import { after, before, describe, it } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { generateBackend, writeBackend } from "../src/generator/index.js";
 
-const OUT = path.join(path.dirname(fileURLToPath(import.meta.url)), ".generated");
+const OUT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", ".generated", "core"); // outside test/: generated apps contain their own *.test.js
 const ev = (what) => `s1: ${what}`;
 
 // Edit/Delete only: list, get, update, delete.
@@ -103,6 +103,7 @@ describe("generateBackend: only the files the spec needs", () => {
       "backend/server.js",
       "backend/validation/employee.validation.js",
       "package.json",
+      "tests/api.test.js",
     ]);
   });
 

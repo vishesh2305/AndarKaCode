@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { generateBackend, writeBackend } from "../src/generator/index.js";
 import { editDeleteSpec, opsSpec } from "./fixtures/specs.js";
 
-const OUT = path.join(path.dirname(fileURLToPath(import.meta.url)), ".generated", "ops");
+const OUT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", ".generated", "ops"); // outside test/: generated apps contain their own *.test.js
 const load = (file) => import(pathToFileURL(path.join(OUT, file)).href);
 const routeTable = (router) =>
   router.stack.filter((layer) => layer.route).flatMap((layer) => Object.keys(layer.route.methods).map((m) => `${m.toUpperCase()} ${layer.route.path}`));

@@ -3,6 +3,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { camelCase } from "../spec/derive.js";
+import apiTests from "../../../templates/backend/api-tests.js";
 import controller from "../../../templates/backend/controller.js";
 import envExample from "../../../templates/backend/env-example.js";
 import model from "../../../templates/backend/model.js";
@@ -42,9 +43,11 @@ export function generateBackend(spec, { name }) {
     ".env.example": envExample({ app, spec }),
     "backend/server.js": server({ app, spec }),
   };
+  const entities = [];
   for (const e of spec.entities) {
     const operations = spec.operations.filter((o) => o.entity === e.name).map((o) => ({ ...o, route: operationRoute(o, e.name) }));
     const entity = { ...e, Model: pascal(e.name), operations };
+    entities.push(entity);
     files[`backend/models/${e.name}.model.js`] = model({ entity, comment, pascal });
     if (e.endpoints.create || e.endpoints.update) {
       files[`backend/validation/${e.name}.validation.js`] = validation({ entity, comment });
@@ -53,6 +56,7 @@ export function generateBackend(spec, { name }) {
     files[`backend/routes/${e.name}.routes.js`] = routes({ entity, comment });
   }
   if (spec.stats.length) files["backend/routes/stats.routes.js"] = statsRoutes({ spec, comment, pascal, camelCase });
+  files["tests/api.test.js"] = apiTests({ app, spec, entities, pascal, camelCase, comment });
   return files;
 }
 

@@ -20,5 +20,4 @@ runs/
 samples/mocks/results/
 
 # Backend generator test output
-builder-api/test/.generated/
-builder-api/integration/.generated/
+builder-api/.generated/
