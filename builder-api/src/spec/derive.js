@@ -92,6 +92,13 @@ export function deriveSpec(screens) {
     return entities.get(id.name);
   }
 
+  // A form belongs to its own hint, else the screen's first table, else the screen title.
+  function getEntityForForm(screen) {
+    const hint = screen.forms.find((f) => f.entityHint)?.entityHint ?? screen.tables[0]?.entityHint;
+    const id = entityName(hint, screen.title);
+    return id ? getEntity(id, screen.title) : null;
+  }
+
   // A label that names another managed entity becomes a relation to it.
   const relationFor = (label, entity) => {
     const target = managed.get(camelCase(label).toLowerCase());
@@ -207,12 +214,6 @@ export function deriveSpec(screens) {
 
     for (const card of s.statCards) statCards.push({ card, entity: primary, evidence: at(`stat card '${card.label}'`) });
     pages.push({ screenshot: n, kind: s.kind, ...(primary && { entity: primary.name }) });
-
-    function getEntityForForm(screen) {
-      const hint = screen.forms.find((f) => f.entityHint)?.entityHint ?? screen.tables[0]?.entityHint;
-      const id = entityName(hint, screen.title);
-      return id ? getEntity(id, screen.title) : null;
-    }
   });
 
   for (const { entity, label, evidence, scope } of rowButtons) operations.push(operationFor(entity, label, evidence, scope));
