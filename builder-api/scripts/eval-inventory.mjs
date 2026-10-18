@@ -3,7 +3,9 @@
 // Not part of `npm test`: model output varies and a run takes minutes.
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { checkSpec } from "../src/spec/check.js";
 import { deriveSpec } from "../src/spec/derive.js";
+import { pageInstructions } from "../src/spec/instructions.js";
 import { readInventory } from "../src/spec/inventory.js";
 import { REPO_ROOT } from "../src/storage.js";
 
@@ -93,7 +95,7 @@ for (const [name, testCase] of Object.entries(CASES)) {
     }
   } catch (err) {
     console.log(`\n${name}: FAILED to read: ${err.message.slice(0, 200)}`);
-    total += testCase.checks.length;
+    total += testCase.checks.length + 2;
     continue;
   }
   const spec = deriveSpec(inventories);
@@ -101,7 +103,15 @@ for (const [name, testCase] of Object.entries(CASES)) {
   await writeFile(path.join(MOCKS, "results", `${name}.${mode}.json`), JSON.stringify({ inventories, spec }, null, 2) + "\n");
 
   console.log(`\n${name}  (${providers.join("+")}, ${seconds} s)`);
-  for (const [label, check] of testCase.checks) {
+  // Every case must also produce a buildable spec with instructions for each page.
+  const checks = [
+    ...testCase.checks,
+    ["spec passes checkSpec", (s) => checkSpec(s).length === 0],
+    ["instructions for every page", (s) => s.pages.every((p) => pageInstructions(s, p.screenshot).length > 0)],
+  ];
+  const problems = checkSpec(spec);
+  if (problems.length) console.log(`  spec problems: ${problems.join(" | ")}`);
+  for (const [label, check] of checks) {
     let ok = false;
     try {
       ok = check(spec);
