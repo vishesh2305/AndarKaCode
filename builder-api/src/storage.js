@@ -12,24 +12,19 @@ const MAX_WIDTH = 1280; // smaller image = shorter prompt = faster GPU (ARCHITEC
 
 export const sha256 = (buffer) => createHash("sha256").update(buffer).digest("hex");
 
-/** Shrinks the upload to at most 1280 px wide, stores it as PNG, returns where and how big. */
-export async function saveScreenshot(projectId, buffer) {
-  // Decode first: a file that is not an image fails here, before anything is written.
+/** Shrinks an upload to at most 1280 px wide as PNG. Throws if the file is not an image. */
+export async function shrinkScreenshot(buffer) {
   const { data, info } = await sharp(buffer)
     .resize({ width: MAX_WIDTH, withoutEnlargement: true })
     .png()
     .toBuffer({ resolveWithObject: true });
+  return { data, width: info.width, height: info.height };
+}
 
-  const dir = path.join(RUNS_DIR, projectId.toString());
-  await mkdir(dir, { recursive: true });
-  const filePath = path.join(dir, "screenshot.png");
-  await writeFile(filePath, data);
-
-  return {
-    imagePath: path.relative(REPO_ROOT, filePath).split(path.sep).join("/"),
-    imageWidth: info.width,
-    imageHeight: info.height,
-  };
+/** Stores screenshot number n (1-based) of a project; returns where and how big. */
+export async function saveScreenshot(projectId, n, shrunk) {
+  const relPath = await saveArtifact(projectId, `screenshot-${n}.png`, shrunk.data);
+  return { path: relPath, width: shrunk.width, height: shrunk.height };
 }
 
 /** Writes a generated file under runs/<projectId>/ and returns its repo-relative path. */

@@ -7,9 +7,9 @@ import { Job } from "./models/job.js";
 import { Project } from "./models/project.js";
 import path from "node:path";
 import { contractHash } from "../../shared/hash.mjs";
-import { checkContract } from "./contract-extractor.js";
 import { currentContract, resumeAll, startPipeline } from "./orchestrator.js";
-import { REPO_ROOT, saveScreenshot, sha256 } from "./storage.js";
+import { checkSpec } from "./spec/check.js";
+import { REPO_ROOT, saveScreenshot, sha256, shrinkScreenshot } from "./storage.js";
 
 const PORT = Number(process.env.PORT ?? 4000);
 const HOST = process.env.HOST ?? "127.0.0.1"; // no login yet, so this Mac only (GitHub login: Step 15)
@@ -18,10 +18,11 @@ const GATEWAY_URL = process.env.GATEWAY_URL;
 const GATEWAY_API_KEY = process.env.GATEWAY_API_KEY;
 const MODES = ["local", "cloud", "auto"];
 const DEFAULT_MODE = MODES.includes(process.env.DEFAULT_MODE) ? process.env.DEFAULT_MODE : "local";
+const MAX_SCREENSHOTS = 10; // one page each
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024, files: 1 },
+  limits: { fileSize: 10 * 1024 * 1024, files: MAX_SCREENSHOTS },
   fileFilter: (_req, file, done) => done(null, /^image\/(png|jpeg|webp)$/.test(file.mimetype)),
 });
 
@@ -48,23 +49,30 @@ app.get("/api/health", async (_req, res) => {
 });
 
 // Lifecycle step 1 (ARCHITECTURE.md §3): hash, shrink, store, create the project.
-app.post("/api/projects", upload.single("image"), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'Send a PNG, JPEG or WebP file in the "image" field' });
+// One or more screenshots in "image" fields, in page order; each becomes one page.
+app.post("/api/projects", upload.array("image", MAX_SCREENSHOTS), async (req, res) => {
+  const files = req.files ?? [];
+  if (!files.length) return res.status(400).json({ error: 'Send PNG, JPEG or WebP files in "image" fields' });
 
   const mode = req.body.mode ?? DEFAULT_MODE;
   if (!MODES.includes(mode)) return res.status(400).json({ error: 'mode must be "local", "cloud" or "auto"' });
 
-  const fallbackName = req.file.originalname.replace(/\.[^.]+$/, "") || "Untitled";
-  const project = new Project({
-    name: (req.body.name ?? "").trim() || fallbackName,
-    imageHash: sha256(req.file.buffer),
-    mode,
-  });
-  try {
-    Object.assign(project, await saveScreenshot(project._id, req.file.buffer));
-  } catch {
-    return res.status(400).json({ error: "The file is not a readable image" });
+  // Check every file before writing any, so a bad file leaves nothing behind.
+  const shrunk = [];
+  for (const file of files) {
+    try {
+      shrunk.push(await shrinkScreenshot(file.buffer));
+    } catch {
+      return res.status(400).json({ error: `"${file.originalname}" is not a readable image` });
+    }
   }
+
+  const fallbackName = files[0].originalname.replace(/\.[^.]+$/, "") || "Untitled";
+  const project = new Project({ name: (req.body.name ?? "").trim() || fallbackName, imageHash: sha256(files[0].buffer), mode });
+  for (const [i, file] of files.entries()) {
+    project.screenshots.push({ ...(await saveScreenshot(project._id, i + 1, shrunk[i])), sha256: sha256(file.buffer) });
+  }
+  Object.assign(project, { imagePath: project.screenshots[0].path, imageWidth: shrunk[0].width, imageHeight: shrunk[0].height });
   await project.save();
   startPipeline(project._id); // runs in the background; poll GET /api/projects/:id
   res.status(201).json(project);
@@ -102,11 +110,17 @@ app.put("/api/projects/:id/contract", async (req, res) => {
   const current = await currentContract(project);
   if (!current) return res.status(409).json({ error: `No Contract to edit yet (state: ${project.state})` });
 
-  const { resource, fields, actions, rules, openQuestions = [] } = req.body ?? {};
-  const body = { resource, fields, actions: [...new Set(actions ?? [])], rules, openQuestions };
-  body.ui = { sampleConst: `SAMPLE_${String(resource?.plural ?? "").toUpperCase()}` }; // ours, not editable
-  const problems = checkContract(body);
-  if (problems.length) return res.status(400).json({ error: "Invalid Contract", problems });
+  const { entities = [], operations = [], stats = [], auth = null, pages = [], openQuestions = [] } = req.body ?? {};
+  const body = {
+    entities: entities.map((e) => ({ ...e, sampleConst: `SAMPLE_${String(e?.plural ?? "").toUpperCase()}` })), // ours, not editable
+    operations,
+    stats,
+    auth,
+    pages,
+    openQuestions,
+  };
+  const problems = checkSpec(body);
+  if (problems.length) return res.status(400).json({ error: "Invalid App Spec", problems });
 
   const hash = contractHash(body);
   if (hash === current.hash) return res.json({ changed: false, contract: current });
@@ -122,13 +136,14 @@ app.put("/api/projects/:id/contract", async (req, res) => {
   res.json({ changed: true, contract });
 });
 
-// The generated page for the current Contract version, once Laptop B has built it.
+// A generated page (?page=N, default: the first page) for the current spec version, once Laptop B has built it.
 app.get("/api/projects/:id/frontend", async (req, res) => {
   const project = await findProject(req.params.id);
   if (!project) return res.status(404).json({ error: "No such project" });
   const contract = await currentContract(project);
-  const job = contract && (await Job.findOne({ projectId: project._id, kind: "frontend", contractHash: contract.hash, status: "done" }));
-  if (!job) return res.status(404).json({ error: `No frontend for the current Contract yet (state: ${project.state})` });
+  const page = Number(req.query.page ?? contract?.body.pages?.[0]?.screenshot ?? 1);
+  const job = contract && (await Job.findOne({ projectId: project._id, kind: "frontend", contractHash: contract.hash, page, status: "done" }));
+  if (!job) return res.status(404).json({ error: `No page ${page} for the current spec yet (state: ${project.state})` });
   res.sendFile(path.join(REPO_ROOT, job.artifactPath));
 });
 

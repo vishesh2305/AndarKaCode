@@ -16,11 +16,25 @@ export const PROJECT_STATES = [
   "NEEDS_ATTENTION",
 ];
 
+// One uploaded screenshot = one page of the generated app.
+const screenshotSchema = new mongoose.Schema(
+  {
+    path: { type: String, required: true }, // relative to the repo root, e.g. runs/<id>/screenshot-1.png
+    sha256: { type: String, required: true }, // of the uploaded file
+    width: Number,
+    height: Number,
+    inventory: mongoose.Schema.Types.Mixed, // what the vision pass saw (shared/inventory.schema.json)
+  },
+  { _id: false }
+);
+
 const projectSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true, maxlength: 100 },
-    imageHash: { type: String, required: true, index: true }, // sha256 of the uploaded file
-    imagePath: { type: String }, // relative to the repo root, e.g. runs/<id>/screenshot.png
+    screenshots: { type: [screenshotSchema], default: [] },
+    // First screenshot, kept for listings and for projects created before multi-screenshot uploads.
+    imageHash: { type: String, required: true, index: true },
+    imagePath: { type: String },
     imageWidth: Number,
     imageHeight: Number,
     state: { type: String, enum: PROJECT_STATES, default: "UPLOADED" },

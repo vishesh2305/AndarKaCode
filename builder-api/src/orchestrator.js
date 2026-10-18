@@ -3,15 +3,17 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { contractHash } from "../../shared/hash.mjs";
-import { buildInstructions } from "../../shared/instructions.mjs";
-import { extractContract } from "./contract-extractor.js";
 import { getFrontend, submitFrontend } from "./gateway-client.js";
 import { Contract } from "./models/contract.js";
 import { Job } from "./models/job.js";
 import { Project } from "./models/project.js";
+import { checkSpec } from "./spec/check.js";
+import { deriveSpec } from "./spec/derive.js";
+import { pageInstructions } from "./spec/instructions.js";
+import { readInventory } from "./spec/inventory.js";
 import { REPO_ROOT, saveArtifact } from "./storage.js";
 
-const POLL_MS = 2000; // A polls B every 2 s (ARCHITECTURE.md §6)
+const POLL_MS = Number(process.env.GATEWAY_POLL_MS ?? 2000); // A polls B every 2 s (ARCHITECTURE.md §6)
 const MAX_POLL_ERRORS = 30; // about a minute of Gateway/Tailscale trouble before giving up
 const MAX_BUILD_ROUNDS = 3; // how many Contract edits one build follows before asking for attention
 
@@ -48,11 +50,25 @@ async function runJob(project, kind, work) {
   }
 }
 
-// UPLOADED -> CONTRACT_DRAFT: screenshot -> Contract v1.
+// Projects created before multi-screenshot uploads have only imagePath.
+const screenshotsOf = (project) => (project.screenshots?.length ? project.screenshots : [{ path: project.imagePath }]);
+
+// UPLOADED -> CONTRACT_DRAFT: each screenshot -> UI inventory; all inventories -> App Spec v1 (checked).
 async function contractStage(project) {
   const { body, hash } = await runJob(project, "contract", async (job) => {
-    const { body, provider } = await extractContract(project.imagePath, project.mode);
-    job.provider = provider;
+    const inventories = [];
+    for (const shot of screenshotsOf(project)) {
+      const image = await readFile(path.join(REPO_ROOT, shot.path));
+      const { inventory, provider } = await readInventory(image.toString("base64"), { mode: project.mode });
+      inventories.push(inventory);
+      if (job.provider !== "cloud") job.provider = provider; // "cloud" if any screenshot needed the backup
+    }
+    project.screenshots.forEach((shot, i) => (shot.inventory = inventories[i]));
+    project.markModified("screenshots");
+
+    const body = deriveSpec(inventories);
+    const problems = checkSpec(body);
+    if (problems.length) throw new Error(`Spec problems: ${problems.join("; ")}`);
     job.contractHash = contractHash(body);
     return { body, hash: job.contractHash };
   });
@@ -81,9 +97,9 @@ async function pollGateway(job) {
   }
 }
 
-// Frontend branch: reuse a finished job for this hash, resume a running one, or start a new one.
-async function frontendBranch(project, contract) {
-  const query = { projectId: project._id, kind: "frontend", contractHash: contract.hash };
+// Frontend branch, one per page: reuse a finished job for this hash, resume a running one, or start a new one.
+async function frontendBranch(project, contract, n) {
+  const query = { projectId: project._id, kind: "frontend", contractHash: contract.hash, page: n };
   const existing = await Job.findOne({ ...query, status: { $in: ["done", "running"] } }).sort({ createdAt: -1 });
   if (existing?.status === "done") return existing;
   const job = existing ?? (await Job.create({ ...query, status: "running", startedAt: new Date() }));
@@ -92,10 +108,10 @@ async function frontendBranch(project, contract) {
     let remote;
     for (let attempt = 1; !remote; attempt++) {
       if (!job.remoteJobId) {
-        const image = await readFile(path.join(REPO_ROOT, project.imagePath));
+        const image = await readFile(path.join(REPO_ROOT, screenshotsOf(project)[n - 1].path));
         const submitted = await submitFrontend({
           imageDataUrl: `data:image/png;base64,${image.toString("base64")}`,
-          instructions: buildInstructions(contract.body),
+          instructions: pageInstructions(contract.body, n),
           contractHash: contract.hash,
           mode: project.mode,
         });
@@ -112,7 +128,7 @@ async function frontendBranch(project, contract) {
     if (remote.contractHash !== contract.hash) throw new Error("Gateway returned a page for a different Contract");
 
     job.provider = remote.provider;
-    job.artifactPath = await saveArtifact(project._id, `frontend/v${contract.version}.html`, remote.html);
+    job.artifactPath = await saveArtifact(project._id, `frontend/v${contract.version}/page-${n}.html`, remote.html);
     if (remote.finishedEarly) job.note = "Gateway took the complete page while the model kept editing";
     job.status = "done";
     return job;
@@ -135,7 +151,7 @@ async function backendBranch(project, contract) {
   return Job.create({ ...query, startedAt: now, finishedAt: now, note: "Placeholder until Step 10 (Backend Generator)" });
 }
 
-// CONTRACT_DRAFT -> BUILDING -> SYNCED. Both branches run at the same time.
+// CONTRACT_DRAFT -> BUILDING -> SYNCED. Every page and the backend are built at the same time.
 async function buildStage(projectId) {
   for (let round = 1; round <= MAX_BUILD_ROUNDS; round++) {
     const project = await Project.findById(projectId);
@@ -146,16 +162,21 @@ async function buildStage(projectId) {
       { projectId, kind: "frontend", status: "running", contractHash: { $ne: contract.hash } },
       { status: "cancelled", error: `Superseded by Contract v${contract.version}`, finishedAt: new Date() }
     );
-    const [frontend, backend] = await Promise.all([frontendBranch(project, contract), backendBranch(project, contract)]);
+    const [backend, ...pages] = await Promise.all([
+      backendBranch(project, contract),
+      ...contract.body.pages.map((page) => frontendBranch(project, contract, page.screenshot)),
+    ]);
 
-    // Sync Barrier: compare against the Contract that is current NOW; the user may have edited it meanwhile.
+    // Sync Barrier: every page and the backend must match the Contract that is current NOW;
+    // the user may have edited it meanwhile.
     const latest = await currentContract(await Project.findById(projectId));
-    if (frontend.contractHash === latest.hash && backend.contractHash === latest.hash) {
+    const stale = [backend, ...pages].filter((job) => job.contractHash !== latest.hash);
+    if (stale.length === 0) {
       await setState(project, "SYNCED");
       return;
     }
     console.log(
-      `[${projectId}] Barrier refused: built for ${short(frontend.contractHash)}, ` +
+      `[${projectId}] Barrier refused: built for ${short(stale[0].contractHash)}, ` +
         `Contract is now v${latest.version} (${short(latest.hash)}). Rebuilding.`
     );
   }

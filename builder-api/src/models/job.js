@@ -13,6 +13,7 @@ const jobSchema = new mongoose.Schema(
     status: { type: String, enum: ["queued", "running", "done", "failed", "cancelled"], default: "queued" },
     provider: { type: String, enum: ["local", "cloud", null], default: null },
     contractHash: String, // which Contract version this job was built for
+    page: Number, // frontend jobs: which screenshot (1-based) this page is built from
     remoteJobId: String, // the Gateway's jobId for frontend jobs
     artifactPath: String, // what the job produced, relative to the repo root (e.g. runs/<id>/frontend/v1.html)
     note: String, // e.g. "placeholder until Step 10"
