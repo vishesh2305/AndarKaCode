@@ -8,7 +8,7 @@ const TITLE_NOISE = /\b(management|manager|list|dashboard|page|overview|table|ad
 const UPDATE = /^(edit|update|modify)$/i;
 const DELETE = /^(delete|remove|trash)$/i;
 const VIEW = /^(view|details|open)$/i;
-const CREATE = /^(\+|add|new|create)\b/i;
+const CREATE = /^(\+|(add|new|create)\b)/i; // "+ Add Product": there is no word boundary after "+"
 const EXPORT = /\bexport\b/i;
 const ARCHIVE = /archiv|restore|deleted|trash/i;
 
@@ -44,8 +44,16 @@ export function inferType(values) {
   return "string";
 }
 
-const singular = (word) => (/ies$/.test(word) ? word.replace(/ies$/, "y") : /[^s]s$/.test(word) ? word.slice(0, -1) : word);
+const singular = (word) =>
+  /ies$/.test(word) ? word.replace(/ies$/, "y")
+  : /(s|x|ch|sh)es$/.test(word) ? word.slice(0, -2) // statuses -> status
+  : /[^s]s$/.test(word) ? word.slice(0, -1)
+  : word;
 const plural = (word) => (/[^aeiou]y$/.test(word) ? word.replace(/y$/, "ies") : /(s|x|ch|sh)$/.test(word) ? `${word}es` : `${word}s`);
+
+// A dropdown showing "All categories" filters the field "category".
+const ALL_PREFIX = /^all\s+/i;
+const filterName = (label) => (ALL_PREFIX.test(label) ? singular(camelCase(label.replace(ALL_PREFIX, ""))) : camelCase(label));
 
 // The entity a table/form is about: the vision pass's hint, else the screen title without noise words.
 function entityName(hint, title) {
@@ -159,7 +167,7 @@ export function deriveSpec(screens) {
       const list = (entity.endpoints.list ??= { search: false, filters: [], pagination: false, evidence: at(`table '${s.title}'`) });
       list.search ||= Boolean(s.search);
       list.pagination ||= Boolean(s.pagination);
-      for (const f of s.filters) if (!list.filters.includes(camelCase(f.label))) list.filters.push(camelCase(f.label));
+      for (const f of s.filters) if (!list.filters.includes(filterName(f.label))) list.filters.push(filterName(f.label));
 
       for (const label of table.rowActions) {
         const evidence = at(`row action '${label}'`);

@@ -118,7 +118,7 @@
           "list": {
             "search": true,
             "filters": [
-              "allCategories"
+              "category"
             ],
             "pagination": true,
             "evidence": "s1: table 'Products'"
@@ -132,20 +132,14 @@
           "delete": {
             "soft": false,
             "evidence": "s1: row action 'Delete'"
+          },
+          "create": {
+            "evidence": "s1: button '+ Add Product'"
           }
         }
       }
     ],
-    "operations": [
-      {
-        "name": "addProductProduct",
-        "entity": "product",
-        "kind": "custom",
-        "scope": "page",
-        "button": "+ Add Product",
-        "evidence": "s1: button '+ Add Product'"
-      }
-    ],
+    "operations": [],
     "stats": [],
     "auth": null,
     "pages": [
