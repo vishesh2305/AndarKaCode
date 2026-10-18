@@ -18,3 +18,6 @@ runs/
 
 # Eval output: regenerated on each machine (evidence lives in docs/tdd/)
 samples/mocks/results/
+
+# Backend generator test output
+builder-api/test/.generated/
