@@ -7,7 +7,7 @@ import { after, before, describe, it } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import mongoose from "mongoose";
 import { generateBackend, writeBackend } from "../src/generator/index.js";
-import { catalogSpec, editDeleteSpec, relationSpec } from "../test/fixtures/specs.js";
+import { catalogSpec, editDeleteSpec, opsSpec, relationSpec } from "../test/fixtures/specs.js";
 
 const MONGODB_URI = process.env.TEST_MONGODB_URI;
 if (!MONGODB_URI) throw new Error("Set TEST_MONGODB_URI (a throwaway database; it is dropped before the tests)");
@@ -156,5 +156,49 @@ describe("generated backend: related pages with soft delete", () => {
     assert.ok(!(await call("GET", "/leaveRequests")).body.items.some((r) => r.id === created.id));
     const kept = await mongoose.connection.collection("leaveRequests").findOne({ _id: new mongoose.Types.ObjectId(created.id) });
     assert.ok(kept.deletedAt instanceof Date);
+  });
+});
+
+describe("generated backend: status buttons, export, custom buttons and stat cards", () => {
+  let call;
+  let base;
+  let ann;
+  before(async () => {
+    call = await boot("ops", opsSpec);
+    base = `http://127.0.0.1:${servers.at(-1).address().port}/api`;
+    const LeaveRequest = await model("ops", "backend/models/leaveRequest.model.js", "LeaveRequest");
+    ann = await LeaveRequest.create({ employee: "Ann Lee", days: 3, status: "Pending" });
+    await LeaveRequest.create({ employee: 'Raj "RJ" Patel, Jr.', days: 2, status: "Pending" });
+    await LeaveRequest.create({ employee: "=HYPERLINK(evil)", days: 5, status: "Approved" });
+  });
+
+  it("Approve sets the status the button stands for", async () => {
+    const res = await call("POST", `/leaveRequests/${ann.id}/approve`);
+    assert.equal(res.status, 200);
+    assert.equal(res.body.status, "Approved");
+    assert.equal((await call("POST", `/leaveRequests/${new mongoose.Types.ObjectId()}/reject`)).status, 404);
+  });
+
+  it("Export CSV returns every record with the column labels, safely escaped", async () => {
+    const res = await fetch(`${base}/leaveRequests/export.csv`);
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get("content-type"), /text\/csv/);
+    const csv = await res.text();
+    assert.equal(csv.split("\n")[0], "Employee,Days,Status");
+    assert.match(csv, /"Raj ""RJ"" Patel, Jr\.",2,Pending/, "quotes and commas escaped");
+    assert.match(csv, /'=HYPERLINK\(evil\)/, "a value starting with = can't run as a spreadsheet formula");
+  });
+
+  it("custom buttons answer 501 until the AI layer writes them", async () => {
+    const row = await call("POST", `/leaveRequests/${ann.id}/recalculate`);
+    assert.equal(row.status, 501);
+    assert.match(row.body.error, /Recalculate/);
+    assert.equal((await call("POST", "/leaveRequests/sync-payroll")).status, 501);
+  });
+
+  it("stats return exactly the visible cards' numbers (custom ones are null for now)", async () => {
+    const { status, body } = await call("GET", "/stats");
+    assert.equal(status, 200);
+    assert.deepEqual(body, { totalRequests: 3, pending: 1, totalDays: 10, happinessIndex: null });
   });
 });

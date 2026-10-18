@@ -94,3 +94,37 @@ export const relationSpec = {
   ],
   openQuestions: [],
 };
+
+// Row buttons beyond edit/delete, an Export button, and stat cards (a "Leave Requests" dashboard).
+export const opsSpec = {
+  entities: [
+    {
+      name: "leaveRequest",
+      plural: "leaveRequests",
+      label: "Leave Requests",
+      sampleConst: "SAMPLE_LEAVEREQUESTS",
+      fields: [
+        { name: "employee", label: "Employee", type: "string", required: true, evidence: ev("column 'Employee'") },
+        { name: "days", label: "Days", type: "number", required: false, evidence: ev("column 'Days'") },
+        { name: "status", label: "Status", type: "enum", options: ["Pending", "Approved", "Rejected"], required: false, evidence: ev("column 'Status'") },
+      ],
+      endpoints: { list: { search: false, filters: [], pagination: false, evidence: ev("table 'Leave Requests'") } },
+    },
+  ],
+  operations: [
+    { name: "approveLeaveRequest", entity: "leaveRequest", kind: "setStatus", set: { status: "Approved" }, button: "Approve", evidence: ev("row action 'Approve'") },
+    { name: "rejectLeaveRequest", entity: "leaveRequest", kind: "setStatus", set: { status: "Rejected" }, button: "Reject", evidence: ev("row action 'Reject'") },
+    { name: "exportLeaveRequests", entity: "leaveRequest", kind: "export", button: "Export CSV", evidence: ev("button 'Export CSV'") },
+    { name: "recalculateLeaveRequest", entity: "leaveRequest", kind: "custom", scope: "row", button: "Recalculate", evidence: ev("row action 'Recalculate'") },
+    { name: "syncPayrollLeaveRequest", entity: "leaveRequest", kind: "custom", scope: "page", button: "Sync Payroll", evidence: ev("button 'Sync Payroll'") },
+  ],
+  stats: [
+    { label: "Total Requests", entity: "leaveRequest", metric: "count", evidence: ev("stat card 'Total Requests'") },
+    { label: "Pending", entity: "leaveRequest", metric: "count", where: { status: "Pending" }, evidence: ev("stat card 'Pending'") },
+    { label: "Total Days", entity: "leaveRequest", metric: "sum", field: "days", evidence: ev("stat card 'Total Days'") },
+    { label: "Happiness Index", entity: "leaveRequest", metric: "custom", evidence: ev("stat card 'Happiness Index'") },
+  ],
+  auth: null,
+  pages: [{ screenshot: 1, kind: "dashboard", entity: "leaveRequest" }],
+  openQuestions: [],
+};
