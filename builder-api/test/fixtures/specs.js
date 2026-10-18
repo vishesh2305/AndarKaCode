@@ -128,3 +128,13 @@ export const opsSpec = {
   pages: [{ screenshot: 1, kind: "dashboard", entity: "leaveRequest" }],
   openQuestions: [],
 };
+
+// Only a login screen: no tables, no stat cards (login code itself comes in Step 12).
+export const loginOnlySpec = {
+  entities: [],
+  operations: [],
+  stats: [],
+  auth: { login: { evidence: "s1: login form" }, signup: null, me: null, roles: null },
+  pages: [{ screenshot: 1, kind: "login" }],
+  openQuestions: [],
+};

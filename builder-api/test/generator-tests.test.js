@@ -43,3 +43,15 @@ describe("generated tests/api.test.js", () => {
     assert.doesNotMatch(tests, /process\.env\.MONGODB_URI\b(?!_TEST)/);
   });
 });
+
+// Found with the real-model specs: a login-only app had a test file with no tests, so its cleanup hung.
+describe("generated tests/api.test.js: always at least one test", () => {
+  it("tests GET /health in every app, including one with only a login screen", async () => {
+    const { loginOnlySpec } = await import("./fixtures/specs.js");
+    for (const spec of [loginOnlySpec, editDeleteSpec]) assert.ok(testsOf(spec).includes('it("answers GET /health'));
+  });
+
+  it("only closes what it opened, so a failed start can't hang the cleanup", () => {
+    assert.match(testsOf(editDeleteSpec), /server\?\.close\(\)/);
+  });
+});
