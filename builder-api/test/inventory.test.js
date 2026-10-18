@@ -164,3 +164,14 @@ describe("readInventory", () => {
     assert.equal(cloudCalled, false);
   });
 });
+
+// Found in real-model eval: the model often copies the page kind into the title ("list", "dashboard").
+describe("normalizeInventory: title", () => {
+  it("treats a title that is only a page-kind word as no title", () => {
+    for (const word of ["list", "Dashboard", "login", "form"]) assert.equal(normalizeInventory({ title: word }).title, "");
+  });
+
+  it("keeps a real heading", () => {
+    assert.equal(normalizeInventory({ title: "Leave Requests" }).title, "Leave Requests");
+  });
+});

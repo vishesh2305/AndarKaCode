@@ -377,3 +377,12 @@ describe("deriveSpec: rules rely on the strongest evidence", () => {
     assert.deepEqual(spec.pages, [{ screenshot: 1, kind: "login" }]);
   });
 });
+
+describe("deriveSpec: entity label", () => {
+  it("labels an entity from its plural name when the screen has no title", () => {
+    const spec = deriveSpec([
+      screen({ title: "", tables: [employeeTable({ entityHint: { singular: "leaveRequest", plural: "leaveRequests" } })] }),
+    ]);
+    assert.equal(spec.entities[0].label, "Leave Requests");
+  });
+});
