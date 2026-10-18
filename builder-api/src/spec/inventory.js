@@ -9,7 +9,8 @@ delete schema.$comment;
 
 export const INVENTORY_PROMPT = `List the user-interface elements in this screenshot as JSON. Report only what is visible; never invent elements.
 
-- title: the page heading. kind: "list" (a table of records), "form", "dashboard" (number tiles/charts), "login", "detail" or "other".
+- title: the heading text exactly as written at the top of the page (e.g. "Leave Requests"); "" if there is none. It is NOT the page kind.
+- kind: "list" (a table of records), "form", "dashboard" (number tiles/charts), "login", "detail" or "other".
 - tables: for each table, entityHint = the singular and plural English noun for what one row is (e.g. "employee"/"employees");
   columns = each column header, with up to 5 cell values copied exactly as shown, and badge = true if the values are coloured pills/tags;
   rowActions = the buttons or icons repeated on every row (pencil = "Edit", trash = "Delete", eye = "View"; otherwise the text shown). Skip the checkbox and row-number columns.
@@ -63,7 +64,8 @@ function inferKind(inv) {
 /** Whatever the model returned -> complete, trimmed, de-duplicated inventory. Never throws. */
 export function normalizeInventory(raw = {}) {
   const inv = {
-    title: text(raw.title),
+    // Models often copy the kind into the title ("list"); that is not a heading.
+    title: KINDS.has(text(raw.title).toLowerCase()) ? "" : text(raw.title),
     kind: "other",
     tables: arrayOf(raw.tables, normalizeTable),
     forms: arrayOf(raw.forms, (f) => ({

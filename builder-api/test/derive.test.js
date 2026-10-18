@@ -39,6 +39,7 @@ describe("camelCase", () => {
     assert.equal(camelCase("Salary ($)"), "salary");
     assert.equal(camelCase("date of birth"), "dateOfBirth");
     assert.equal(camelCase("E-mail"), "eMail");
+    assert.equal(camelCase("leaveRequests"), "leaveRequests", "already camelCase stays camelCase");
   });
 });
 

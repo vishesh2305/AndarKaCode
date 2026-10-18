@@ -23,6 +23,7 @@ const CASES = {
     screens: ["m1-edit-delete"],
     checks: [
       ["one entity", (s) => s.entities.length === 1],
+      ["label is the heading 'Employees'", (s) => first(s).label === "Employees"],
       ["endpoints exactly delete,get,list,update", (s) => endpoints(first(s)) === "delete,get,list,update"],
       ["email field is email", (s) => fieldType(first(s), "email") === "email"],
       ["salary field is number", (s) => fieldType(first(s), "salary") === "number"],
@@ -70,6 +71,7 @@ const CASES = {
   "m6-approve": {
     screens: ["m6-approve"],
     checks: [
+      ["label is the heading 'Leave Requests'", (s) => first(s).label === "Leave Requests"],
       ["Approve is a setStatus", (s) => s.operations.some((o) => o.button === "Approve" && o.kind === "setStatus")],
       ["Reject is a setStatus", (s) => s.operations.some((o) => o.button === "Reject" && o.kind === "setStatus")],
       ["from/to are dates", (s) => fieldType(first(s), "from") === "date" && fieldType(first(s), "to") === "date"],

@@ -25,10 +25,15 @@ const DATES = [
 const INPUT_TYPE = { text: "string", textarea: "string", email: "email", number: "number", date: "date", checkbox: "boolean" };
 
 const capitalize = (word) => word.charAt(0).toUpperCase() + word.slice(1);
+const words = (camel) => capitalize(camel.replace(/([a-z0-9])([A-Z])/g, "$1 $2"));
 
 /** "Full Name" -> "fullName", "Salary ($)" -> "salary". */
 export function camelCase(label) {
-  const words = String(label).replace(/\([^)]*\)/g, " ").split(/[^A-Za-z0-9]+/).filter(Boolean);
+  const words = String(label)
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2") // keep existing humps: "leaveRequests" -> "leave Requests"
+    .split(/[^A-Za-z0-9]+/)
+    .filter(Boolean);
   return words.map((w, i) => (i === 0 ? w.toLowerCase() : capitalize(w.toLowerCase()))).join("");
 }
 
@@ -94,7 +99,7 @@ export function deriveSpec(screens) {
       entities.set(id.name, {
         name: id.name,
         plural: id.plural,
-        label,
+        label: label || words(id.plural), // no heading on screen: "leaveRequests" -> "Leave Requests"
         sampleConst: `SAMPLE_${id.plural.toUpperCase()}`,
         fields: [],
         endpoints: {},
