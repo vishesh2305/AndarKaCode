@@ -15,3 +15,6 @@ Thumbs.db
 
 # Generated apps and job workspaces (Builder API output)
 runs/
+
+# Eval output: regenerated on each machine (evidence lives in docs/tdd/)
+samples/mocks/results/
