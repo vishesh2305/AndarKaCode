@@ -3,7 +3,7 @@
 > **Design:** see [ARCHITECTURE.md](ARCHITECTURE.md) (v3.1, approved 16 Oct: Phase 1 builds exactly what the screenshots show; every backend part has visible evidence). This file is our **step-by-step to-do list**.
 > **Rule:** do one step, report back, then move on. Tick the box when its "Done when" is true.
 
-**Current step:** ▶ **Step 10: UI inventory + Spec Deriver**
+**Current step:** ▶ **Step 11: Template layer**
 
 ---
 
@@ -41,7 +41,7 @@ Every step has four parts:
 
 *Rule: no evidence, no code. Every backend part points to the screenshot element that needs it.*
 
-- [ ] **Step 10: UI inventory + Spec Deriver.** A set of test screenshots (list, form, dashboard with stat cards, login, a second page for a relation, a row "Approve" button). Vision pass → UI inventory JSON; rule table → App Spec with evidence; open questions for real ambiguities; instructions per page. *Done when:* each test screenshot gives a spec with exactly its elements, and the employees screenshot still reaches `SYNCED`.
+- [x] **Step 10: UI inventory + Spec Deriver.** ✅ 18 Oct: Mac 2 screenshots → `SYNCED (v1) p1:done p2:done` (pages from the Gateway cache: the Mac derived the identical spec hash as Laptop B); Laptop B real run 151 s; unit 73, integration 5, real-model eval 41/41. A set of test screenshots (list, form, dashboard with stat cards, login, a second page for a relation, a row "Approve" button). Vision pass → UI inventory JSON; rule table → App Spec with evidence; open questions for real ambiguities; instructions per page. *Done when:* each test screenshot gives a spec with exactly its elements, and the employees screenshot still reaches `SYNCED`.
 - [ ] **Step 11: Template layer.** Each endpoint as a building block (list with search / filter / pagination / sort only if shown, get, create, update, hard or soft delete), relations, `setStatus` and `export` operations, stats, validation, one test per generated part. *Done when:* every test screenshot's backend contains only its listed parts and passes its tests.
 - [ ] **Step 12: Login templates (only when a login screen is shown).** Users, login, token, protected routes, sign-up/roles only if visible. *Done when:* the login screenshot gives working auth; the others give no auth code.
 - [ ] **Step 13: AI layer for `custom` buttons.** Coding-model spike on the Mac; `custom/*.js` + tests; AST safety check; Docker sandbox; repair loop (3 tries, then cloud); 501 isolation. *Done when:* a custom button works; a broken case is repaired or isolated.
