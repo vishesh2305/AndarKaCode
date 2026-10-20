@@ -242,3 +242,63 @@ describe("pipeline: real backend from the generator", () => {
     }
   });
 });
+
+// ---- endpoints for the UI: screenshots, generated files, download as zip ----
+describe("UI endpoints", () => {
+  let id;
+  before(async () => {
+    id = await upload(["m5a-employees-dept.png", "m5b-departments.png"], [employeesScreen, departmentsScreen]);
+    const project = await waitFor(id, settled);
+    assert.equal(project.state, "SYNCED", project.error);
+  });
+
+  it("serves each uploaded screenshot, and 404 for one that doesn't exist", async () => {
+    const res = await fetch(`${base}/projects/${id}/screenshots/2`);
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get("content-type"), "image/png");
+    assert.equal((await fetch(`${base}/projects/${id}/screenshots/3`)).status, 404);
+  });
+
+  it("lists the generated app's files and shows one, refusing paths outside the app", async () => {
+    const { files } = await (await fetch(`${base}/projects/${id}/files`)).json();
+    const paths = files.map((f) => f.path);
+    for (const p of ["package.json", "backend/server.js", "backend/routes/employee.routes.js", "tests/api.test.js"]) assert.ok(paths.includes(p), p);
+    const content = await fetch(`${base}/projects/${id}/files/content?path=backend/server.js`);
+    assert.equal(content.status, 200);
+    assert.match(await content.text(), /express/);
+    for (const bad of ["../../package.json", "..%2F..%2F.env", "/etc/passwd"]) {
+      assert.equal((await fetch(`${base}/projects/${id}/files/content?path=${bad}`)).status, 400, bad);
+    }
+  });
+
+  it("downloads the app as a zip with backend, pages, README and the spec", async () => {
+    const res = await fetch(`${base}/projects/${id}/download`);
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get("content-type"), "application/zip");
+    assert.match(res.headers.get("content-disposition"), /attachment; filename=".+\.zip"/);
+
+    const fs = await import("node:fs/promises");
+    const os = await import("node:os");
+    const { spawnSync } = await import("node:child_process");
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "download-"));
+    try {
+      await fs.writeFile(path.join(dir, "app.zip"), Buffer.from(await res.arrayBuffer()));
+      const tar = process.platform === "win32" ? path.join(process.env.SystemRoot ?? "C:\Windows", "System32", "tar.exe") : "tar";
+      assert.equal(spawnSync(tar, ["-xf", path.join(dir, "app.zip"), "-C", dir]).status, 0);
+      for (const file of ["package.json", "backend/server.js", "tests/api.test.js", "frontend/index.html", "frontend/page-1.html", "frontend/page-2.html", "README.md", "app-spec.json"]) {
+        await fs.access(path.join(dir, file));
+      }
+      const readme = await fs.readFile(path.join(dir, "README.md"), "utf8");
+      assert.match(readme, /npm install/);
+      assert.match(readme, /s1: /, "the README says why each part exists");
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses to download a project that isn't SYNCED yet", async () => {
+    const failed = await upload(["m4-login.png"], [emptyScreen]);
+    await waitFor(failed, settled);
+    assert.equal((await fetch(`${base}/projects/${failed}/download`)).status, 409);
+  });
+});
