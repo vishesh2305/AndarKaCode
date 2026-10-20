@@ -3,7 +3,7 @@
 > **Design:** see [ARCHITECTURE.md](ARCHITECTURE.md) (v3.1, approved 16 Oct: Phase 1 builds exactly what the screenshots show; every backend part has visible evidence). This file is our **step-by-step to-do list**.
 > **Rule:** do one step, report back, then move on. Tick the box when its "Done when" is true.
 
-**Current step:** ▶ **Step 11: Template layer**
+**Current step:** ▶ **Step 13: AI layer for `custom` buttons**
 
 ---
 
@@ -42,8 +42,8 @@ Every step has four parts:
 *Rule: no evidence, no code. Every backend part points to the screenshot element that needs it.*
 
 - [x] **Step 10: UI inventory + Spec Deriver.** ✅ 18 Oct: Mac 2 screenshots → `SYNCED (v1) p1:done p2:done` (pages from the Gateway cache: the Mac derived the identical spec hash as Laptop B); Laptop B real run 151 s; unit 73, integration 5, real-model eval 41/41. A set of test screenshots (list, form, dashboard with stat cards, login, a second page for a relation, a row "Approve" button). Vision pass → UI inventory JSON; rule table → App Spec with evidence; open questions for real ambiguities; instructions per page. *Done when:* each test screenshot gives a spec with exactly its elements, and the employees screenshot still reaches `SYNCED`.
-- [ ] **Step 11: Template layer.** Each endpoint as a building block (list with search / filter / pagination / sort only if shown, get, create, update, hard or soft delete), relations, `setStatus` and `export` operations, stats, validation, one test per generated part. *Done when:* every test screenshot's backend contains only its listed parts and passes its tests.
-- [ ] **Step 12: Login templates (only when a login screen is shown).** Users, login, token, protected routes, sign-up/roles only if visible. *Done when:* the login screenshot gives working auth; the others give no auth code.
+- [x] **Step 11: Template layer.** ✅ 20 Oct: on the Mac, unit 125 + integration 36 pass; a generated products app creates/searches for real; generated apps pass their own tests. Each endpoint as a building block (list with search / filter / pagination / sort only if shown, get, create, update, hard or soft delete), relations, `setStatus` and `export` operations, stats, validation, one test per generated part. *Done when:* every test screenshot's backend contains only its listed parts and passes its tests.
+- [x] **Step 12: Login templates (only when a login screen is shown).** ✅ 20 Oct: Mac, login + employees screenshots → `SYNCED`; generated app's own tests 10/10 (incl. sign-up, spotted on the screenshot); no token → "Please log in", after login → data. Users, login, token, protected routes, sign-up/roles only if visible. *Done when:* the login screenshot gives working auth; the others give no auth code.
 - [ ] **Step 13: AI layer for `custom` buttons.** Coding-model spike on the Mac; `custom/*.js` + tests; AST safety check; Docker sandbox; repair loop (3 tries, then cloud); 501 isolation. *Done when:* a custom button works; a broken case is repaired or isolated.
 - [ ] **Step 14: Memory.** Exact cache, screenshot dHash, inventory embeddings, pattern library of verified code. *Done when:* a repeat is instant; a near-duplicate reuses the earlier spec.
 
@@ -95,3 +95,4 @@ Every step has four parts:
 | 18 Oct 2026 | Step 10 piece 2 (pipeline, TDD): spec checker, per-page instructions, multi-screenshot upload, one Gateway job per page, Barrier over all pages; old single-table extractor removed. Unit 73/73, integration 5/5 (fake Ollama + Gateway), real-model eval 41/41. **Real end-to-end on Laptop B: 2 screenshots → SYNCED in 151 s**, each page with exactly its own markers. Report: `docs/tdd/step10-pipeline.tdd.md`. |
 | 18 Oct 2026 | Step 11 (TDD) on Laptop B: template generator writes only what the spec needs (models, validation, routes, controllers, status buttons, CSV export, stats, 501 for custom buttons, tests/api.test.js). Unit 115/115, integration 27/27; apps generated from the 6 real-model specs pass their own tests (29 tests). Pipeline backend job uses the generator. Report: `docs/tdd/step11-templates.tdd.md`. |
 | 20 Oct 2026 | Step 12 (TDD) on Laptop B: login only when a login screen is shown (accounts, scrypt passwords, hashed session tokens, 5-try lockout, first account from .env; register/me/logout/roles only when shown). Unit 125/125, integration 36/36; real-model specs: 7 generated apps pass their own tests, login code only in the 2 with a login screen. Report: `docs/tdd/step12-auth.tdd.md`. |
+| 20 Oct 2026 | Laptop B had rebooted (18 Oct) with nothing running, and the Mac's upload failed with "fetch failed"; the Builder API now explains an unreachable Gateway in plain words. `start-laptop-b.ps1` cold start worked. |
