@@ -179,7 +179,7 @@ describe("generated model", () => {
 
   it("rejects records that break the schema, without a database", async () => {
     const { Employee } = await load("edit", "backend/models/employee.model.js");
-    const errors = new Employee({ email: "NOT-LOWER@x.com" }).validateSync().errors;
+    const { errors } = await new Employee({ email: "NOT-LOWER@x.com" }).validate().catch((err) => err);
     assert.ok(errors.fullName, "fullName is required");
     assert.equal(new Employee({ fullName: "Ann", email: "ANN@X.COM" }).email, "ann@x.com", "emails stored lowercase");
   });

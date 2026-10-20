@@ -20,7 +20,8 @@ describe("generated apps pass their own tests", () => {
     it(`${name}: the generated app's own tests pass`, async () => {
       const dir = path.join(OUT, name);
       await writeBackend(dir, generateBackend(spec, { name }));
-      const run = spawnSync(process.execPath, ["--test", "tests/**/*.test.js"], {
+      // TAP explicitly: the default output format differs between Node versions (Node 26 prints "ℹ fail 0").
+      const run = spawnSync(process.execPath, ["--test", "--test-reporter=tap", "tests/**/*.test.js"], {
         cwd: dir,
         encoding: "utf8",
         // Without NODE_TEST_CONTEXT: inherited from this runner, it makes the app's runner report to us silently.
