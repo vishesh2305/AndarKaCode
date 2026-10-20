@@ -17,8 +17,8 @@ const AUTH_FILES = [
   "backend/auth/middleware.js",
   "backend/auth/passwords.js",
   "backend/auth/seed.js",
-  "backend/models/session.model.js",
-  "backend/models/user.model.js",
+  "backend/models/loginSession.model.js",
+  "backend/models/account.model.js",
   "backend/routes/auth.routes.js",
 ];
 
@@ -37,7 +37,7 @@ describe("auth: only with a login screen", () => {
     assert.doesNotMatch(f[".env.example"], /ADMIN|SESSION/);
   });
 
-  it("generates users, sessions, passwords, the guard, the first-user seed and auth routes with a login screen", () => {
+  it("generates accounts, login sessions, passwords, the guard, the first-user seed and auth routes with a login screen", () => {
     const names = Object.keys(files(loginOnlySpec));
     for (const file of AUTH_FILES) assert.ok(names.includes(file), file);
   });
@@ -52,11 +52,11 @@ describe("auth: only with a login screen", () => {
     assert.deepEqual(routeTable(router).sort(), ["GET /me", "POST /login", "POST /logout", "POST /register"]);
   });
 
-  it("adds a role to users only when role labels are shown", async () => {
-    const { User: WithRoles } = await load("full", "backend/models/user.model.js");
-    assert.deepEqual(WithRoles.schema.paths.role.options.enum, ["admin", "manager"]);
-    assert.match(files(loginOnlySpec)["backend/models/user.model.js"], /email/);
-    assert.doesNotMatch(files(loginOnlySpec)["backend/models/user.model.js"], /role/);
+  it("adds a role to users only when role labels are shown", () => {
+    // Checked in the generated text: two generated apps in one test process share Mongoose's model registry.
+    assert.match(files(authSpec)["backend/models/account.model.js"], /role: \{ type: String, enum: \["admin","manager"\] \}/);
+    assert.match(files(loginOnlySpec)["backend/models/account.model.js"], /email/);
+    assert.doesNotMatch(files(loginOnlySpec)["backend/models/account.model.js"], /role/);
   });
 
   it("mounts /api/auth before the login guard, and the guard before every data route", () => {
@@ -87,8 +87,8 @@ describe("auth: passwords", () => {
   });
 
   it("never sends the password hash out in JSON", async () => {
-    const { User } = await load("full", "backend/models/user.model.js");
-    const json = new User({ email: "a@x.com", passwordHash: "scrypt$x$y" }).toJSON();
+    const { Account } = await load("full", "backend/models/account.model.js");
+    const json = new Account({ email: "a@x.com", passwordHash: "scrypt$x$y" }).toJSON();
     assert.equal(json.passwordHash, undefined);
     assert.equal(typeof json.id, "string");
   });

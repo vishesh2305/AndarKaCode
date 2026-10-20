@@ -4,6 +4,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { camelCase } from "../spec/derive.js";
 import apiTests from "../../../templates/backend/api-tests.js";
+import * as auth from "../../../templates/backend/auth.js";
 import controller from "../../../templates/backend/controller.js";
 import envExample from "../../../templates/backend/env-example.js";
 import model from "../../../templates/backend/model.js";
@@ -54,6 +55,14 @@ export function generateBackend(spec, { name }) {
     }
     files[`backend/controllers/${e.name}.controller.js`] = controller({ entity, spec, comment, pascal });
     files[`backend/routes/${e.name}.routes.js`] = routes({ entity, comment });
+  }
+  if (spec.auth) {
+    files["backend/auth/passwords.js"] = auth.passwords();
+    files["backend/auth/middleware.js"] = auth.middleware();
+    files["backend/auth/seed.js"] = auth.seed({ auth: spec.auth });
+    files["backend/models/account.model.js"] = auth.accountModel({ auth: spec.auth, comment });
+    files["backend/models/loginSession.model.js"] = auth.loginSessionModel();
+    files["backend/routes/auth.routes.js"] = auth.authRoutes({ auth: spec.auth, comment });
   }
   if (spec.stats.length) files["backend/routes/stats.routes.js"] = statsRoutes({ spec, comment, pascal, camelCase });
   files["tests/api.test.js"] = apiTests({ app, spec, entities, pascal, camelCase, comment });

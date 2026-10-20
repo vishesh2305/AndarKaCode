@@ -31,9 +31,9 @@ before(async () => {
   const { app } = await load("backend/server.js");
   server = app.listen(0);
   base = `http://127.0.0.1:${server.address().port}`;
-  const { User } = await load("backend/models/user.model.js");
+  const { Account } = await load("backend/models/account.model.js");
   const { hashPassword } = await load("backend/auth/passwords.js");
-  await User.create({ email: "admin@corp.com", passwordHash: await hashPassword("admin-pass-123"), role: "admin" });
+  await Account.create({ email: "admin@corp.com", passwordHash: await hashPassword("admin-pass-123"), role: "admin" });
 });
 after(async () => {
   server?.close();
@@ -65,16 +65,16 @@ describe("generated login", () => {
   });
 
   it("pauses login after 5 wrong passwords, even for the right one", async () => {
-    const { User } = await load("backend/models/user.model.js");
+    const { Account } = await load("backend/models/account.model.js");
     const { hashPassword } = await load("backend/auth/passwords.js");
-    await User.create({ email: "target@corp.com", passwordHash: await hashPassword("target-pass-1") });
+    await Account.create({ email: "target@corp.com", passwordHash: await hashPassword("target-pass-1") });
     for (let i = 0; i < 5; i++) assert.equal((await login("target@corp.com", "guess" + i)).status, 401);
     assert.equal((await login("target@corp.com", "target-pass-1")).status, 429);
   });
 
   it("stores only a fingerprint of the token, and refuses an expired session", async () => {
     const { token } = (await login("admin@corp.com", "admin-pass-123")).body;
-    const sessions = mongoose.connection.collection("sessions");
+    const sessions = mongoose.connection.collection("loginSessions");
     assert.equal(await sessions.countDocuments({ tokenHash: token }), 0, "the raw token is never stored");
     await sessions.updateMany({}, { $set: { expiresAt: new Date(Date.now() - 1000) } });
     assert.equal((await call("GET", "/api/employees", { token })).status, 401);
@@ -105,12 +105,12 @@ describe("generated sign-up, me and logout", () => {
 
 describe("first user from .env", () => {
   it("creates the first user from ADMIN_EMAIL/ADMIN_PASSWORD only when there are no users", async () => {
-    const { User } = await load("backend/models/user.model.js");
+    const { Account } = await load("backend/models/account.model.js");
     const { ensureFirstUser } = await load("backend/auth/seed.js");
-    await User.deleteMany({});
+    await Account.deleteMany({});
     assert.equal(await ensureFirstUser({ email: "boss@corp.com", password: "boss-pass-123" }), true);
     assert.equal(await ensureFirstUser({ email: "second@corp.com", password: "second-pass-1" }), false);
-    assert.equal(await User.countDocuments(), 1);
+    assert.equal(await Account.countDocuments(), 1);
     assert.equal((await login("boss@corp.com", "boss-pass-123")).status, 200);
   });
 });

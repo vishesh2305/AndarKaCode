@@ -214,6 +214,46 @@ async function create${entity.Model}(overrides = {}) {
 }`;
 }
 
+// Only when a login screen is shown: the login rules, plus sign-up / me / logout when those are shown.
+function authTests(spec, comment) {
+  const { auth } = spec;
+  const it = (name, evidence, body) => `  it(${q(`${name} (${comment(evidence)})`)}, async () => {\n${body}\n  });`;
+  const protectedRoute = `/api/${spec.entities[0]?.plural ?? (spec.stats.length ? "stats" : "nothing-here")}`;
+  const tests = [
+    it("logs in with the right password", auth.login.evidence, `    const res = await call("POST", "/api/auth/login", { email: TESTER.email, password: TESTER.password }, { login: false });
+    assert.equal(res.status, 200);
+    assert.equal(typeof res.body.token, "string");
+    assert.equal(res.body.user.passwordHash, undefined);`),
+    it("refuses a wrong password", auth.login.evidence, `    const res = await call("POST", "/api/auth/login", { email: TESTER.email, password: "wrong-password" }, { login: false });
+    assert.equal(res.status, 401);`),
+    it("pauses login after 5 wrong passwords", auth.login.evidence, `    await Account.create({ email: "locked@example.com", passwordHash: await hashPassword("locked-pass-123") });
+    for (let i = 0; i < 5; i++) {
+      assert.equal((await call("POST", "/api/auth/login", { email: "locked@example.com", password: "guess" + i }, { login: false })).status, 401);
+    }
+    const res = await call("POST", "/api/auth/login", { email: "locked@example.com", password: "locked-pass-123" }, { login: false });
+    assert.equal(res.status, 429);`),
+    it("refuses data without a login", auth.login.evidence, `    assert.equal((await call("GET", ${q(protectedRoute)}, null, { login: false })).status, 401);`),
+  ];
+  if (auth.signup) {
+    tests.push(
+      it("registers a new account", auth.signup.evidence, `    const res = await call("POST", "/api/auth/register", { email: "new" + (++counter) + "@example.com", password: "new-pass-123" }, { login: false });
+    assert.equal(res.status, 201);
+    assert.equal(typeof res.body.token, "string");`)
+    );
+  }
+  if (auth.me) {
+    tests.push(
+      it("returns the logged-in user", auth.me.evidence, `    const res = await call("GET", "/api/auth/me");
+    assert.equal(res.status, 200);
+    assert.equal(res.body.user.email, TESTER.email);`),
+      it("logs out", auth.me.evidence, `    const own = (await call("POST", "/api/auth/login", { email: TESTER.email, password: TESTER.password }, { login: false })).body.token;
+    assert.equal((await call("POST", "/api/auth/logout", null, { token: own })).status, 204);
+    assert.equal((await call("GET", "/api/auth/me", null, { token: own })).status, 401);`)
+    );
+  }
+  return `describe("Login", () => {\n${tests.join("\n\n")}\n});`;
+}
+
 function statsTests(spec, camelCase, comment) {
   const keys = spec.stats.map((s) => camelCase(s.label));
   const checks = spec.stats.map((s) =>
@@ -237,18 +277,31 @@ import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 import mongoose from "mongoose";
 import { app } from "../backend/server.js";
-${entities.map((e) => `import { ${e.Model} } from "../backend/models/${e.name}.model.js";`).join("\n")}
+${entities.map((e) => `import { ${e.Model} } from "../backend/models/${e.name}.model.js";`).join("\n")}${
+  spec.auth
+    ? `\nimport { hashPassword } from "../backend/auth/passwords.js";\nimport { Account } from "../backend/models/account.model.js";`
+    : ""
+}
 
 const MONGODB_URI_TEST = process.env.MONGODB_URI_TEST ?? "mongodb://127.0.0.1:27017/${app.dbName}_test";
 let server;
 let base;
 let counter = 0;
-
+${spec.auth ? 'let token; // the test account\'s login, sent with every request\nconst TESTER = { email: "tester@example.com", password: "tester-pass-123" };\n' : ""}
 before(async () => {
   await mongoose.connect(MONGODB_URI_TEST);
   await mongoose.connection.dropDatabase();
   server = app.listen(0);
-  base = "http://127.0.0.1:" + server.address().port;
+  base = "http://127.0.0.1:" + server.address().port;${
+    spec.auth
+      ? `
+  // A screenshot shows a login form, so every data request needs a login.
+  await Account.create({ email: TESTER.email, passwordHash: await hashPassword(TESTER.password)${
+    spec.auth.roles ? `, role: ${q(spec.auth.roles.values[0])}` : ""
+  } });
+  token = (await call("POST", "/api/auth/login", TESTER, { login: false })).body.token;`
+      : ""
+  }
 });
 
 // Close only what was opened, so a failed start can't make the cleanup hang.
@@ -260,12 +313,21 @@ after(async () => {
   }
 });
 
-async function call(method, route, body) {
+${
+  spec.auth
+    ? `// Sends the test account's login unless { login: false }; { token } sends a specific one.
+async function call(method, route, body, { login = true, token: own } = {}) {
+  const headers = body ? { "Content-Type": "application/json" } : {};
+  const bearer = own ?? (login ? token : undefined);
+  if (bearer) headers.Authorization = "Bearer " + bearer;
+  const res = await fetch(base + route, { method, headers, body: body ? JSON.stringify(body) : undefined });`
+    : `async function call(method, route, body) {
   const res = await fetch(base + route, {
     method,
     headers: body ? { "Content-Type": "application/json" } : {},
     body: body && JSON.stringify(body),
-  });
+  });`
+}
   const text = await res.text();
   let json = null;
   try {
@@ -289,5 +351,5 @@ describe("Server", () => {
   });
 });
 
-${entities.map((e) => entityTests(e, pascal, comment)).join("\n\n")}
+${spec.auth ? `${authTests(spec, comment)}\n\n` : ""}${entities.map((e) => entityTests(e, pascal, comment)).join("\n\n")}
 ${spec.stats.length ? `\n${statsTests(spec, camelCase, comment)}\n` : ""}`;
