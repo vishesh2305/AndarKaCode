@@ -275,7 +275,7 @@ describe("UI endpoints", () => {
     const res = await fetch(`${base}/projects/${id}/download`);
     assert.equal(res.status, 200);
     assert.equal(res.headers.get("content-type"), "application/zip");
-    assert.match(res.headers.get("content-disposition"), /attachment; filename=".+\.zip"/);
+    assert.match(res.headers.get("content-disposition"), /attachment; filename="?[\w.-]+\.zip"?/); // quotes are optional
 
     const fs = await import("node:fs/promises");
     const os = await import("node:os");

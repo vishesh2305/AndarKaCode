@@ -9,6 +9,7 @@ import path from "node:path";
 import { contractHash } from "../../shared/hash.mjs";
 import { currentContract, resumeAll, startPipeline } from "./orchestrator.js";
 import { checkSpec } from "./spec/check.js";
+import { appArchive, listAppFiles, safeAppPath, slug } from "./package-app.js";
 import { REPO_ROOT, saveScreenshot, sha256, shrinkScreenshot } from "./storage.js";
 
 const PORT = Number(process.env.PORT ?? 4000);
@@ -145,6 +146,55 @@ app.get("/api/projects/:id/frontend", async (req, res) => {
   const job = contract && (await Job.findOne({ projectId: project._id, kind: "frontend", contractHash: contract.hash, page, status: "done" }));
   if (!job) return res.status(404).json({ error: `No page ${page} for the current spec yet (state: ${project.state})` });
   res.sendFile(path.join(REPO_ROOT, job.artifactPath));
+});
+
+// ---- for the UI: screenshots, the generated app's files, and the app as a zip ----
+const screenshotsOf = (project) => (project.screenshots?.length ? project.screenshots : [{ path: project.imagePath }]);
+
+async function currentBuild(project) {
+  const contract = await currentContract(project);
+  if (!contract) return {};
+  const [backendJob, frontendJobs] = await Promise.all([
+    Job.findOne({ projectId: project._id, kind: "backend", contractHash: contract.hash, status: "done" }),
+    Job.find({ projectId: project._id, kind: "frontend", contractHash: contract.hash, status: "done" }).sort({ page: 1 }),
+  ]);
+  return { contract, backendJob, frontendJobs };
+}
+
+app.get("/api/projects/:id/screenshots/:n", async (req, res) => {
+  const project = await findProject(req.params.id);
+  if (!project) return res.status(404).json({ error: "No such project" });
+  const shot = screenshotsOf(project)[Number(req.params.n) - 1];
+  if (!Number.isInteger(Number(req.params.n)) || !shot?.path) return res.status(404).json({ error: "No such screenshot" });
+  res.type("image/png").sendFile(path.join(REPO_ROOT, shot.path));
+});
+
+app.get("/api/projects/:id/files", async (req, res) => {
+  const project = await findProject(req.params.id);
+  if (!project) return res.status(404).json({ error: "No such project" });
+  const { backendJob } = await currentBuild(project);
+  if (!backendJob) return res.status(404).json({ error: `No generated app for the current spec yet (state: ${project.state})` });
+  res.json({ files: await listAppFiles(path.join(REPO_ROOT, backendJob.artifactPath)) });
+});
+
+app.get("/api/projects/:id/files/content", async (req, res) => {
+  const project = await findProject(req.params.id);
+  if (!project) return res.status(404).json({ error: "No such project" });
+  const { backendJob } = await currentBuild(project);
+  if (!backendJob) return res.status(404).json({ error: "No generated app yet" });
+  const file = safeAppPath(path.join(REPO_ROOT, backendJob.artifactPath), req.query.path);
+  if (!file) return res.status(400).json({ error: "That path is not inside the generated app" });
+  res.type("text/plain; charset=utf-8").sendFile(file, (err) => err && !res.headersSent && res.status(404).json({ error: "No such file" }));
+});
+
+app.get("/api/projects/:id/download", async (req, res) => {
+  const project = await findProject(req.params.id);
+  if (!project) return res.status(404).json({ error: "No such project" });
+  if (project.state !== "SYNCED") return res.status(409).json({ error: `The app can be downloaded once it is SYNCED (now: ${project.state})` });
+  const { contract, backendJob, frontendJobs } = await currentBuild(project);
+  if (!backendJob) return res.status(409).json({ error: "The generated backend is missing; rebuild the project" });
+  const zip = await appArchive({ project, contract, backendJob, frontendJobs, screenshots: screenshotsOf(project) });
+  res.type("application/zip").attachment(`${slug(project.name)}-v${contract.version}.zip`).send(zip);
 });
 
 // Upload limits, bad JSON, anything unexpected: always answer in JSON.
