@@ -51,7 +51,7 @@ Every step has four parts:
 
 - [ ] **Step 15: Wirer.** Runtime binder `app.js` + `api-map.json`; multiple pages; token only if login. *Done when:* every control on every page works against the backend.
 - [ ] **Step 16: Verifier + repair loop.** Headless-browser marker check, "every control backed", "nothing unnecessary", tests, Playwright smoke; repair with Gateway `update` jobs.
-- [ ] **Step 17: Our React UI.** Upload screenshots, review the spec with its evidence, live status, download.
+- [ ] **Step 17: Our React UI.** ◐ 20 Oct: **UI v1 for the presentation** done early (`web/`, served by the Builder API): upload, live metro-line pipeline with "how it works" per station, screenshots / plan with evidence / pages / backend files, download app as zip once SYNCED. Still to do: edit the spec in the UI. Upload screenshots, review the spec with its evidence, live status, download.
 - [ ] **Step 18: Sandbox preview.** Docker, limits, no secrets, auto-stop.
 - [ ] **Step 19: GitHub login + Publish.** OAuth App, encrypted token, new repo, CI turns green.
 - [ ] **Step 20: Demo rehearsal.** Demo mode, warm cache, backup video, viva practice.
@@ -96,3 +96,4 @@ Every step has four parts:
 | 18 Oct 2026 | Step 11 (TDD) on Laptop B: template generator writes only what the spec needs (models, validation, routes, controllers, status buttons, CSV export, stats, 501 for custom buttons, tests/api.test.js). Unit 115/115, integration 27/27; apps generated from the 6 real-model specs pass their own tests (29 tests). Pipeline backend job uses the generator. Report: `docs/tdd/step11-templates.tdd.md`. |
 | 20 Oct 2026 | Step 12 (TDD) on Laptop B: login only when a login screen is shown (accounts, scrypt passwords, hashed session tokens, 5-try lockout, first account from .env; register/me/logout/roles only when shown). Unit 125/125, integration 36/36; real-model specs: 7 generated apps pass their own tests, login code only in the 2 with a login screen. Report: `docs/tdd/step12-auth.tdd.md`. |
 | 20 Oct 2026 | Laptop B had rebooted (18 Oct) with nothing running, and the Mac's upload failed with "fetch failed"; the Builder API now explains an unreachable Gateway in plain words. `start-laptop-b.ps1` cold start worked. |
+| 20 Oct 2026 | **UI v1** (user request, for the project presentation, before Step 13; TDD): light, cartoon-style React UI in `web/`; zip writer + `GET /download` (only when SYNCED), screenshots, generated files (no path escape). Unit 131/131, integration 40/40, web 8/8; real run on Laptop B: 2 projects → SYNCED, zip checked with `tar`. Report: `docs/tdd/ui-v1.tdd.md`. |
