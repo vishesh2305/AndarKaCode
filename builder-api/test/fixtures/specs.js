@@ -138,3 +138,33 @@ export const loginOnlySpec = {
   pages: [{ screenshot: 1, kind: "login" }],
   openQuestions: [],
 };
+
+// A login screen with a sign-up link, a user menu and role labels, plus an employees list.
+export const authSpec = {
+  entities: [
+    {
+      name: "employee",
+      plural: "employees",
+      label: "Employees",
+      sampleConst: "SAMPLE_EMPLOYEES",
+      fields: [{ name: "fullName", label: "Full Name", type: "string", required: true, evidence: "s2: column 'Full Name'" }],
+      endpoints: {
+        list: { search: false, filters: [], pagination: false, evidence: "s2: table 'Employees'" },
+        delete: { soft: false, evidence: "s2: row action 'Delete'" },
+      },
+    },
+  ],
+  operations: [],
+  stats: [],
+  auth: {
+    login: { evidence: "s1: login form" },
+    signup: { evidence: "s1: sign-up link" },
+    me: { evidence: "s2: user menu" },
+    roles: { values: ["admin", "manager"], evidence: "s2: role labels" },
+  },
+  pages: [
+    { screenshot: 1, kind: "login" },
+    { screenshot: 2, kind: "list", entity: "employee" },
+  ],
+  openQuestions: [],
+};

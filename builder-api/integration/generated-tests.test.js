@@ -7,7 +7,7 @@ import path from "node:path";
 import { after, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { generateBackend, writeBackend } from "../src/generator/index.js";
-import { catalogSpec, editDeleteSpec, loginOnlySpec, opsSpec, relationSpec } from "../test/fixtures/specs.js";
+import { authSpec, catalogSpec, editDeleteSpec, loginOnlySpec, opsSpec, relationSpec } from "../test/fixtures/specs.js";
 
 const MONGODB_URI = process.env.TEST_MONGODB_URI;
 if (!MONGODB_URI) throw new Error("Set TEST_MONGODB_URI");
@@ -16,7 +16,7 @@ after(() => rm(OUT, { recursive: true, force: true }));
 const withoutTestContext = ({ NODE_TEST_CONTEXT, ...env }) => env;
 
 describe("generated apps pass their own tests", () => {
-  for (const [name, spec] of Object.entries({ edit: editDeleteSpec, catalog: catalogSpec, relation: relationSpec, ops: opsSpec, login: loginOnlySpec })) {
+  for (const [name, spec] of Object.entries({ edit: editDeleteSpec, catalog: catalogSpec, relation: relationSpec, ops: opsSpec, login: loginOnlySpec, auth: authSpec })) {
     it(`${name}: the generated app's own tests pass`, async () => {
       const dir = path.join(OUT, name);
       await writeBackend(dir, generateBackend(spec, { name }));
