@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import express from "express";
 import mongoose from "mongoose";
 import multer from "multer";
@@ -196,6 +197,13 @@ app.get("/api/projects/:id/download", async (req, res) => {
   const zip = await appArchive({ project, contract, backendJob, frontendJobs, screenshots: screenshotsOf(project) });
   res.type("application/zip").attachment(`${slug(project.name)}-v${contract.version}.zip`).send(zip);
 });
+
+// The UI (web/, after `npm run build`): served from the same address as the API.
+const WEB_DIST = path.join(REPO_ROOT, "web", "dist");
+if (existsSync(path.join(WEB_DIST, "index.html"))) {
+  app.use(express.static(WEB_DIST));
+  app.use((req, res, next) => (req.method === "GET" && !req.path.startsWith("/api") ? res.sendFile(path.join(WEB_DIST, "index.html")) : next()));
+}
 
 // Upload limits, bad JSON, anything unexpected: always answer in JSON.
 app.use((err, _req, res, _next) => {
