@@ -18,11 +18,33 @@
   const say = (message) => window.alert(message);
   setStatus("loading");
 
+  // ---------- login (only when a screenshot showed a login screen) ----------
+
+  const TOKEN_KEY = "andarkacode.token";
+  function readToken() {
+    try {
+      return window.localStorage.getItem(TOKEN_KEY);
+    } catch {
+      return null; // storage blocked: behave as signed out
+    }
+  }
+  function writeToken(token) {
+    try {
+      if (token) window.localStorage.setItem(TOKEN_KEY, token);
+      else window.localStorage.removeItem(TOKEN_KEY);
+    } catch {
+      // storage blocked: the login lasts until the page closes
+    }
+  }
+  const goToLogin = () => navigate(state.map.auth.loginPage || "index.html");
+
   // ---------- talking to the backend ----------
 
   async function api(method, url, body) {
     const headers = {};
     if (body !== undefined) headers["Content-Type"] = "application/json";
+    const token = state.map && state.map.auth ? readToken() : null;
+    if (token) headers.Authorization = `Bearer ${token}`;
     let res;
     try {
       res = await fetch(url, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
@@ -31,6 +53,11 @@
     }
     const type = res.headers.get("content-type") || "";
     const data = type.includes("application/json") ? await res.json().catch(() => null) : null;
+    // An expired or missing login on a data page: back to the login page, no pop-up.
+    if (res.status === 401 && state.map && state.map.auth && state.page.kind !== "login") {
+      writeToken(null);
+      goToLogin();
+    }
     return { ok: res.ok, status: res.status, data, res };
   }
 
@@ -519,9 +546,39 @@
     startRowEdit(row, button);
   }
 
+  // ---------- sign in, sign up, log out ----------
+
+  const credential = (scope, name) => controlIn(scope, name) || scope.querySelector(`input[type="${name}"]`);
+
+  async function signIn(scope, register) {
+    const auth = state.map.auth;
+    const url = register ? auth.register : auth.login;
+    const email = credential(scope, "email");
+    const password = credential(scope, "password");
+    if (!url || !email || !password) return;
+    if (scope.tagName === "FORM" && !validates(scope)) return;
+    const empty = [email, password].find((el) => !el.value.trim());
+    if (empty) return empty.focus();
+    const answer = await api("POST", url, { email: email.value.trim(), password: password.value });
+    if (answer.ok && answer.data && answer.data.token) {
+      writeToken(answer.data.token);
+      return state.map.home ? navigate(state.map.home) : say("You are signed in.");
+    }
+    if (answer.status === 400 && answer.data && answer.data.details) return showProblems({ fields: [] }, scope, answer.data.details);
+    const field = answer.status === 409 ? email : password; // 409: that email already has an account
+    field.setCustomValidity(problem(answer));
+    field.reportValidity();
+  }
+
+  async function logOut() {
+    if (state.map.auth.logout && readToken()) await api("POST", state.map.auth.logout);
+    writeToken(null);
+    goToLogin();
+  }
+
   // ---------- events: caught before the page's own scripts ----------
 
-  const BUILT_IN = ["create", "update", "delete", "prevPage", "nextPage", "search"];
+  const BUILT_IN = ["create", "update", "delete", "prevPage", "nextPage", "search", "login", "signup", "logout"];
   const report = (err) => console.error("AndarKaCode binder:", err);
   const entityControlsIn = (scope) => state.entity.fields.some((f) => controlIn(scope, f.name));
 
@@ -539,8 +596,10 @@
     if (!isFilter && !BUILT_IN.includes(action) && !buttonAction(action)) return; // not a marker we know: the page keeps it
     event.stopImmediatePropagation();
     // A submit button in a form: the browser checks the form first, then fires submit (caught below).
-    if (el.form && el.type === "submit" && action === "create") return;
+    if (el.form && el.type === "submit" && (action === "create" || action === "login")) return;
     event.preventDefault();
+    const auth = state.map.auth;
+    if (["login", "signup", "logout"].includes(action) && !auth) return;
 
     if (isFilter) return applyFilter(el);
     const row = el.closest("[data-id]");
@@ -557,6 +616,9 @@
       },
       update: () => row && editRow(row, el),
       delete: () => row && removeRow(row),
+      login: () => signIn(el.closest("form") || document, false),
+      signup: () => signIn(el.closest("form") || document, true),
+      logout: () => logOut(),
     }[action];
     Promise.resolve(run ? run() : runButton(el, action)).catch(report);
   }
@@ -564,6 +626,11 @@
   function onSubmit(event) {
     const form = event.target;
     if (!state.map) return;
+    if (state.map.auth && (state.page.kind === "login" || form.querySelector('[data-action="login"]'))) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return signIn(form, false).catch(report);
+    }
     const entityForm = state.entity && entityControlsIn(form);
     const searchBox = !entityForm && form.querySelector('[data-action="search"]');
     if (!entityForm && !searchBox) return;
@@ -624,6 +691,10 @@
     const map = (state.map = answer.data);
     const file = decodeURIComponent(window.location.pathname.split("/").pop() || "") || "index.html";
     state.page = map.pages[file] || map.pages["index.html"] || { kind: "unknown" };
+    if (map.auth && state.page.kind !== "login" && !readToken()) {
+      goToLogin();
+      return setStatus("ready");
+    }
 
     const entity = (state.entity = (state.page.entity && map.entities[state.page.entity]) || null);
     if (entity) {
