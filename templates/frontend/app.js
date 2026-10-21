@@ -13,7 +13,7 @@
   const CONTROLS = "input, select, textarea";
   const SEARCH_DELAY_MS = 300;
 
-  const state = { map: null, page: null, entity: null, view: null, editing: null };
+  const state = { map: null, page: null, entity: null, view: null, editing: null, adding: null };
   const setStatus = (status) => (root.dataset.andarkacode = status);
   const say = (message) => window.alert(message);
   setStatus("loading");
@@ -156,6 +156,23 @@
     return looks;
   }
 
+  // How the sample rows wrote numbers ("$2.50", "₹1,200", "3 days"), so real numbers look the same.
+  function learnNumbers(entity, rows) {
+    const formats = {};
+    for (const field of entity.fields.filter((f) => f.type === "number")) {
+      const cell = rows.map((row) => row.querySelector(`[data-field="${field.name}"]`)).find(Boolean);
+      const match = cell && cell.textContent.trim().match(/^(\D*?)(-?\d[\d,]*(?:\.(\d+))?)(\D*)$/);
+      if (match) formats[field.name] = { before: match[1], after: match[4], decimals: match[3] ? match[3].length : 0, grouping: match[2].includes(",") };
+    }
+    return formats;
+  }
+
+  function formatNumber(format, value) {
+    if (!format || typeof value !== "number") return null;
+    const digits = format.decimals ? { minimumFractionDigits: format.decimals, maximumFractionDigits: format.decimals } : { maximumFractionDigits: 20 };
+    return format.before + value.toLocaleString("en-US", { ...digits, useGrouping: format.grouping }) + format.after;
+  }
+
   function stamp(view, item) {
     const row = view.template.cloneNode(true);
     row.dataset.id = item.id;
@@ -163,7 +180,7 @@
       const field = fieldOf(view.entity, cell.dataset.field);
       if (!field) continue;
       const value = item[field.name];
-      const text = display(field, value);
+      const text = formatNumber(view.numbers[field.name], value) ?? display(field, value);
       const known = view.looks[field.name];
       // Same value (or same text) as a sample row: use that sample's element as it was drawn.
       const valueKey = value !== null && typeof value === "object" ? null : `value:${String(value)}`;
@@ -205,10 +222,38 @@
     updatePager(view);
   }
 
+  const pageNumberOf = (button) => (/^\d+$/.test(button.textContent.trim()) ? Number(button.textContent.trim()) : null);
+
   function updatePager(view) {
+    const shown = view.shown.length;
+    const first = shown ? (view.page - 1) * (view.limit || shown) + 1 : 0;
+    const last = shown ? first + shown - 1 : 0;
+    const pages = Math.max(1, Math.ceil(view.total / (view.limit || view.total || 1)));
+    for (const { node, kind } of view.counters) {
+      node.nodeValue =
+        kind === "showing"
+          ? node.nodeValue.replace(SHOWING, (_, showing, _from, dash, _to, of) => `${showing}${first}${dash}${last}${of}${view.total}`)
+          : node.nodeValue.replace(PAGE_OF, (_, page, _now, of) => `${page}${view.page}${of}${pages}`);
+    }
     if (!view.entity.list.pagination) return;
-    for (const prev of document.querySelectorAll('[data-action="prevPage"]')) prev.disabled = view.page <= 1;
-    for (const next of document.querySelectorAll('[data-action="nextPage"]')) next.disabled = !view.limit || view.page * view.limit >= view.total;
+    // Numbered page buttons stay on; only the arrows switch off at the ends.
+    for (const prev of document.querySelectorAll('[data-action="prevPage"]')) if (pageNumberOf(prev) === null) prev.disabled = view.page <= 1;
+    for (const next of document.querySelectorAll('[data-action="nextPage"]')) if (pageNumberOf(next) === null) next.disabled = !view.limit || view.page * view.limit >= view.total;
+  }
+
+  // "Showing 1-3 of 24" and "Page 1 of 13" outside the rows: kept true.
+  const SHOWING = /(showing\s+)(\d+)(\s*[-–]\s*)(\d+)(\s+of\s+)(\d+)/i;
+  const PAGE_OF = /(page\s+)(\d+)(\s+of\s+)(\d+)/i;
+  function findCounters(view) {
+    const counters = [];
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) {
+      const node = walker.currentNode;
+      if (view.container.contains(node) || node.parentElement.closest("script, style")) continue;
+      if (SHOWING.test(node.nodeValue)) counters.push({ node, kind: "showing" });
+      else if (PAGE_OF.test(node.nodeValue)) counters.push({ node, kind: "page" });
+    }
+    return counters;
   }
 
   async function setupList(entity) {
@@ -225,6 +270,8 @@
       anchor: rows[rows.length - 1].nextSibling,
       template: rows[0].cloneNode(true),
       looks: learnLooks(entity, rows),
+      numbers: learnNumbers(entity, rows),
+      counters: [],
       shown: rows,
       items: new Map(),
       q: "",
@@ -235,6 +282,7 @@
       ticket: 0,
     };
     for (const row of rows) delete row.dataset.id;
+    view.counters = findCounters(view);
     return view;
   }
 
@@ -275,14 +323,15 @@
     }, now ? 0 : SEARCH_DELAY_MS);
   }
 
-  function turnPage(step) {
+  function goToPage(page) {
     const view = state.view;
-    if (!view) return;
-    const page = view.page + step;
-    if (page < 1 || (step > 0 && view.limit && (page - 1) * view.limit >= view.total)) return;
+    if (!view || page < 1 || page === view.page || (view.limit && (page - 1) * view.limit >= view.total)) return;
     view.page = page;
     loadList();
   }
+
+  // A prev/next button showing a number ("1", "2", "8") goes to that page.
+  const turnPage = (button, step) => state.view && goToPage(pageNumberOf(button) ?? state.view.page + step);
 
   // ---------- stat cards and dropdowns ----------
 
@@ -363,7 +412,7 @@
     const text = String(raw).trim();
     if (text === "") return undefined;
     if (field.type === "number") {
-      const number = Number(text.replace(/[\s,]/g, "").replace(/^[^\d.-]+/, ""));
+      const number = Number(text.replace(/[\s,]/g, "").replace(/^[^\d.-]+/, "").replace(/[^\d.]+$/, "")); // "$12.50", "3 days"
       return Number.isFinite(number) ? number : text; // the backend explains what is wrong
     }
     if (field.type === "boolean") {
@@ -494,6 +543,49 @@
 
   const cancelRowEdit = () => state.view && render(state.view, [...state.view.items.values()]);
 
+  // ---------- Add through a new row, when the page has an Add button but no form ----------
+
+  function startNewRow(button) {
+    const view = state.view;
+    const row = view.template.cloneNode(true);
+    delete row.dataset.id;
+    row.dataset.editing = "new";
+    for (const cell of inlineCells(row)) {
+      setText(cell, "");
+      cell.setAttribute("contenteditable", "true");
+    }
+    view.container.insertBefore(row, view.shown[0] || (view.anchor && view.anchor.parentNode === view.container ? view.anchor : null));
+    state.adding = { row, button, label: button.innerHTML };
+    setText(button, "Save");
+    const first = inlineCells(row)[0];
+    if (first && first.focus) first.focus();
+  }
+
+  function stopAdding() {
+    const adding = state.adding;
+    state.adding = null;
+    if (!adding) return;
+    adding.row.remove();
+    adding.button.innerHTML = adding.label;
+  }
+
+  async function saveNewRow() {
+    const { row } = state.adding;
+    const entity = state.entity;
+    if (saving.has(row)) return;
+    const body = {};
+    for (const cell of inlineCells(row)) {
+      const value = readValue(fieldOf(entity, cell.dataset.field), cell.textContent);
+      if (value !== undefined) body[cell.dataset.field] = value;
+    }
+    saving.add(row);
+    const answer = await api("POST", entity.url, body).finally(() => saving.delete(row));
+    if (answer.status === 400 && answer.data && answer.data.details) return showProblems(entity, null, answer.data.details);
+    if (!answer.ok) return answer.status === 401 || say(problem(answer));
+    stopAdding();
+    await refresh();
+  }
+
   // ---------- row and page buttons ----------
 
   function buttonAction(name) {
@@ -607,15 +699,18 @@
     if (isFilter) return applyFilter(el);
     const row = el.closest("[data-id]");
     const run = {
-      prevPage: () => turnPage(-1),
-      nextPage: () => turnPage(1),
+      prevPage: () => turnPage(el, -1),
+      nextPage: () => turnPage(el, 1),
       search: () => {
         const box = el.parentElement && el.parentElement.querySelector("input");
         search(box ? box.value : "", true);
       },
       create: () => {
         const scope = state.entity && editorOf(state.entity);
-        return scope && save(scope);
+        if (scope) return save(scope);
+        // An Add button and no form on the page: add through a new row instead.
+        if (state.adding) return saveNewRow();
+        if (state.view && state.entity.create) startNewRow(el);
       },
       update: () => row && editRow(row, el),
       delete: () => row && removeRow(row),
@@ -661,14 +756,11 @@
 
   function onKeydown(event) {
     const row = event.target.closest && event.target.closest("[data-editing]");
-    if (!row) return;
-    if (event.key === "Escape") {
-      event.preventDefault();
-      cancelRowEdit();
-    } else if (event.key === "Enter") {
-      event.preventDefault();
-      saveRow(row).catch(report);
-    }
+    if (!row || (event.key !== "Escape" && event.key !== "Enter")) return;
+    event.preventDefault();
+    const isNew = row.dataset.editing === "new";
+    if (event.key === "Escape") isNew ? stopAdding() : cancelRowEdit();
+    else (isNew ? saveNewRow() : saveRow(row)).catch(report);
   }
 
   function onReset(event) {
