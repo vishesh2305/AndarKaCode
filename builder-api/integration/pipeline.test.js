@@ -291,9 +291,24 @@ describe("UI endpoints", () => {
       const readme = await fs.readFile(path.join(dir, "README.md"), "utf8");
       assert.match(readme, /npm install/);
       assert.match(readme, /s1: /, "the README says why each part exists");
+
+      // Step 15: the pages are wired to the backend (binder + map), the rest of each page unchanged.
+      for (const file of ["frontend/app.js", "frontend/api-map.json"]) await fs.access(path.join(dir, file));
+      const map = JSON.parse(await fs.readFile(path.join(dir, "frontend/api-map.json"), "utf8"));
+      assert.equal(map.entities.employee.url, "/api/employees");
+      for (const page of ["index.html", "page-1.html", "page-2.html"]) {
+        assert.match(await fs.readFile(path.join(dir, "frontend", page), "utf8"), /<script src="app\.js"><\/script><\/body>/, page);
+      }
+      assert.match(readme, /connected to the backend/);
     } finally {
       await fs.rm(dir, { recursive: true, force: true });
     }
+  });
+
+  it("keeps the UI's page preview exactly as Laptop B built it (not wired)", async () => {
+    const preview = await (await fetch(`${base}/projects/${id}/frontend?page=1`)).text();
+    assert.match(preview, /<html>/);
+    assert.doesNotMatch(preview, /app\.js/);
   });
 
   it("refuses to download a project that isn't SYNCED yet", async () => {
