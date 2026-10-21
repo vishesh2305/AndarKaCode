@@ -1,0 +1,75 @@
+{
+  "entities": [
+    {
+      "name": "employee",
+      "plural": "employees",
+      "label": "Employees",
+      "sampleConst": "SAMPLE_EMPLOYEES",
+      "fields": [
+        {
+          "name": "fullName",
+          "label": "Full Name",
+          "required": false,
+          "evidence": "s2: column 'Full Name'",
+          "type": "string"
+        },
+        {
+          "name": "email",
+          "label": "Email",
+          "required": false,
+          "evidence": "s2: column 'Email'",
+          "type": "email"
+        },
+        {
+          "name": "salary",
+          "label": "Salary",
+          "required": false,
+          "evidence": "s2: column 'Salary'",
+          "type": "number"
+        }
+      ],
+      "endpoints": {
+        "list": {
+          "search": false,
+          "filters": [],
+          "pagination": false,
+          "evidence": "s2: table 'Employees'"
+        },
+        "update": {
+          "evidence": "s2: row action 'Edit'"
+        },
+        "get": {
+          "evidence": "s2: row action 'Edit' (loads the record)"
+        },
+        "delete": {
+          "soft": false,
+          "evidence": "s2: row action 'Delete'"
+        }
+      }
+    }
+  ],
+  "operations": [],
+  "stats": [],
+  "auth": {
+    "login": {
+      "evidence": "s1: login form"
+    },
+    "signup": {
+      "evidence": "s1: sign-up link"
+    },
+    "me": null,
+    "roles": null
+  },
+  "pages": [
+    {
+      "screenshot": 1,
+      "kind": "login"
+    },
+    {
+      "screenshot": 2,
+      "kind": "list",
+      "entity": "employee"
+    }
+  ],
+  "openQuestions": []
+}

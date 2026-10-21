@@ -1,0 +1,74 @@
+{
+  "entities": [
+    {
+      "name": "product",
+      "plural": "products",
+      "label": "Products",
+      "sampleConst": "SAMPLE_PRODUCTS",
+      "fields": [
+        {
+          "name": "name",
+          "label": "Name",
+          "required": false,
+          "evidence": "s1: column 'Name'",
+          "type": "string"
+        },
+        {
+          "name": "category",
+          "label": "Category",
+          "required": false,
+          "evidence": "s1: column 'Category'",
+          "type": "string"
+        },
+        {
+          "name": "price",
+          "label": "Price",
+          "required": false,
+          "evidence": "s1: column 'Price'",
+          "type": "number"
+        },
+        {
+          "name": "inStock",
+          "label": "In Stock",
+          "required": false,
+          "evidence": "s1: column 'In Stock'",
+          "type": "boolean"
+        }
+      ],
+      "endpoints": {
+        "list": {
+          "search": true,
+          "filters": [
+            "category"
+          ],
+          "pagination": true,
+          "evidence": "s1: table 'Products'"
+        },
+        "update": {
+          "evidence": "s1: row action 'Edit'"
+        },
+        "get": {
+          "evidence": "s1: row action 'Edit' (loads the record)"
+        },
+        "delete": {
+          "soft": false,
+          "evidence": "s1: row action 'Delete'"
+        },
+        "create": {
+          "evidence": "s1: button '+ Add Product'"
+        }
+      }
+    }
+  ],
+  "operations": [],
+  "stats": [],
+  "auth": null,
+  "pages": [
+    {
+      "screenshot": 1,
+      "kind": "list",
+      "entity": "product"
+    }
+  ],
+  "openQuestions": []
+}
