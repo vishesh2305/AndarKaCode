@@ -2,6 +2,7 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { REPO_ROOT } from "./storage.js";
+import { wireApp } from "./wirer/index.js";
 import { createZip } from "./zip.js";
 
 const toPosix = (p) => p.split(path.sep).join("/");
@@ -53,7 +54,7 @@ export function readme({ project, contract, pages }) {
     "",
     ...pages.map((p) => `- \`frontend/page-${p.screenshot}.html\`: from screenshot ${p.screenshot}${p.screenshot === pages[0].screenshot ? " (also `index.html`)" : ""}`),
     "",
-    "The pages show the screenshots' sample data. Connecting their buttons to the API is the next AndarKaCode step.",
+    "The pages are connected to the backend by `frontend/app.js`, using `frontend/api-map.json` (which button calls which API address). Open them through `npm start`, not as files.",
     "",
     "## What was built, and why",
   ];
@@ -84,14 +85,14 @@ export async function appArchive({ project, contract, backendJob, frontendJobs, 
   const entries = [];
   for (const file of await listAppFiles(appDir)) entries.push({ name: file.path, data: await readFile(path.join(appDir, file.path)) });
 
+  // The pages as Laptop B built them, wired to the backend by the binder (Step 15).
   const pages = contract.body.pages;
+  const built = [];
   for (const page of pages) {
     const job = frontendJobs.find((j) => j.page === page.screenshot);
-    if (!job) continue;
-    const html = await readFile(path.join(REPO_ROOT, job.artifactPath));
-    entries.push({ name: `frontend/page-${page.screenshot}.html`, data: html });
-    if (page.screenshot === pages[0].screenshot) entries.push({ name: "frontend/index.html", data: html });
+    if (job) built.push({ screenshot: page.screenshot, html: await readFile(path.join(REPO_ROOT, job.artifactPath), "utf8") });
   }
+  for (const [name, data] of Object.entries(wireApp({ spec: contract.body, pages: built }))) entries.push({ name, data });
   for (const [i, shot] of screenshots.entries()) {
     entries.push({ name: `screenshots/screenshot-${i + 1}.png`, data: await readFile(path.join(REPO_ROOT, shot.path)) });
   }
