@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<!-- Hand-written in Screenshot-to-Code's style for the binder tests: products as a card grid (not a
+     table), a Yes/No badge, a search box, a category filter, previous/next, and an add form that is
+     a <div> with a type="button" Add button (no <form> element). -->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Products</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-white">
+    <main class="p-8">
+        <h1 class="text-3xl font-semibold mb-4">Products</h1>
+        <div class="flex gap-2 mb-6">
+            <input data-action="search" type="search" placeholder="Search products" class="border rounded px-3 py-2 flex-1">
+            <select data-filter="category" class="border rounded px-3 py-2">
+                <option value="">All categories</option>
+                <option value="stationery">Stationery</option>
+                <option value="electronics">Electronics</option>
+            </select>
+        </div>
+
+        <div class="border rounded p-4 mb-6 space-y-2" id="add">
+            <input data-field="name" name="name" placeholder="Name" required class="border rounded px-2 py-1">
+            <select data-field="category" name="category" class="border rounded px-2 py-1">
+                <option>Stationery</option>
+                <option>Electronics</option>
+            </select>
+            <input data-field="price" name="price" type="number" placeholder="Price" class="border rounded px-2 py-1">
+            <label><input data-field="inStock" name="inStock" type="checkbox"> In stock</label>
+            <button type="button" data-action="create" class="bg-indigo-600 text-white px-4 py-2 rounded">Add Product</button>
+        </div>
+
+        <div id="grid" class="grid grid-cols-3 gap-4">
+            <div class="card border rounded-lg p-4 shadow">
+                <h3 class="font-bold" data-field="name">Blue Pen</h3>
+                <p class="text-gray-500"><span data-field="category">Stationery</span></p>
+                <p class="text-lg">₹<span data-field="price">20</span></p>
+                <span data-field="inStock" class="badge bg-green-100 text-green-700 px-2 rounded">In Stock</span>
+            </div>
+            <div class="card border rounded-lg p-4 shadow">
+                <h3 class="font-bold" data-field="name">USB Cable</h3>
+                <p class="text-gray-500"><span data-field="category">Electronics</span></p>
+                <p class="text-lg">₹<span data-field="price">150</span></p>
+                <span data-field="inStock" class="badge bg-red-100 text-red-700 px-2 rounded">Out of Stock</span>
+            </div>
+        </div>
+
+        <div class="mt-6 flex gap-2">
+            <button data-action="prevPage" class="border px-3 py-1 rounded">‹ Prev</button>
+            <button data-action="nextPage" class="border px-3 py-1 rounded">Next ›</button>
+        </div>
+    </main>
+    <script>
+        const SAMPLE_PRODUCTS = [
+            { name: "Blue Pen", category: "Stationery", price: 20, inStock: true },
+            { name: "USB Cable", category: "Electronics", price: 150, inStock: false },
+        ];
+        document.querySelector('[data-action="create"]').addEventListener("click", () => { window.pageCreateRan = true; });
+    </script>
+</body>
+</html>

@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<!-- Hand-written in Screenshot-to-Code's style for the binder tests: stat cards, a status filter,
+     coloured status badges, row buttons (setStatus + custom), Export and a custom page button,
+     previous/next page. Rows are drawn on DOMContentLoaded, as some generated pages do. -->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Leave Requests</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100">
+    <div class="max-w-6xl mx-auto p-6">
+        <div class="flex justify-between items-center mb-6">
+            <h1 class="text-2xl font-bold">Leave Requests</h1>
+            <div class="space-x-2">
+                <button data-action="syncPayrollLeaveRequest" class="px-4 py-2 bg-purple-600 text-white rounded">Sync Payroll</button>
+                <button data-action="exportLeaveRequests" class="px-4 py-2 bg-gray-700 text-white rounded">Export CSV</button>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-3 gap-4 mb-6">
+            <div class="bg-white rounded-lg shadow p-4"><p class="text-gray-500 text-sm">Total Requests</p><p class="text-3xl font-bold" data-stat="totalRequests">128</p></div>
+            <div class="bg-white rounded-lg shadow p-4"><p class="text-gray-500 text-sm">Pending</p><p class="text-3xl font-bold text-yellow-600" data-stat="pending">14</p></div>
+            <div class="bg-white rounded-lg shadow p-4"><p class="text-gray-500 text-sm">Total Days</p><p class="text-3xl font-bold" data-stat="totalDays">342</p></div>
+        </div>
+
+        <div class="mb-4">
+            <select data-filter="status" class="border rounded px-3 py-2">
+                <option>All statuses</option>
+                <option>Pending</option>
+                <option>Approved</option>
+                <option>Rejected</option>
+            </select>
+        </div>
+
+        <table class="min-w-full bg-white rounded shadow">
+            <thead>
+                <tr><th class="px-4 py-2 text-left">Employee</th><th class="px-4 py-2 text-left">Days</th><th class="px-4 py-2 text-left">Status</th><th class="px-4 py-2">Actions</th></tr>
+            </thead>
+            <tbody id="requests"></tbody>
+        </table>
+
+        <div class="flex justify-between mt-4">
+            <button data-action="prevPage" class="px-3 py-1 border rounded">Previous</button>
+            <span class="text-sm text-gray-600">Page 1 of 13</span>
+            <button data-action="nextPage" class="px-3 py-1 border rounded">Next</button>
+        </div>
+    </div>
+
+    <script>
+        const SAMPLE_LEAVEREQUESTS = [
+            { employee: "Aarav Sharma", days: 3, status: "Pending" },
+            { employee: "Priya Singh", days: 5, status: "Approved" },
+            { employee: "Rohan Mehta", days: 1, status: "Rejected" },
+        ];
+        const BADGE = {
+            Pending: "bg-yellow-100 text-yellow-800",
+            Approved: "bg-green-100 text-green-800",
+            Rejected: "bg-red-100 text-red-800",
+        };
+
+        function render(list) {
+            const body = document.getElementById("requests");
+            body.innerHTML = "";
+            list.forEach((r) => {
+                const tr = document.createElement("tr");
+                tr.className = "border-t";
+                tr.innerHTML = `
+                    <td class="px-4 py-2" data-field="employee">${r.employee}</td>
+                    <td class="px-4 py-2" data-field="days">${r.days}</td>
+                    <td class="px-4 py-2" data-field="status"><span class="px-2 py-1 rounded-full text-xs ${BADGE[r.status]}">${r.status}</span></td>
+                    <td class="px-4 py-2 space-x-1">
+                        <button data-action="approveLeaveRequest" class="text-green-700">Approve</button>
+                        <button data-action="rejectLeaveRequest" class="text-red-700">Reject</button>
+                        <button data-action="recalculateLeaveRequest" class="text-blue-700">Recalculate</button>
+                    </td>`;
+                body.appendChild(tr);
+            });
+        }
+
+        document.addEventListener("DOMContentLoaded", () => render(SAMPLE_LEAVEREQUESTS));
+
+        // The page's own (fake) behaviour: the binder must stop these from running.
+        document.querySelector('[data-filter="status"]').addEventListener("change", (e) => {
+            window.pageFilterRan = true;
+            render(SAMPLE_LEAVEREQUESTS.filter((r) => e.target.value.startsWith("All") || r.status === e.target.value));
+        });
+        document.addEventListener("click", (e) => {
+            if (e.target.dataset.action) window.pageClickRan = true;
+            if (e.target.dataset.action === "approveLeaveRequest") e.target.closest("tr").querySelector("span").textContent = "Approved";
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<!-- Hand-written in Screenshot-to-Code's style for the binder tests: a sign-in card with a sign-up link. -->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Sign in</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="flex items-center justify-center min-h-screen bg-gray-50">
+    <div class="bg-white p-8 rounded-lg shadow w-96">
+        <h1 class="text-2xl font-semibold mb-6">Sign in</h1>
+        <form id="loginForm" class="space-y-4">
+            <label class="block">Email *<input type="email" name="email" data-field="email" required class="w-full border rounded px-3 py-2"></label>
+            <label class="block">Password *<input type="password" name="password" data-field="password" required class="w-full border rounded px-3 py-2"></label>
+            <button type="submit" data-action="login" class="w-full bg-blue-600 text-white py-2 rounded">Sign in</button>
+        </form>
+        <p class="mt-4 text-center">Don't have an account? <a href="#" data-action="signup" class="text-blue-600">Sign up</a></p>
+    </div>
+    <script>
+        document.getElementById("loginForm").addEventListener("submit", (e) => { e.preventDefault(); window.pageLoginRan = true; alert("Logged in (demo)"); });
+    </script>
+</body>
+</html>

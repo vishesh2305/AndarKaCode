@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Employee Management</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 font-sans">
+    <div class="container mx-auto px-4 py-8">
+        <h1 class="text-3xl font-bold text-gray-900 mb-6">Employee Management</h1>
+
+        <!-- Search Bar -->
+        <div class="mb-6">
+            <input type="text" placeholder="Search employees" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" data-action="search">
+        </div>
+
+        <!-- Add Employee Form -->
+        <div class="mb-8">
+            <h2 class="text-2xl font-semibold text-gray-900 mb-4">Add Employee</h2>
+            <form id="employeeForm" class="space-y-4">
+                <div>
+                    <label for="fullName" class="block text-sm font-medium text-gray-700">Full Name</label>
+                    <input type="text" id="fullName" name="fullName" data-field="fullName" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                </div>
+                <div>
+                    <label for="email" class="block text-sm font-medium text-gray-700">Email</label>
+                    <input type="email" id="email" name="email" data-field="email" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                </div>
+                <div>
+                    <label for="department" class="block text-sm font-medium text-gray-700">Department</label>
+                    <select id="department" name="department" data-field="department" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="">Select Department</option>
+                        <option value="HR">HR</option>
+                        <option value="Engineering">Engineering</option>
+                        <option value="Sales">Sales</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="salary" class="block text-sm font-medium text-gray-700">Salary</label>
+                    <input type="number" id="salary" name="salary" data-field="salary" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                </div>
+                <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-300">
+                    Add Employee
+                </button>
+            </form>
+        </div>
+
+        <!-- Employees Table -->
+        <div>
+            <h2 class="text-2xl font-semibold text-gray-900 mb-4">Employees</h2>
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Full Name</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Department</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Salary</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="employeeTableBody" class="bg-white divide-y divide-gray-200">
+                    <!-- Sample data will be inserted here by JavaScript -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // Sample data for employees
+        const SAMPLE_EMPLOYEES = [
+            {
+                fullName: "Aarav Sharma",
+                email: "aarav@example.com",
+                department: "Engineering",
+                salary: 60000
+            },
+            {
+                fullName: "Priya Singh",
+                email: "priya@example.com",
+                department: "HR",
+                salary: 45000
+            }
+        ];
+
+        // Function to render employees table
+        function renderEmployeesTable() {
+            const tableBody = document.getElementById('employeeTableBody');
+            tableBody.innerHTML = '';
+
+            SAMPLE_EMPLOYEES.forEach(employee => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td data-field="fullName" class="px-6 py-4 whitespace-nowrap">${employee.fullName}</td>
+                    <td data-field="email" class="px-6 py-4 whitespace-nowrap">${employee.email}</td>
+                    <td data-field="department" class="px-6 py-4 whitespace-nowrap">${employee.department}</td>
+                    <td data-field="salary" class="px-6 py-4 whitespace-nowrap">${employee.salary}</td>
+                    <td data-field="actions" class="px-6 py-4 whitespace-nowrap">
+                        <button data-action="update" class="px-3 py-1 bg-gray-200 text-gray-800 rounded-md mr-2 hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-300">Edit</button>
+                        <button data-action="delete" class="px-3 py-1 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-300">Delete</button>
+                    </td>
+                `;
+                tableBody.appendChild(row);
+            });
+        }
+
+        // Initial render
+        renderEmployeesTable();
+
+        // Handle form submission
+        document.getElementById('employeeForm').addEventListener('submit', function(event) {
+            event.preventDefault();
+            
+            // Get form values
+            const formData = {
+                fullName: document.getElementById('fullName').value,
+                email: document.getElementById('email').value,
+                department: document.getElementById('department').value,
+                salary: document.getElementById('salary').value
+            };
+            
+            // Add the new employee to the sample data
+            SAMPLE_EMPLOYEES.push(formData);
+            
+            // Re-render the table
+            renderEmployeesTable();
+            
+            // Reset the form
+            document.getElementById('employeeForm').reset();
+        });
+
+        // Handle edit button clicks
+        document.addEventListener('click', function(event) {
+            if (event.target.dataset.action === 'update') {
+                const row = event.target.closest('tr');
+                const employee = {
+                    fullName: row.querySelector('[data-field="fullName"]').textContent,
+                    email: row.querySelector('[data-field="email"]').textContent,
+                    department: row.querySelector('[data-field="department"]').textContent,
+                    salary: row.querySelector('[data-field="salary"]').textContent
+                };
+                
+                // Implement edit functionality (e.g., show a modal with form pre-filled)
+                alert('Edit functionality is not yet implemented.');
+            }
+        });
+
+        // Handle delete button clicks
+        document.addEventListener('click', function(event) {
+            if (event.target.dataset.action === 'delete') {
+                const row = event.target.closest('tr');
+                if (confirm('Are you sure you want to delete this employee?')) {
+                    // Remove the row from the table
+                    row.remove();
+                    
+                    // Remove the employee from the sample data
+                    const index = SAMPLE_EMPLOYEES.findIndex(employee => 
+                        employee.fullName === row.querySelector('[data-field="fullName"]').textContent
+                    );
+                    if (index !== -1) {
+                        SAMPLE_EMPLOYEES.splice(index, 1);
+                    }
+                }
+            }
+        });
+
+        // Handle search input
+        document.querySelector('[data-action="search"]').addEventListener('input', function(event) {
+            const searchTerm = event.target.value.toLowerCase();
+            
+            const rows = document.querySelectorAll('#employeeTableBody tr');
+            rows.forEach(row => {
+                const fullName = row.querySelector('[data-field="fullName"]').textContent.toLowerCase();
+                const email = row.querySelector('[data-field="email"]').textContent.toLowerCase();
+                
+                if (fullName.includes(searchTerm) || email.includes(searchTerm)) {
+                    row.style.display = 'table-row';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<!-- Hand-written in Screenshot-to-Code's style for the binder tests: Edit/Delete rows and no form
+     on the page, so Edit has to work inside the row. A cell holds two text parts (name + email). -->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Staff</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+    <div class="p-6">
+        <h1 class="text-xl font-bold mb-4">Employees</h1>
+        <table class="w-full">
+            <thead><tr><th>Name</th><th>Email</th><th>Salary</th><th></th></tr></thead>
+            <tbody>
+                <tr class="border-b">
+                    <td data-field="fullName"><div class="font-medium">Aarav Sharma</div></td>
+                    <td data-field="email" class="text-gray-500">aarav@example.com</td>
+                    <td data-field="salary">60000</td>
+                    <td><button data-action="update" class="text-blue-600">Edit</button> <button data-action="delete" class="text-red-600">Delete</button></td>
+                </tr>
+                <tr class="border-b">
+                    <td data-field="fullName"><div class="font-medium">Priya Singh</div></td>
+                    <td data-field="email" class="text-gray-500">priya@example.com</td>
+                    <td data-field="salary">45000</td>
+                    <td><button data-action="update" class="text-blue-600">Edit</button> <button data-action="delete" class="text-red-600">Delete</button></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    <script>
+        const SAMPLE_EMPLOYEES = [
+            { fullName: "Aarav Sharma", email: "aarav@example.com", salary: 60000 },
+            { fullName: "Priya Singh", email: "priya@example.com", salary: 45000 },
+        ];
+        document.addEventListener("click", (e) => {
+            if (e.target.dataset.action === "delete") { window.pageDeleteRan = true; e.target.closest("tr").remove(); }
+        });
+    </script>
+</body>
+</html>

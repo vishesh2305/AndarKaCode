@@ -35,6 +35,10 @@ describe("apiMap: one entry per spec part, nothing else", () => {
     assert.deepEqual(product.fields.find((f) => f.name === "inStock"), { name: "inStock", label: "In Stock", type: "boolean" });
   });
 
+  it("names the page's sample-data array, so the binder can tell how each sample value was drawn", () => {
+    assert.equal(apiMap(editDeleteSpec).entities.employee.sample, "SAMPLE_EMPLOYEES");
+  });
+
   it("says which field names a related record, so a relation shows a name instead of an id", () => {
     const map = apiMap(relationSpec);
     assert.deepEqual(map.entities.leaveRequest.fields.find((f) => f.name === "department"), {

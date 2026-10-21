@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<!-- Hand-written in Screenshot-to-Code's style for the binder tests: a relation (each leave request
+     belongs to a department), shown by name in the table and chosen by name in the form; a date. -->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Leave Requests</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+    <div class="p-6">
+        <form class="flex gap-2 mb-4">
+            <input data-field="employeeName" name="employeeName" required class="border px-2" placeholder="Employee">
+            <select data-field="department" name="department" required class="border px-2">
+                <option value="">Department</option>
+                <option>Engineering</option>
+                <option>HR</option>
+            </select>
+            <input data-field="from" name="from" type="date" required class="border px-2">
+            <button type="submit" data-action="create" class="bg-blue-600 text-white px-3">Add Request</button>
+        </form>
+        <table>
+            <tbody id="rows"></tbody>
+        </table>
+    </div>
+    <script>
+        const SAMPLE_LEAVEREQUESTS = [
+            { employeeName: "Aarav Sharma", department: "Engineering", from: "2026-11-02" },
+            { employeeName: "Priya Singh", department: "HR", from: "2026-11-10" },
+        ];
+        const rows = document.getElementById("rows");
+        for (const r of SAMPLE_LEAVEREQUESTS) {
+            rows.insertAdjacentHTML("beforeend", `<tr><td data-field="employeeName">${r.employeeName}</td><td data-field="department"><span class="tag">${r.department}</span></td><td data-field="from">${r.from}</td><td><button data-action="delete">Delete</button></td></tr>`);
+        }
+        document.querySelector("form").addEventListener("submit", (e) => { e.preventDefault(); window.pageSubmitRan = true; });
+    </script>
+</body>
+</html>
