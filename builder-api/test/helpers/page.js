@@ -33,6 +33,7 @@ export async function openPage({ html, map, api = () => undefined, url = "http:/
   console.on("jsdomError", (err) => {
     if (!/Not implemented: navigation/.test(err.message)) errors.push(err.message);
   });
+  console.on("error", (...args) => errors.push(args.map(String).join(" ")));
 
   async function fakeFetch(input, init = {}) {
     const target = new URL(String(input), dom.window.location.href);

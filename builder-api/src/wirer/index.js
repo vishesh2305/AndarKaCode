@@ -38,6 +38,7 @@ function entityInfo(entity, spec) {
   }
   return {
     url,
+    sample: entity.sampleConst, // the page's sample-data array: shows how each sample value was drawn
     labelField: (entity.fields.find((f) => f.type === "string" || f.type === "email") ?? entity.fields[0])?.name ?? null,
     fields: entity.fields.map(fieldInfo),
     list: list ? { search: Boolean(list.search), filters: list.filters ?? [], pagination: Boolean(list.pagination) } : null,
