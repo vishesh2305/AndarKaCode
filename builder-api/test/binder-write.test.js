@@ -41,6 +41,16 @@ describe("Add", () => {
     assert.equal(p.$('[data-field="fullName"]:is(input)').value, "", "the form is cleared");
   });
 
+  it("sends one record when Add is clicked twice quickly", async () => {
+    const { p } = await employeesPage([]);
+    fill(p, { fullName: "Kavya Rao", email: "kavya@example.com", salary: "52000" });
+    const button = p.$('#employeeForm button[type="submit"]');
+    button.click();
+    button.click();
+    await p.settle();
+    assert.equal(writes(p).length, 1);
+  });
+
   it("does not send a form the browser finds incomplete (required fields)", async () => {
     const { p } = await employeesPage();
     fill(p, { fullName: "", email: "kavya@example.com" });
