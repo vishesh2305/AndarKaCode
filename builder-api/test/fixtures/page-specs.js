@@ -1,5 +1,5 @@
 // App Specs matching the pages in fixtures/pages (binder tests). Shapes match src/spec/derive.js output.
-import { catalogSpec, opsSpec } from "./specs.js";
+import { authSpec, catalogSpec, editDeleteSpec as staffSpec, loginOnlySpec, opsSpec } from "./specs.js";
 export { authSpec, editDeleteSpec as staffSpec, relationSpec } from "./specs.js";
 
 const ev = (what) => `s1: ${what}`;
@@ -45,3 +45,15 @@ export const dashboardSpec = {
 
 // products-cards.html: catalogSpec as it is (search, category filter, pages, Add).
 export const productsSpec = catalogSpec;
+
+// login.html (screenshot 1) + staff-no-form.html (screenshot 2): a login screen with sign-up and a user
+// menu, in front of the Edit/Delete employees table.
+export const loginStaffSpec = {
+  ...authSpec,
+  entities: staffSpec.entities.map((e) => ({
+    ...e,
+    fields: e.fields.map((f) => ({ ...f, evidence: f.evidence.replace("s1:", "s2:") })),
+    endpoints: Object.fromEntries(Object.entries(e.endpoints).map(([k, v]) => [k, { ...v, evidence: v.evidence.replace("s1:", "s2:") }])),
+  })),
+};
+export const loginOnlyPageSpec = loginOnlySpec;
