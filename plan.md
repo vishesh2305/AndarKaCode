@@ -3,7 +3,7 @@
 > **Design:** see [ARCHITECTURE.md](ARCHITECTURE.md) (v3.1, approved 16 Oct: Phase 1 builds exactly what the screenshots show; every backend part has visible evidence). This file is our **step-by-step to-do list**.
 > **Rule:** do one step, report back, then move on. Tick the box when its "Done when" is true.
 
-**Current step:** ▶ **Step 13: AI layer for `custom` buttons**
+**Current step:** ▶ **Step 15: Wirer** (Mac check), then Step 16, then Steps 13–14 (order changed 21 Oct: wiring first, so every demo has working buttons)
 
 ---
 
@@ -49,7 +49,7 @@ Every step has four parts:
 
 ## Phase 5: Wire, verify, ship
 
-- [ ] **Step 15: Wirer.** Runtime binder `app.js` + `api-map.json`; multiple pages; token only if login. *Done when:* every control on every page works against the backend.
+- [ ] **Step 15: Wirer.** ◐ 21 Oct, on Laptop B: done and checked in real Chrome on two real projects (Products 7/7, Staff + login 6/6); the Mac check is still to do. Runtime binder `app.js` + `api-map.json`; multiple pages; token only if login. *Done when:* every control on every page works against the backend.
 - [ ] **Step 16: Verifier + repair loop.** Headless-browser marker check, "every control backed", "nothing unnecessary", tests, Playwright smoke; repair with Gateway `update` jobs.
 - [ ] **Step 17: Our React UI.** ◐ 20 Oct: **UI v1 for the presentation** done early (`web/`, served by the Builder API): upload, live metro-line pipeline with "how it works" per station, screenshots / plan with evidence / pages / backend files, download app as zip once SYNCED. Still to do: edit the spec in the UI. Upload screenshots, review the spec with its evidence, live status, download.
 - [ ] **Step 18: Sandbox preview.** Docker, limits, no secrets, auto-stop.
@@ -97,3 +97,5 @@ Every step has four parts:
 | 20 Oct 2026 | Step 12 (TDD) on Laptop B: login only when a login screen is shown (accounts, scrypt passwords, hashed session tokens, 5-try lockout, first account from .env; register/me/logout/roles only when shown). Unit 125/125, integration 36/36; real-model specs: 7 generated apps pass their own tests, login code only in the 2 with a login screen. Report: `docs/tdd/step12-auth.tdd.md`. |
 | 20 Oct 2026 | Laptop B had rebooted (18 Oct) with nothing running, and the Mac's upload failed with "fetch failed"; the Builder API now explains an unreachable Gateway in plain words. `start-laptop-b.ps1` cold start worked. |
 | 20 Oct 2026 | **UI v1** (user request, for the project presentation, before Step 13; TDD): light, cartoon-style React UI in `web/`; zip writer + `GET /download` (only when SYNCED), screenshots, generated files (no path escape). Unit 131/131, integration 40/40, web 8/8; real run on Laptop B: 2 projects → SYNCED, zip checked with `tar`. Report: `docs/tdd/ui-v1.tdd.md`. |
+| 21 Oct 2026 | **Order changed** (user approved): Step 15 (Wirer) before Steps 13–14, so downloaded apps have working buttons first. |
+| 21 Oct 2026 | Step 15 (TDD) on Laptop B: `api-map.json` from the spec + binder `app.js` added to the zip at download time (UI and states unchanged). The binder keeps each page's look (rows copied from its sample row, badge/number looks per value, browser's own messages) and stops the page's sample-only scripts. Unit 195/195, integration 47/47 (incl. end to end with the real backend), web 8/8. Real run: m2 and m4+m1 → SYNCED → unzip → npm start → real Chrome: 7/7 and 6/6, after fixing what the real pages showed (Add button with no form, numbered page buttons, `$2.50` prices, "Showing 1-3 of 24"). Report: `docs/tdd/step15-wirer.tdd.md`. |
