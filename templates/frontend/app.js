@@ -13,7 +13,7 @@
   const CONTROLS = "input, select, textarea";
   const SEARCH_DELAY_MS = 300;
 
-  const state = { map: null, page: null, view: null };
+  const state = { map: null, page: null, entity: null, view: null, editing: null };
   const setStatus = (status) => (root.dataset.andarkacode = status);
   const say = (message) => window.alert(message);
   setStatus("loading");
@@ -312,32 +312,270 @@
     }
   }
 
+  const refresh = () => Promise.all([loadList(), loadStats()]);
+
+  // ---------- the form: Add and Edit ----------
+
+  const controlIn = (scope, name) => scope.querySelector(`[data-field="${name}"]:is(${CONTROLS})`) || scope.querySelector(`[name="${name}"]:is(${CONTROLS})`);
+
+  // The element holding the entity's inputs: the <form>, or the smallest element around all of them.
+  function editorOf(entity) {
+    const controls = entity.fields.map((f) => formControls(f.name)[0]).filter(Boolean);
+    if (!controls.length) return null;
+    const form = controls[0].closest("form");
+    if (form) return form;
+    let scope = controls[0].parentElement;
+    while (scope && !controls.every((c) => scope.contains(c))) scope = scope.parentElement;
+    return scope;
+  }
+
+  const saveButtonOf = (scope) =>
+    scope.querySelector('[data-action="create"]') || scope.querySelector('button[type="submit"], button:not([type]), input[type="submit"]');
+
+  function readValue(field, raw) {
+    const text = String(raw).trim();
+    if (text === "") return undefined;
+    if (field.type === "number") {
+      const number = Number(text.replace(/[\s,]/g, "").replace(/^[^\d.-]+/, ""));
+      return Number.isFinite(number) ? number : text; // the backend explains what is wrong
+    }
+    if (field.type === "boolean") {
+      if (/^(true|yes|on|1)$/i.test(text)) return true;
+      return /^(false|no|off|0)$/i.test(text) ? false : text;
+    }
+    if (field.type === "enum") return field.options.find((o) => norm(o) === norm(text)) || text;
+    if (field.type === "date") return text.slice(0, 10);
+    return text;
+  }
+
+  function readForm(entity, scope) {
+    const body = {};
+    for (const field of entity.fields) {
+      const el = controlIn(scope, field.name);
+      if (!el) continue;
+      const value = el.type === "checkbox" ? el.checked : readValue(field, el.value);
+      if (value !== undefined) body[field.name] = value;
+    }
+    return body;
+  }
+
+  function fillForm(entity, scope, item) {
+    for (const field of entity.fields) {
+      const el = controlIn(scope, field.name);
+      if (!el) continue;
+      const value = item[field.name];
+      if (el.type === "checkbox") el.checked = Boolean(value);
+      else if (field.type === "ref") el.value = value && typeof value === "object" ? value.id : value ?? "";
+      else if (field.type === "date") el.value = value ? String(value).slice(0, 10) : "";
+      else el.value = value ?? "";
+    }
+  }
+
+  function clearForm(scope) {
+    if (scope.tagName === "FORM") return scope.reset();
+    for (const el of scope.querySelectorAll(CONTROLS)) {
+      if (el.type === "checkbox" || el.type === "radio") el.checked = el.defaultChecked;
+      else if (el.tagName === "SELECT") el.selectedIndex = 0;
+      else el.value = el.defaultValue;
+    }
+  }
+
+  function startEditing(scope, item) {
+    stopEditing();
+    fillForm(state.entity, scope, item);
+    const button = saveButtonOf(scope);
+    state.editing = { id: item.id, scope, button, label: button && button.innerHTML };
+    if (button) setText(button, "Save changes");
+    if (scope.scrollIntoView) scope.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  function stopEditing() {
+    const editing = state.editing;
+    state.editing = null;
+    if (editing && editing.button) editing.button.innerHTML = editing.label;
+  }
+
+  function validates(scope) {
+    if (scope.tagName === "FORM") return scope.checkValidity() || (scope.reportValidity(), false);
+    const invalid = [...scope.querySelectorAll(CONTROLS)].find((el) => !el.checkValidity());
+    return invalid ? (invalid.reportValidity(), false) : true;
+  }
+
+  // The backend's field problems as the browser's own bubbles; they clear when the field changes.
+  function showProblems(entity, scope, details) {
+    const loose = [];
+    let first = null;
+    for (const [name, message] of Object.entries(details)) {
+      const el = scope && controlIn(scope, name);
+      if (!el) {
+        const field = fieldOf(entity, name);
+        loose.push(`${field ? field.label : name}: ${message}`);
+        continue;
+      }
+      el.setCustomValidity(message);
+      first = first || el;
+    }
+    if (first) first.reportValidity();
+    if (loose.length) say(loose.join("\n"));
+  }
+
+  async function save(scope) {
+    const entity = state.entity;
+    const editing = state.editing && state.editing.scope === scope ? state.editing : null;
+    if (!entity || (!editing && !entity.create) || !validates(scope)) return;
+    const body = readForm(entity, scope);
+    const answer = editing ? await api("PUT", `${entity.url}/${editing.id}`, body) : await api("POST", entity.url, body);
+    if (answer.status === 400 && answer.data && answer.data.details) return showProblems(entity, scope, answer.data.details);
+    if (!answer.ok) return answer.status === 401 || say(problem(answer));
+    stopEditing();
+    clearForm(scope);
+    await refresh();
+  }
+
+  // ---------- Edit inside the row, when the page has no form ----------
+
+  const INLINE_TYPES = ["string", "email", "number", "date", "enum", "boolean"];
+  const inlineCells = (row) =>
+    [...row.querySelectorAll("[data-field]")].filter((cell) => {
+      const field = fieldOf(state.entity, cell.dataset.field);
+      return field && INLINE_TYPES.includes(field.type);
+    });
+
+  function startRowEdit(row, button) {
+    row.dataset.editing = "true";
+    for (const cell of inlineCells(row)) cell.setAttribute("contenteditable", "true");
+    setText(button, "Save");
+    const first = inlineCells(row)[0];
+    if (first && first.focus) first.focus();
+  }
+
+  async function saveRow(row) {
+    const entity = state.entity;
+    const body = {};
+    for (const cell of inlineCells(row)) {
+      const value = readValue(fieldOf(entity, cell.dataset.field), cell.textContent);
+      if (value !== undefined) body[cell.dataset.field] = value;
+    }
+    const answer = await api("PUT", `${entity.url}/${row.dataset.id}`, body);
+    if (answer.status === 400 && answer.data && answer.data.details) return showProblems(entity, null, answer.data.details);
+    if (!answer.ok) return answer.status === 401 || say(problem(answer));
+    await refresh();
+  }
+
+  const cancelRowEdit = () => state.view && render(state.view, [...state.view.items.values()]);
+
+  // ---------- row and page buttons ----------
+
+  function buttonAction(name) {
+    for (const entity of Object.values(state.map.entities)) if (entity.actions[name]) return { entity, action: entity.actions[name] };
+    return null;
+  }
+
+  async function download(url, fallbackName) {
+    const answer = await api("GET", url);
+    if (!answer.ok || !answer.res) return answer.status === 401 || say(problem(answer));
+    const disposition = answer.res.headers.get("content-disposition") || "";
+    const named = disposition.match(/filename="?([^";]+)"?/);
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(await answer.res.blob());
+    link.download = named ? named[1] : fallbackName;
+    link.style.display = "none";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(link.href), 10000);
+  }
+
+  async function runButton(el, name) {
+    const { entity, action } = buttonAction(name);
+    if (!action.available) return say(`"${action.button}" is not available yet.`);
+    if (action.kind === "export") return download(action.url, `${entity.url.split("/").pop()}.csv`);
+    let url = action.url;
+    if (action.row) {
+      const row = el.closest("[data-id]");
+      if (!row) return;
+      url = url.replace(":id", encodeURIComponent(row.dataset.id));
+    }
+    const answer = await api(action.method, url);
+    if (!answer.ok) return answer.status === 401 || say(problem(answer));
+    await refresh();
+  }
+
+  async function removeRow(row) {
+    const entity = state.entity;
+    const one = entity.url.split("/").pop().replace(/s$/, "").replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
+    if (!window.confirm(`Delete this ${one}?`)) return;
+    const answer = await api("DELETE", `${entity.url}/${row.dataset.id}`);
+    if (!answer.ok) return answer.status === 401 || say(problem(answer));
+    await refresh();
+  }
+
+  function editRow(row, button) {
+    const item = state.view && state.view.items.get(row.dataset.id);
+    if (!item) return;
+    const scope = state.entity.update && editorOf(state.entity);
+    if (scope && !scope.contains(row)) return startEditing(scope, item);
+    if (row.dataset.editing) return saveRow(row);
+    startRowEdit(row, button);
+  }
+
   // ---------- events: caught before the page's own scripts ----------
+
+  const BUILT_IN = ["create", "update", "delete", "prevPage", "nextPage", "search"];
+  const report = (err) => console.error("AndarKaCode binder:", err);
+  const entityControlsIn = (scope) => state.entity.fields.some((f) => controlIn(scope, f.name));
 
   function onClick(event) {
     const el = event.target.closest && event.target.closest("[data-action], [data-filter]");
     if (!el || el.tagName === "SELECT" || el.closest("select")) return;
-    const action = el.dataset.action;
     if (el.matches(CONTROLS) && el.type !== "button" && el.type !== "submit") return; // clicking into a box or a checkbox
-    const handled = el.dataset.filter !== undefined || ["prevPage", "nextPage", "search"].includes(action);
+    const action = el.dataset.action;
+    const isFilter = el.dataset.filter !== undefined;
     if (!state.map) {
-      if (handled) (event.preventDefault(), event.stopImmediatePropagation());
+      event.preventDefault();
+      event.stopImmediatePropagation();
       return;
     }
-    if (!handled) return;
+    if (!isFilter && !BUILT_IN.includes(action) && !buttonAction(action)) return; // not a marker we know: the page keeps it
+    event.stopImmediatePropagation();
+    // A submit button in a form: the browser checks the form first, then fires submit (caught below).
+    if (el.form && el.type === "submit" && action === "create") return;
+    event.preventDefault();
+
+    if (isFilter) return applyFilter(el);
+    const row = el.closest("[data-id]");
+    const run = {
+      prevPage: () => turnPage(-1),
+      nextPage: () => turnPage(1),
+      search: () => {
+        const box = el.parentElement && el.parentElement.querySelector("input");
+        search(box ? box.value : "", true);
+      },
+      create: () => {
+        const scope = state.entity && editorOf(state.entity);
+        return scope && save(scope);
+      },
+      update: () => row && editRow(row, el),
+      delete: () => row && removeRow(row),
+    }[action];
+    Promise.resolve(run ? run() : runButton(el, action)).catch(report);
+  }
+
+  function onSubmit(event) {
+    const form = event.target;
+    if (!state.map) return;
+    const entityForm = state.entity && entityControlsIn(form);
+    const searchBox = !entityForm && form.querySelector('[data-action="search"]');
+    if (!entityForm && !searchBox) return;
     event.preventDefault();
     event.stopImmediatePropagation();
-    if (el.dataset.filter !== undefined) return applyFilter(el);
-    if (action === "prevPage") return turnPage(-1);
-    if (action === "nextPage") return turnPage(1);
-    if (action === "search" && !el.matches(CONTROLS)) {
-      const box = el.parentElement && el.parentElement.querySelector("input");
-      return search(box ? box.value : "", true);
-    }
+    if (searchBox) return search(searchBox.value || "", true);
+    save(form).catch(report);
   }
 
   function onInput(event) {
     const el = event.target;
+    if (el.validity && el.validity.customError) el.setCustomValidity(""); // the user is fixing it
     if (!el.matches || !el.matches('input[data-action="search"], textarea[data-action="search"]')) return;
     event.stopImmediatePropagation();
     search(el.value, false);
@@ -345,14 +583,34 @@
 
   function onChange(event) {
     const el = event.target;
+    if (el.validity && el.validity.customError) el.setCustomValidity("");
     if (!el.matches || !el.matches("select[data-filter], input[data-filter]")) return;
     event.stopImmediatePropagation();
     applyFilter(el);
   }
 
+  function onKeydown(event) {
+    const row = event.target.closest && event.target.closest("[data-editing]");
+    if (!row) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      cancelRowEdit();
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      saveRow(row).catch(report);
+    }
+  }
+
+  function onReset(event) {
+    if (state.editing && state.editing.scope === event.target) stopEditing();
+  }
+
   window.addEventListener("click", onClick, true);
+  window.addEventListener("submit", onSubmit, true);
   window.addEventListener("input", onInput, true);
   window.addEventListener("change", onChange, true);
+  window.addEventListener("keydown", onKeydown, true);
+  window.addEventListener("reset", onReset, true);
 
   // ---------- start ----------
 
@@ -367,7 +625,7 @@
     const file = decodeURIComponent(window.location.pathname.split("/").pop() || "") || "index.html";
     state.page = map.pages[file] || map.pages["index.html"] || { kind: "unknown" };
 
-    const entity = state.page.entity && map.entities[state.page.entity];
+    const entity = (state.entity = (state.page.entity && map.entities[state.page.entity]) || null);
     if (entity) {
       alignEnumDropdowns(entity);
       if (entity.list) state.view = await setupList(entity);
