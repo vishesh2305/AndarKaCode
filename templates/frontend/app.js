@@ -446,12 +446,15 @@
     if (loose.length) say(loose.join("\n"));
   }
 
+  const saving = new WeakSet(); // forms with a save on its way: a second click sends nothing
+
   async function save(scope) {
     const entity = state.entity;
     const editing = state.editing && state.editing.scope === scope ? state.editing : null;
-    if (!entity || (!editing && !entity.create) || !validates(scope)) return;
+    if (!entity || saving.has(scope) || (!editing && !entity.create) || !validates(scope)) return;
     const body = readForm(entity, scope);
-    const answer = editing ? await api("PUT", `${entity.url}/${editing.id}`, body) : await api("POST", entity.url, body);
+    saving.add(scope);
+    const answer = await (editing ? api("PUT", `${entity.url}/${editing.id}`, body) : api("POST", entity.url, body)).finally(() => saving.delete(scope));
     if (answer.status === 400 && answer.data && answer.data.details) return showProblems(entity, scope, answer.data.details);
     if (!answer.ok) return answer.status === 401 || say(problem(answer));
     stopEditing();
