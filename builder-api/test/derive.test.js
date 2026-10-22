@@ -2,6 +2,7 @@
 // Rule under test: no evidence, no code (ARCHITECTURE.md v3.1 §0 and §4.2).
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { checkSpec } from "../src/spec/check.js";
 import { camelCase, deriveSpec, inferType } from "../src/spec/derive.js";
 
 // A screen with only what a test needs; everything else is "not visible".
@@ -385,5 +386,63 @@ describe("deriveSpec: entity label", () => {
       screen({ title: "", tables: [employeeTable({ entityHint: { singular: "leaveRequest", plural: "leaveRequests" } })] }),
     ]);
     assert.equal(spec.entities[0].label, "Leave Requests");
+  });
+});
+
+// Found 22 Oct with samples/employees.png on the real model: the "Add Employee" form's Department
+// dropdown is closed, so the model can only see "Select Department". That placeholder became the
+// only allowed value, and the backend refused every real department: Add Employee never worked.
+describe("deriveSpec: a dropdown whose choices are not visible", () => {
+  const addEmployee = (options, columnValues = ["Engineering", "HR"]) =>
+    screen({
+      tables: [
+        employeeTable({
+          columns: [
+            { label: "Full Name", values: ["Aarav Sharma", "Priya Singh"] },
+            { label: "Department", values: columnValues },
+          ],
+        }),
+      ],
+      forms: [
+        {
+          title: "Add Employee",
+          inputs: [
+            { label: "Full Name", kind: "text" },
+            { label: "Department", kind: "select", options },
+          ],
+          submitLabel: "Add Employee",
+        },
+      ],
+      buttons: [{ label: "Add Employee", scope: "page" }],
+    });
+
+  it("never makes a placeholder ('Select Department', 'Choose…', '-- Select --') an allowed value", () => {
+    for (const placeholder of ["Select Department", "Choose a department", "-- Select --", "Department", "All departments"]) {
+      const department = field(deriveSpec([addEmployee([placeholder])]), "employee", "department");
+      assert.ok(!(department.options ?? []).includes(placeholder), placeholder);
+    }
+  });
+
+  it("stores a closed dropdown as text (any choice the page offers can be saved), still drawn as a dropdown", () => {
+    for (const options of [["Select Department"], [], undefined]) {
+      const spec = deriveSpec([addEmployee(options)]);
+      const department = field(spec, "employee", "department");
+      assert.equal(department.type, "string", JSON.stringify(options));
+      assert.equal(department.control, "select");
+      assert.deepEqual(checkSpec(spec), [], "the spec is buildable");
+    }
+  });
+
+  it("asks whether it is a fixed list, saying the choices were not visible", () => {
+    const spec = deriveSpec([addEmployee(["Select Department"])]);
+    const question = spec.openQuestions.find((q) => q.field === "department");
+    assert.match(question.question, /not visible/);
+    assert.equal(question.default, "text");
+  });
+
+  it("keeps visible choices as a fixed list, without the placeholder", () => {
+    const department = field(deriveSpec([addEmployee(["Select Department", "HR", "Engineering", "Sales"])]), "employee", "department");
+    assert.equal(department.type, "enum");
+    assert.deepEqual(department.options, ["HR", "Engineering", "Sales"]);
   });
 });

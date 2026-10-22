@@ -97,3 +97,26 @@ describe("pageInstructions: other pages", () => {
     assert.throws(() => pageInstructions(spec, 9), /no page for screenshot 9/);
   });
 });
+
+describe("pageInstructions: a dropdown stored as text", () => {
+  it("still asks for a <select> (the screenshot shows one), without a fixed list of values", () => {
+    const text = pageInstructions(
+      {
+        ...spec,
+        entities: [
+          {
+            ...spec.entities[0],
+            fields: [
+              { name: "fullName", label: "Full Name", type: "string", required: true, evidence: "s1: column 'Full Name'" },
+              { name: "team", label: "Team", type: "string", control: "select", required: false, evidence: "s1: form input 'Team'" },
+            ],
+          },
+          spec.entities[1],
+        ],
+      },
+      1
+    );
+    assert.match(text, /team = a <select>/);
+    assert.match(text, /- team -> label "Team" \(a dropdown\)/);
+  });
+});
