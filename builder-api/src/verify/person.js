@@ -49,9 +49,11 @@ const tagField = (entity) => entity.fields.find((f) => f.type === "string") ?? e
 const lastRequest = (p, method, path) => [...p.requests].reverse().find((r) => r.method === method && (path instanceof RegExp ? path.test(r.path) : r.path === path));
 
 /** Turns a refused or missing request into a check result with the layer to blame. */
-function failure(p, entity, request, scope, what) {
+// submitted: a form was sent, so a browser message on a field explains why nothing went out. (An empty
+// required field always has such a message; it only matters when a form was submitted.)
+function failure(p, entity, request, scope, what, { submitted = false } = {}) {
   if (!request) {
-    const bubble = [...(scope ?? p.document).querySelectorAll(CONTROLS)].find((el) => el.validationMessage);
+    const bubble = submitted && [...(scope ?? p.document).querySelectorAll(CONTROLS)].find((el) => el.validationMessage);
     const why = bubble ? ` The browser stopped it: "${bubble.validationMessage}" on ${bubble.name || bubble.dataset.field || "a field"}.` : "";
     return { status: "fail", layer: "page", detail: `Nothing reached the backend when ${what}.${why}${p.errors.length ? ` Page errors: ${p.errors.join("; ")}` : ""}` };
   }
@@ -89,7 +91,7 @@ export async function runLoginPage({ base, map, n, file, credentials }) {
         token,
       };
     }
-    return { checks: [{ id, page: n, title, ...failure(p, { fields: [] }, request, null, "signing in") }], token: null };
+    return { checks: [{ id, page: n, title, ...failure(p, { fields: [] }, request, null, "signing in", { submitted: true }) }], token: null };
   } finally {
     p.close();
   }
@@ -150,7 +152,7 @@ export async function runDataPage({ base, map, spec, n, file, expected, token, e
         const shown = p.$(`[data-id="${record.id}"]`);
         add("add", `Add: "${label("create")}" saves a new ${singular(entity)}`, shown ? { status: "pass", detail: "Saved in the database and shown in the list." } : { status: "fail", layer: "page", detail: "Saved in the database, but the new row did not appear on the page." });
       } else {
-        add("add", `Add: "${label("create")}" saves a new ${singular(entity)}`, failure(p, entity, request, scope, `"${label("create")}" was clicked`));
+        add("add", `Add: "${label("create")}" saves a new ${singular(entity)}`, failure(p, entity, request, scope, `"${label("create")}" was clicked`, { submitted: true }));
       }
     } finally {
       p.close();
@@ -192,7 +194,7 @@ export async function runDataPage({ base, map, spec, n, file, expected, token, e
         text = edited;
         add("edit", `Edit: "${label("update")}" saves a change`, { status: "pass", detail: formControl?.value !== undefined && !editable ? "Changed through the page's form." : "Changed inside the row." });
       } else {
-        add("edit", `Edit: "${label("update")}" saves a change`, row ? failure(p, entity, request, null, `"${label("update")}" was used`) : { status: "fail", layer: "page", detail: "The record's row is not on the page." });
+        add("edit", `Edit: "${label("update")}" saves a change`, row ? failure(p, entity, request, null, `"${label("update")}" was used`, { submitted: true }) : { status: "fail", layer: "page", detail: "The record's row is not on the page." });
       }
     } finally {
       p.close();

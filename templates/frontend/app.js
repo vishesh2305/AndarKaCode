@@ -394,6 +394,7 @@
   }
 
   // Some pages draw their sample rows a moment after loading: repair markers and look again for ~1 s.
+  // No rows at all (e.g. the page's own script failed): build one from the table's header.
   async function waitForRows(entity) {
     repairPage(entity);
     let rows = findRows(entity);
@@ -402,7 +403,44 @@
       repairPage(entity);
       rows = findRows(entity);
     }
-    return rows;
+    return rows.length ? rows : rowsFromHeader(entity);
+  }
+
+  // A row made column by column from the header: a cell per field ("Salary" -> data-field="salary"), the
+  // row buttons in the actions column. Text styles of the header (capitals, small grey) are left out.
+  const HEADER_ONLY = /^(uppercase|tracking-\S+|text-xs|text-sm|font-\S+|text-gray-\d+|bg-\S+)$/;
+  function rowsFromHeader(entity) {
+    for (const table of document.querySelectorAll("table")) {
+      const heads = [...table.querySelectorAll("thead tr:last-child > th, thead tr:last-child > td")];
+      const fields = heads.map((th) => entity.fields.find((f) => cleanLabel(f.label) === cleanLabel(th.textContent)) || null);
+      if (!fields.some(Boolean)) continue;
+      const buttons = [
+        entity.update && ["update", "Edit"],
+        entity.delete && ["delete", "Delete"],
+        ...Object.entries(entity.actions).filter(([, a]) => a.row).map(([name, a]) => [name, a.button]),
+      ].filter(Boolean);
+      const actionsAt = heads.findIndex((th, i) => !fields[i] && /^actions?$/i.test(cleanLabel(th.textContent)));
+      const row = document.createElement("tr");
+      heads.forEach((th, i) => {
+        const cell = document.createElement("td");
+        cell.className = th.className.split(/\s+/).filter((c) => c && !HEADER_ONLY.test(c)).join(" ");
+        if (fields[i]) cell.setAttribute("data-field", fields[i].name);
+        if (i === (actionsAt === -1 ? heads.length - 1 : actionsAt) && !fields[i]) {
+          for (const [name, label] of buttons) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.dataset.action = name;
+            button.textContent = label;
+            cell.append(button, " ");
+          }
+        }
+        row.appendChild(cell);
+      });
+      (table.tBodies[0] || table.appendChild(document.createElement("tbody"))).appendChild(row);
+      noteRepair("rows built from the table header (the page drew no rows of its own)");
+      return [row];
+    }
+    return [];
   }
 
   async function setupList(entity) {

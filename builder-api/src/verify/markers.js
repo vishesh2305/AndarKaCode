@@ -56,7 +56,9 @@ const unique = (values) => [...new Set(values)];
  * count, and found.repaired lists them.
  */
 export async function pageMarkers(html, { map, file = "page.html" } = {}) {
-  const quiet = new VirtualConsole(); // the page's own console and script errors are not ours to report here
+  const quiet = new VirtualConsole(); // the page's own console stays quiet; its script errors are noted
+  const scriptErrors = [];
+  quiet.on("jsdomError", (err) => /Not implemented/.test(err.message) || scriptErrors.push(err.message));
   const page = map ? wirePage(html).replace(SCRIPT, () => `<script>${BINDER}</script>`) : String(html).replace(SCRIPT, "");
   const dom = new JSDOM(page, {
     url: `http://127.0.0.1/${file}`,
@@ -88,6 +90,7 @@ export async function pageMarkers(html, { map, file = "page.html" } = {}) {
     stats: all("data-stat"),
     submitForm,
     repaired: JSON.parse(root.dataset.andarkacodeRepaired ?? "[]"),
+    scriptErrors: unique(scriptErrors),
   };
   window.close();
   return found;
@@ -106,13 +109,17 @@ export function markerCheck(expected, found) {
   for (const name of expected.filters) if (!found.filters.includes(name)) missing.push(`the filter for ${name} (data-filter="${name}")`);
   for (const key of expected.stats) if (!found.stats.includes(key)) missing.push(`the number in the card ${key} (data-stat="${key}")`);
 
+  // "Uncaught [SyntaxError: missing ) after argument list]" -> "SyntaxError: missing ) after argument list"
+  const scriptError = found.scriptErrors?.length ? found.scriptErrors[0].replace(/^Uncaught \[?/, "").replace(/\]$/, "") : null;
   const known = new Set([...expected.actions.map((a) => a.name), "logout"]);
   const warnings = [
+    ...(scriptError ? [`the page's own script has an error (${scriptError}), so what it draws itself may be missing`] : []),
     ...(found.repaired ?? []).map((what) => `added by AndarKaCode when the page opens (Laptop B forgot it): ${what}`),
     ...found.actions.filter((a) => !known.has(a)).map((a) => `the page has a button data-action="${a}" the spec does not know: it does nothing`),
     ...found.fields.filter((f) => !IGNORED_FIELDS.has(f) && !expected.fields.some((x) => x.name === f)).map((f) => `the page shows data-field="${f}", which the spec does not have`),
   ];
+  const why = scriptError ? `The page's own script has an error (${scriptError}), so its sample rows and anything else it draws never appeared. ` : "";
   return missing.length
-    ? { status: "fail", layer: "page", detail: `Missing on this page: ${missing.join(", ")}.`, warnings }
+    ? { status: "fail", layer: "page", detail: `${why}Missing on this page: ${missing.join(", ")}.`, warnings }
     : { status: "pass", detail: "Every field and button the spec needs is on this page.", warnings };
 }
