@@ -18,7 +18,7 @@ function readHash() {
   const named = TABS.find((t) => t.toLowerCase() === (tab ?? "").toLowerCase());
   return { creating: kind === "new", selectedId: kind === "p" ? id ?? null : null, tab: named ?? "Screenshots" };
 }
-const SETTLED = ["SYNCED", "NEEDS_ATTENTION"];
+const SETTLED = ["READY", "NEEDS_ATTENTION"];
 
 function usePolling(load, ms, deps) {
   useEffect(() => {
@@ -98,15 +98,22 @@ export function App() {
                     {(project.screenshots?.length || 1) === 1 ? "" : "s"}, AI mode {project.mode}
                   </p>
                 </div>
-                {project.state === "SYNCED" ? (
-                  <a className="btn btn-download" href={api.downloadUrl(project.id)} download>
-                    Download app (.zip)
-                  </a>
-                ) : (
-                  <span className="btn btn-download btn-disabled" aria-disabled="true" title="Available once the sync check passes">
-                    Download app (.zip)
-                  </span>
-                )}
+                <div className="download">
+                  {project.state === "READY" ? (
+                    <a className="btn btn-download" href={api.downloadUrl(project.id)} download>
+                      Download app (.zip)
+                    </a>
+                  ) : (
+                    <span className="btn btn-download btn-disabled" aria-disabled="true" title="Available once every check passes">
+                      Download app (.zip)
+                    </span>
+                  )}
+                  {status.canDownloadAnyway && (
+                    <a className="download-anyway" href={api.downloadUrl(project.id, { anyway: true })} download>
+                      Download anyway, with the check report
+                    </a>
+                  )}
+                </div>
               </div>
 
               <div className="metro-wrap">
@@ -124,7 +131,7 @@ export function App() {
               <div className="tab-panel" role="tabpanel" aria-label={tab}>
                 {tab === "Screenshots" && <Screenshots project={project} />}
                 {tab === "Plan" && <Plan project={project} />}
-                {tab === "Pages" && <Pages project={project} pages={status.stations.pages.pages} />}
+                {tab === "Pages" && <Pages project={project} pages={status.stations.pages.pages} wired={status.stations.wire.status === "done"} />}
                 {tab === "Backend" && <Backend project={project} ready={status.stations.backend.status === "done"} />}
               </div>
             </>

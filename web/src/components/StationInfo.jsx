@@ -1,5 +1,5 @@
 // "How it works" for the selected station, plus the live facts for this project.
-import { STATIONS, STATUS_WORDS } from "../stations.js";
+import { CHECK_MARKS, LAYER_WORDS, STATIONS, STATUS_WORDS } from "../stations.js";
 
 export function StationInfo({ id, project, status }) {
   const info = STATIONS[id];
@@ -40,6 +40,31 @@ export function StationInfo({ id, project, status }) {
           {status.error}
         </p>
       )}
+      {id === "verify" && s.checks?.length > 0 && <Report checks={s.checks} />}
     </section>
+  );
+}
+
+// The Verifier's checks, problems first: what was tried, what happened, and which part to blame.
+function Report({ checks }) {
+  return (
+    <div className="report">
+      <h3>The checks</h3>
+      <ul>
+        {checks.map((c) => (
+          <li key={c.id} className={`report-row report-${c.status}`}>
+            <span className="report-mark" aria-label={c.status}>
+              {CHECK_MARKS[c.status] ?? "?"}
+            </span>
+            <span className="report-text">
+              <strong>{c.title}</strong>
+              {c.page ? <span className="report-page">page {c.page}</span> : null}
+              <span className="report-detail">{c.detail}</span>
+              {c.layer && c.status === "fail" ? <span className="report-layer">To fix: {LAYER_WORDS[c.layer] ?? c.layer}</span> : null}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

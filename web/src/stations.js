@@ -82,23 +82,40 @@ export const STATIONS = {
   },
   wire: {
     title: "Wire",
-    where: "coming next",
-    how: ["Coming next: a small script connects each page's tables and buttons to the backend, using the markers the pages already have."],
-    details: () => [],
+    where: "Mac",
+    how: [
+      "Each page gets one extra line: a small script (app.js) that connects its tables, forms and buttons to the backend, using the markers on the page.",
+      "A list (api-map.json) says which button calls which backend address. The page's look doesn't change: new rows are copies of its own sample rows.",
+    ],
+    details: (project, s) => [["Pages wired", s.status === "done" ? project.contract?.body.pages.length ?? "—" : "—"]],
   },
   verify: {
     title: "Check",
-    where: "coming next",
-    how: ["Coming next: a robot browser and the generated tests check that every button works and that nothing unnecessary was built."],
-    details: () => [],
+    where: "Mac, a browser without a screen",
+    how: [
+      "The app is started on a throwaway database. Each page is used like a person would: add a record, reload, edit it, search, filter, press its buttons, delete it, sign in.",
+      "Every result must reach the database. Then the app's own tests run. If something fails, the report says which control, what the backend answered, and which part to blame: the page, the spec or the backend.",
+    ],
+    details: (project, s) => [
+      ["Passed", s.summary?.pass ?? "—"],
+      ["Failed", s.summary?.fail ?? "—"],
+      ["Warnings", s.summary?.warn ?? "—"],
+      ["Time", s.seconds == null ? "—" : `${s.seconds} s`],
+    ],
   },
   ready: {
     title: "Ready",
-    where: "coming next",
-    how: ["Coming next: a live preview and publishing to GitHub. Today you can download the app as a zip once the sync check passes."],
+    where: "Mac",
+    how: [
+      "Every check passed. Try the app for real in the Pages tab (Live), then download it as a zip with its verify report.",
+      "Publishing to GitHub comes in a later step.",
+    ],
     details: () => [],
   },
 };
+
+export const CHECK_MARKS = { pass: "✓", fail: "✗", warn: "!", note: "i", skip: "–" };
+export const LAYER_WORDS = { page: "the page", spec: "the spec", backend: "the backend" };
 
 export const STATUS_WORDS = {
   done: "Done",

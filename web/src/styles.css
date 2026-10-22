@@ -1211,3 +1211,155 @@ a {
     fill: var(--sky);
   }
 }
+
+/* ---------- Step 16: download rules, the Check report, the Live view ---------- */
+
+.download {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.35rem;
+}
+
+.download-anyway {
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+  text-decoration: underline;
+}
+
+.report {
+  margin-top: 1rem;
+}
+
+.report h3 {
+  margin: 0 0 0.5rem;
+}
+
+.report ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.report-row {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  padding: 0.5rem 0.7rem;
+  border: var(--line);
+  border-radius: 12px;
+  background: var(--white);
+}
+
+.report-fail {
+  background: #ffe3ec;
+}
+
+.report-warn {
+  background: #fff4d6;
+}
+
+.report-mark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: var(--line);
+  border-radius: 50%;
+  font-weight: 700;
+  font-size: 0.85rem;
+  background: var(--white);
+}
+
+.report-pass .report-mark {
+  background: var(--mint);
+}
+
+.report-fail .report-mark {
+  background: var(--bubblegum);
+}
+
+.report-warn .report-mark {
+  background: var(--sunny);
+}
+
+.report-note .report-mark,
+.report-skip .report-mark {
+  background: var(--lilac);
+}
+
+.report-text {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.6rem;
+  align-items: baseline;
+}
+
+.report-page {
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+}
+
+.report-detail {
+  flex-basis: 100%;
+}
+
+.report-layer {
+  padding: 0 0.5rem;
+  border: 1.5px solid var(--ink);
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  background: var(--white);
+}
+
+.pages-bar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.view-toggle {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 0.8rem;
+}
+
+.chip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.chip-live.chip-on {
+  background: var(--mint);
+}
+
+.live-note {
+  margin: 0 0 0.8rem;
+  padding: 0.5rem 0.8rem;
+  border: var(--line);
+  border-radius: 12px;
+  background: #e6fbf2;
+}
+
+.browser-bar .browser-address {
+  width: auto;
+  height: auto;
+  margin-left: 0.5rem;
+  border: none;
+  border-radius: 0;
+  background: none;
+  color: var(--ink-soft);
+  font: 0.8rem var(--mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.live-foot .btn {
+  margin-left: 0.4rem;
+}

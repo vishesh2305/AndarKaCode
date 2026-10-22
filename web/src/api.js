@@ -24,5 +24,8 @@ export const api = {
   },
   screenshotUrl: (id, n) => `/api/projects/${id}/screenshots/${n}`,
   pageUrl: (id, n) => `/api/projects/${id}/frontend?page=${n}`,
-  downloadUrl: (id) => `/api/projects/${id}/download`,
+  downloadUrl: (id, { anyway = false } = {}) => `/api/projects/${id}/download${anyway ? "?anyway=1" : ""}`,
+  // The live preview: { url (on its own local port), credentials (only for apps with a login screen) }.
+  startPreview: (id) => fetch(`/api/projects/${id}/preview`, { method: "POST" }).then(json),
+  stopPreview: (id) => fetch(`/api/projects/${id}/preview`, { method: "DELETE" }),
 };

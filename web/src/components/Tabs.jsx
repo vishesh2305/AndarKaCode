@@ -127,37 +127,109 @@ export function Plan({ project }) {
   );
 }
 
-export function Pages({ project, pages }) {
+export function Pages({ project, pages, wired }) {
   const ready = pages.filter((p) => p.status === "done").map((p) => p.page);
   const [page, setPage] = useState(ready[0] ?? pages[0]?.page ?? 1);
+  const [view, setView] = useState("built"); // "built": as Laptop B drew it; "live": the real app on a test database
+  const [live, setLive] = useState({ url: null, credentials: null, error: null, starting: false });
   useEffect(() => {
     if (!ready.includes(page) && ready.length) setPage(ready[0]);
   }, [ready.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // A new spec version means a new app: go back to "as built" until it is started again.
+  useEffect(() => {
+    setView("built");
+    setLive({ url: null, credentials: null, error: null, starting: false });
+  }, [project.id, project.contract?.hash]);
+
+  async function goLive() {
+    setView("live");
+    if (live.url) return;
+    setLive((l) => ({ ...l, starting: true, error: null }));
+    try {
+      const preview = await api.startPreview(project.id);
+      setLive({ url: preview.url, credentials: preview.credentials, error: null, starting: false });
+    } catch (err) {
+      setLive({ url: null, credentials: null, error: err.message, starting: false });
+    }
+  }
+
+  async function stopLive() {
+    await api.stopPreview(project.id);
+    setLive({ url: null, credentials: null, error: null, starting: false });
+    setView("built");
+  }
+
   if (!pages.length) return <Empty text="Pages appear here once they are built on the Windows GPU." />;
+  const liveUrl = live.url && live.url.replace(/page-\d+\.html$/, `page-${page}.html`);
   return (
     <div className="pages">
-      <div className="page-picker" role="tablist" aria-label="Pages">
-        {pages.map((p) => (
-          <button key={p.page} role="tab" aria-selected={page === p.page} className={`chip${page === p.page ? " chip-on" : ""}`} onClick={() => setPage(p.page)}>
-            Page {p.page}
+      <div className="pages-bar">
+        <div className="page-picker" role="tablist" aria-label="Pages">
+          {pages.map((p) => (
+            <button key={p.page} role="tab" aria-selected={page === p.page} className={`chip${page === p.page ? " chip-on" : ""}`} onClick={() => setPage(p.page)}>
+              Page {p.page}
+            </button>
+          ))}
+        </div>
+        <div className="view-toggle" role="radiogroup" aria-label="How to show the page">
+          <button role="radio" aria-checked={view === "built"} className={`chip${view === "built" ? " chip-on" : ""}`} onClick={() => setView("built")}>
+            As built
           </button>
-        ))}
+          <button
+            role="radio"
+            aria-checked={view === "live"}
+            className={`chip chip-live${view === "live" ? " chip-on" : ""}`}
+            onClick={goLive}
+            disabled={!wired}
+            title={wired ? "Use the real app, on a test database" : "Available once the pages are wired"}
+          >
+            Live
+          </button>
+        </div>
       </div>
+
+      {view === "live" && live.credentials && (
+        <p className="live-note">
+          Sign in with <code className="code">{live.credentials.email}</code> and password <code className="code">{live.credentials.password}</code>
+        </p>
+      )}
+
       <div className="browser">
         <div className="browser-bar" aria-hidden="true">
           <span />
           <span />
           <span />
+          {view === "live" && liveUrl && <span className="browser-address">{liveUrl}</span>}
         </div>
-        {ready.includes(page) ? (
-          // Generated code runs in a sandbox: scripts yes, but no access to this app or its cookies.
-          <iframe key={`${project.contract?.hash}-${page}`} title={`Generated page ${page}`} src={api.pageUrl(project.id, page)} sandbox="allow-scripts" />
+        {view === "built" ? (
+          ready.includes(page) ? (
+            // Generated code runs in a sandbox: scripts yes, but no access to this app or its cookies.
+            <iframe key={`${project.contract?.hash}-${page}`} title={`Generated page ${page}`} src={api.pageUrl(project.id, page)} sandbox="allow-scripts" />
+          ) : (
+            <Empty text={`Page ${page} is still being built on the Windows GPU.`} />
+          )
+        ) : live.error ? (
+          <Empty text={live.error} />
+        ) : liveUrl ? (
+          // The live app runs on its own local port (another site than this UI), so it may keep its own
+          // login and forms without being able to reach this UI.
+          <iframe key={liveUrl} title={`Live page ${page}`} src={liveUrl} sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-downloads" />
         ) : (
-          <Empty text={`Page ${page} is still being built on the Windows GPU.`} />
+          <Empty text="Starting the app on a test database…" />
         )}
       </div>
-      <p className="muted">These pages show the screenshots' sample data. Connecting their buttons to the backend is the next step.</p>
+
+      {view === "built" ? (
+        <p className="muted">As Laptop B drew it: the screenshots' sample data, with buttons not connected. Choose Live to use the real app.</p>
+      ) : (
+        <p className="muted live-foot">
+          The real app on a test database: what you add here is saved there. It stops after 15 minutes without use, and its test data is deleted.{" "}
+          <button className="btn btn-quiet" onClick={stopLive}>
+            Stop the live app
+          </button>
+        </p>
+      )}
     </div>
   );
 }

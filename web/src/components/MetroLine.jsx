@@ -92,7 +92,7 @@ function Mascot({ station, mood }) {
 
 export function MetroLine({ status, selected, onSelect }) {
   const { stations, current } = status;
-  const mood = stations[current]?.status === "failed" ? "worried" : current === "sync" && stations.sync.status === "done" ? "happy" : "busy";
+  const mood = stations[current]?.status === "failed" ? "worried" : current === "ready" && stations.ready.status === "done" ? "happy" : "busy";
 
   return (
     <svg className="metro" viewBox={`0 0 1020 ${VIEW_HEIGHT}`} role="group" aria-label="Pipeline: where your project is now">
