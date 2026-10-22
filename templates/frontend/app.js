@@ -381,6 +381,7 @@
     for (const field of entity.fields.filter((f) => f.type === "enum")) {
       for (const select of formControls(field.name).filter((el) => el.tagName === "SELECT")) {
         for (const option of select.options) {
+          if (option.hasAttribute("value") && option.value === "") continue; // the "Select …" prompt: no choice
           const match = field.options.find((o) => norm(o) === norm(option.value) || norm(o) === norm(option.textContent));
           if (match) option.value = match;
         }
