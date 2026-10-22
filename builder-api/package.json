@@ -17,6 +17,7 @@
     "test:integration": "node --test --test-concurrency=1 \"integration/**/*.test.js\""
   },
   "dependencies": {
+    "acorn": "8.18.0",
     "express": "^5.3.0",
     "mongoose": "^9.11.2",
     "multer": "^2.4.0",
