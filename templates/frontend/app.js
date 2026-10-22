@@ -197,6 +197,35 @@
     view.shown = items.map((item) => stamp(view, item));
     const anchor = view.anchor && view.anchor.parentNode === view.container ? view.anchor : null;
     for (const row of view.shown) view.container.insertBefore(row, anchor);
+    fillFilterChoices(view, items);
+  }
+
+  // A filter dropdown drawn with only its prompt ("All categories") can't filter anything: it gets
+  // the spec's values for a fixed list, or the values seen in the list (kept while filtering).
+  const PROMPT = /^(all|any|select|choose)\b|^-+/i;
+  function fillFilterChoices(view, items) {
+    for (const select of document.querySelectorAll("select[data-filter]")) {
+      const field = fieldOf(view.entity, select.dataset.filter);
+      if (!field) continue;
+      const real = [...select.options].filter((o) => o.value !== "" && !PROMPT.test(o.textContent.trim()) && !o.dataset.andarkacode);
+      if (real.length) continue; // the page drew its own choices
+      const seen = (view.filterChoices[field.name] = view.filterChoices[field.name] || new Map());
+      if (field.type === "enum") for (const option of field.options) seen.set(norm(option), [option, option]);
+      for (const item of items) {
+        const value = item[field.name];
+        const text = display(field, value);
+        if (text) seen.set(norm(text), [field.type === "ref" && value && typeof value === "object" ? value.id : String(value), text]);
+      }
+      const present = new Set([...select.options].map((o) => norm(o.textContent)));
+      for (const [key, [value, text]] of seen) {
+        if (present.has(key)) continue;
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = text;
+        option.dataset.andarkacode = "choice";
+        select.appendChild(option);
+      }
+    }
   }
 
   async function loadList() {
@@ -272,6 +301,7 @@
       looks: learnLooks(entity, rows),
       numbers: learnNumbers(entity, rows),
       counters: [],
+      filterChoices: {},
       shown: rows,
       items: new Map(),
       q: "",

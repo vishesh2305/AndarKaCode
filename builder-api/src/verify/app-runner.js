@@ -14,7 +14,7 @@ const START_TIMEOUT_MS = 20_000;
 
 // What Node needs to start on Windows and macOS; everything else (our keys, our database) stays out.
 const FROM_SYSTEM = new Set(["PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP"]);
-const FROM_US = new Set(["MONGODB_URI", "ADMIN_EMAIL", "ADMIN_PASSWORD", "SESSION_HOURS"]);
+const FROM_US = new Set(["MONGODB_URI", "MONGODB_URI_TEST", "ADMIN_EMAIL", "ADMIN_PASSWORD", "SESSION_HOURS"]);
 
 /** The generated app's environment: a few system variables plus the app's own settings. */
 export function appEnv(settings, system = process.env) {
