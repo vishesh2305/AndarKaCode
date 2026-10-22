@@ -111,6 +111,22 @@ describe("markerCheck: pass, or say what is missing in a person's words", () => 
     assert.match(check.detail, /Salary/);
   });
 
+  it("names the page's own script error, and counts rows built from the table header (with a warning)", async () => {
+    const html = page("employees-real.html").replace("renderEmployeesTable();", "renderEmployeesTable(;");
+    const found = await pageMarkers(html, { map: apiMap(employeesSpec), file: "page-1.html" });
+    assert.match(found.scriptErrors.join(" "), /SyntaxError/);
+    const check = markerCheck(expectedMarkers(employeesSpec, 1), found);
+    assert.equal(check.status, "pass", check.detail);
+    assert.match(check.warnings[0], /own script has an error.*SyntaxError/);
+    assert.match(check.warnings.join(" "), /table header/);
+  });
+
+  it("says first that the page's own script failed, when that is why markers are missing", () => {
+    const check = markerCheck(expectedMarkers(employeesSpec, 1), { fields: [], actions: [], filters: [], stats: [], submitForm: false, repaired: [], scriptErrors: ["Uncaught [SyntaxError: missing ) after argument list]"] });
+    assert.equal(check.status, "fail");
+    assert.ok(check.detail.startsWith("The page's own script has an error (SyntaxError: missing ) after argument list)"), check.detail);
+  });
+
   it("a missing Edit/Delete button in the sample rows is a page problem too", async () => {
     const html = page("employees-real.html").replace(/<button data-action="delete"[^>]*>Delete<\/button>/, "");
     const check = markerCheck(expectedMarkers(editDeleteSpec, 1), await pageMarkers(html));

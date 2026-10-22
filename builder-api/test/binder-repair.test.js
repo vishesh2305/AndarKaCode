@@ -99,3 +99,25 @@ describe("markers-only mode (the Verifier reads markers after repair, without us
     assert.ok(p.$('#employeeTableBody [data-field="salary"]'));
   });
 });
+
+// Found on the Mac (22 Oct): Laptop B wrote a page whose own script had a syntax error, so it drew no rows,
+// and the Verifier failed six checks. The table and its header are still there: rows are built from them.
+const brokenScript = (html) => html.replace("renderEmployeesTable();", "renderEmployeesTable(;"); // "missing ) after argument list"
+
+describe("a page whose own script fails (no sample rows)", () => {
+  it("builds the rows from the table header, and Edit and Delete work", async () => {
+    const api = employees();
+    const id = api.rows[0].id;
+    const p = await start({ html: brokenScript(page("employees-real.html")), map: apiMap(employeesSpec), api });
+    p.errors.splice(0, p.errors.length, ...p.errors.filter((e) => !/SyntaxError/.test(e))); // the page's own error, not ours
+    const row = p.$(`#employeeTableBody [data-id="${id}"]`);
+    assert.ok(row, "a row for the record, under the page's own table header");
+    assert.equal(text(row.querySelector('[data-field="fullName"]')), "Meera Iyer");
+    assert.equal(text(row.querySelector('[data-field="salary"]')), "70000");
+    assert.equal([...row.children].indexOf(row.querySelector('[data-field="salary"]')), 3, "in the Salary column");
+    assert.ok(repairs(p).some((r) => /table header/.test(r)), JSON.stringify(repairs(p)));
+    await p.click(row.querySelector('[data-action="delete"]'));
+    assert.ok(p.calls.some((c) => c.method === "DELETE" && c.path === `/api/employees/${id}`));
+    p.errors.splice(0, p.errors.length, ...p.errors.filter((e) => !/SyntaxError/.test(e)));
+  });
+});

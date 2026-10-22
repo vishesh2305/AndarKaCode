@@ -172,3 +172,16 @@ describe("an app whose own tests fail", () => {
     assert.equal(runningApps().length, 0);
   });
 });
+
+describe("a page whose own script fails (found on the Mac, 22 Oct)", () => {
+  it("passes the person checks through rows built from the table header, and warns about the script error", async () => {
+    const html = fixture("employees-real.html").replace("renderEmployeesTable();", "renderEmployeesTable(;");
+    const appDir = await build("broken", employeesSpec, [{ screenshot: 1, html }]);
+    const report = await verify("broken", employeesSpec, appDir);
+    for (const id of ["markers:p1", "add:p1", "reload:p1", "edit:p1", "search:p1", "delete:p1"]) {
+      assert.equal(statusOf(report, id), "pass", `${id}: ${check(report, id)?.detail}`);
+    }
+    assert.ok(report.checks.some((c) => c.status === "warn" && /own script has an error/.test(c.detail)));
+    assert.ok(!report.checks.some((c) => /Constraints not satisfied/.test(c.detail ?? "")), "no misleading browser message");
+  });
+});
