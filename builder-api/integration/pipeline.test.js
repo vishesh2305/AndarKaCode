@@ -9,6 +9,7 @@ import path from "node:path";
 import { after, before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import mongoose from "mongoose";
+import { fakePage } from "./helpers/fake-s2c.js";
 
 const API_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const MOCKS = path.resolve(API_DIR, "../samples/mocks");
@@ -17,7 +18,8 @@ if (!MONGODB_URI) throw new Error("Set TEST_MONGODB_URI (a throwaway database; i
 
 // ---- fake Ollama: answers /api/chat with the next prepared inventory ----
 const inventoryQueue = [];
-// ---- fake Gateway: finishes every job at once and records what it was sent ----
+// ---- fake Gateway: finishes every job at once with a page built from the instructions (see helpers/fake-s2c.js);
+// a "Staff" page comes back without markers, so the Verifier has something to catch ----
 const gatewayJobs = new Map();
 const submissions = [];
 
@@ -50,7 +52,7 @@ const fakeGateway = await jsonServer(async (req, body) => {
       status: "done",
       provider: "local",
       contractHash: body.contractHash,
-      html: `<!doctype html><html><body><!-- ${firstRule} --></body></html>`,
+      html: /page title "Staff"/.test(body.instructions) ? `<!doctype html><html><body><!-- ${firstRule} --></body></html>` : fakePage(body.instructions),
     });
     return { status: 202, json: { jobId, status: "running" } };
   }
@@ -153,15 +155,15 @@ async function waitFor(id, done) {
   }
   assert.fail(`Timed out in state ${project?.state} (${project?.error ?? "no error"})\n${apiLog.slice(-2000)}`);
 }
-const settled = (p) => ["SYNCED", "NEEDS_ATTENTION"].includes(p.state);
+const settled = (p) => ["READY", "NEEDS_ATTENTION"].includes(p.state);
 
-describe("pipeline: screenshots -> spec -> pages -> SYNCED", () => {
+describe("pipeline: screenshots -> spec -> pages -> SYNCED -> Wire -> Check -> READY", () => {
   it("builds a spec from two screenshots and one page per screenshot", async () => {
     const before = submissions.length;
     const id = await upload(["m5a-employees-dept.png", "m5b-departments.png"], [employeesScreen, departmentsScreen]);
     const project = await waitFor(id, settled);
 
-    assert.equal(project.state, "SYNCED", project.error);
+    assert.equal(project.state, "READY", project.error);
     const spec = project.contract.body;
     assert.deepEqual(spec.entities.map((e) => e.name), ["employee", "department"]);
     assert.equal(spec.entities[0].fields.find((f) => f.name === "department").type, "ref");
@@ -177,7 +179,7 @@ describe("pipeline: screenshots -> spec -> pages -> SYNCED", () => {
 
     const page2 = await fetch(`${base}/projects/${id}/frontend?page=2`);
     assert.equal(page2.status, 200);
-    assert.match(await page2.text(), /Data: department/);
+    assert.match(await page2.text(), /<h1>Departments<\/h1>/);
   });
 
   it("gives a login screenshot login instructions and auth in the spec", async () => {
@@ -185,7 +187,7 @@ describe("pipeline: screenshots -> spec -> pages -> SYNCED", () => {
     const id = await upload(["m4-login.png", "m1-edit-delete.png"], [loginScreen, employeesScreen]);
     const project = await waitFor(id, settled);
 
-    assert.equal(project.state, "SYNCED", project.error);
+    assert.equal(project.state, "READY", project.error);
     assert.ok(project.contract.body.auth.login);
     assert.ok(submissions.slice(before).some((s) => /data-action="login"/.test(s.instructions)));
   });
@@ -210,7 +212,7 @@ describe("pipeline: editing the spec", () => {
     assert.match((await res.json()).problems.join(), /unknown type "money"/);
   });
 
-  it("rebuilds the pages for a valid edit and reaches SYNCED on the new version", async () => {
+  it("rebuilds the pages for a valid edit and reaches READY on the new version", async () => {
     const id = await upload(["m1-edit-delete.png"], [employeesScreen]);
     const v1 = await waitFor(id, settled);
     const edited = structuredClone(v1.contract.body);
@@ -220,7 +222,7 @@ describe("pipeline: editing the spec", () => {
     assert.equal(res.status, 200);
     const v2 = await waitFor(id, (p) => p.currentContractVersion === 2 && settled(p));
 
-    assert.equal(v2.state, "SYNCED", v2.error);
+    assert.equal(v2.state, "READY", v2.error);
     assert.ok(v2.jobs.some((j) => j.kind === "frontend" && j.contractHash === v2.contract.hash && j.status === "done"));
     assert.match(await (await fetch(`${base}/projects/${id}/frontend`)).text(), /<html>/);
   });
@@ -230,7 +232,7 @@ describe("pipeline: real backend from the generator", () => {
   it("writes a generated backend for the current spec and stamps the job with its hash", async () => {
     const id = await upload(["m5a-employees-dept.png", "m5b-departments.png"], [employeesScreen, departmentsScreen]);
     const project = await waitFor(id, settled);
-    assert.equal(project.state, "SYNCED", project.error);
+    assert.equal(project.state, "READY", project.error);
 
     const backend = project.jobs.find((j) => j.kind === "backend" && j.contractHash === project.contract.hash);
     assert.equal(backend.status, "done");
@@ -249,7 +251,7 @@ describe("UI endpoints", () => {
   before(async () => {
     id = await upload(["m5a-employees-dept.png", "m5b-departments.png"], [employeesScreen, departmentsScreen]);
     const project = await waitFor(id, settled);
-    assert.equal(project.state, "SYNCED", project.error);
+    assert.equal(project.state, "READY", project.error);
   });
 
   it("serves each uploaded screenshot, and 404 for one that doesn't exist", async () => {
@@ -311,9 +313,98 @@ describe("UI endpoints", () => {
     assert.doesNotMatch(preview, /app\.js/);
   });
 
-  it("refuses to download a project that isn't SYNCED yet", async () => {
+  it("refuses to download a project that is not READY", async () => {
     const failed = await upload(["m4-login.png"], [emptyScreen]);
     await waitFor(failed, settled);
     assert.equal((await fetch(`${base}/projects/${failed}/download`)).status, 409);
+  });
+});
+
+// ---- Step 16: after SYNCED, the pages are wired into the app and the Verifier checks it ----
+const staffScreen = listScreen("Staff", { singular: "staffMember", plural: "staffMembers" }, [["Full Name", ["Ann Lee"]]], ["Delete"]);
+
+async function unzip(res) {
+  const fs = await import("node:fs/promises");
+  const os = await import("node:os");
+  const { spawnSync } = await import("node:child_process");
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "download-"));
+  await fs.writeFile(path.join(dir, "app.zip"), Buffer.from(await res.arrayBuffer()));
+  const tar = process.platform === "win32" ? path.join(process.env.SystemRoot ?? "C:\Windows", "System32", "tar.exe") : "tar";
+  assert.equal(spawnSync(tar, ["-xf", path.join(dir, "app.zip"), "-C", dir]).status, 0);
+  return { dir, read: (file) => fs.readFile(path.join(dir, file), "utf8"), cleanup: () => fs.rm(dir, { recursive: true, force: true }) };
+}
+
+describe("Check (Step 16): wire, verify, READY", () => {
+  let id;
+  before(async () => {
+    id = await upload(["m1-edit-delete.png"], [employeesScreen]);
+    const project = await waitFor(id, settled);
+    assert.equal(project.state, "READY", project.error);
+  });
+
+  it("keeps the report: every check passed, with Edit and Delete tried on the page", async () => {
+    const res = await fetch(`${base}/projects/${id}/verify`);
+    assert.equal(res.status, 200);
+    const { report } = await res.json();
+    assert.equal(report.ok, true, JSON.stringify(report.checks.filter((c) => c.status === "fail")));
+    for (const check of ["markers:p1", "health", "edit:p1", "delete:p1", "tests"]) {
+      assert.equal(report.checks.find((c) => c.id === check)?.status, "pass", check);
+    }
+  });
+
+  it("writes the wired pages into the app folder (the folder is the finished app)", async () => {
+    const { files } = await (await fetch(`${base}/projects/${id}/files`)).json();
+    const paths = files.map((f) => f.path);
+    for (const p of ["frontend/app.js", "frontend/api-map.json", "frontend/page-1.html"]) assert.ok(paths.includes(p), p);
+    assert.ok(!paths.some((p) => p.startsWith("node_modules")), "the package link is not part of the app");
+  });
+
+  it("downloads at READY, with verify-report.md in the zip and no package link", async () => {
+    const res = await fetch(`${base}/projects/${id}/download`);
+    assert.equal(res.status, 200);
+    const zip = await unzip(res);
+    try {
+      assert.match(await zip.read("verify-report.md"), /All checks passed/);
+      assert.match(await zip.read("frontend/page-1.html"), /<script src="app\.js"><\/script>/);
+      const fs = await import("node:fs/promises");
+      await assert.rejects(fs.access(path.join(zip.dir, "node_modules")));
+    } finally {
+      await zip.cleanup();
+    }
+  });
+});
+
+describe("Check (Step 16): a page without markers stops the project", () => {
+  let id;
+  let project;
+  before(async () => {
+    id = await upload(["m1-edit-delete.png"], [staffScreen]);
+    project = await waitFor(id, settled);
+  });
+
+  it("goes to NEEDS_ATTENTION and says which check failed", () => {
+    assert.equal(project.state, "NEEDS_ATTENTION");
+    assert.match(project.error, /check/i);
+    assert.match(project.error, /Missing on this page/);
+  });
+
+  it("keeps the report with the failing check and the layer to blame", async () => {
+    const { report } = await (await fetch(`${base}/projects/${id}/verify`)).json();
+    assert.equal(report.ok, false);
+    const markers = report.checks.find((c) => c.id === "markers:p1");
+    assert.equal(markers.status, "fail");
+    assert.equal(markers.layer, "page");
+  });
+
+  it("refuses the download, unless asked for anyway (then the report is in the zip)", async () => {
+    assert.equal((await fetch(`${base}/projects/${id}/download`)).status, 409);
+    const res = await fetch(`${base}/projects/${id}/download?anyway=1`);
+    assert.equal(res.status, 200);
+    const zip = await unzip(res);
+    try {
+      assert.match(await zip.read("verify-report.md"), /Missing on this page/);
+    } finally {
+      await zip.cleanup();
+    }
   });
 });
