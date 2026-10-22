@@ -35,6 +35,13 @@ describe("rows: real records in the page's own look", () => {
     assert.equal(gets(p, "/api/employees")[0].auth, null, "no login on this app, so no token");
   });
 
+  it("calls the backend next to its page, so it also works under the live preview's /preview/<project>/", async () => {
+    const api = memoryApi("/preview/p1/api/employees", [{ fullName: "Meera Iyer", email: "meera@example.com" }]);
+    const p = await start({ html: page("employees-real.html"), map: apiMap(employeesSpec), api, url: "http://127.0.0.1:4000/preview/p1/page-1.html" });
+    assert.deepEqual(p.calls.map((c) => c.path), ["/preview/p1/api/employees"]);
+    assert.equal(text(p.$('#employeeTableBody [data-field="fullName"]')), "Meera Iyer");
+  });
+
   it("shows values as text, never as HTML", async () => {
     const api = memoryApi("/api/employees", [{ fullName: '<img src=x onerror="window.hacked=1">', email: "x@example.com" }]);
     const p = await start({ html: page("employees-real.html"), map: apiMap(employeesSpec), api });

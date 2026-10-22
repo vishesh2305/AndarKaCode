@@ -116,6 +116,7 @@ before(async () => {
       GATEWAY_POLL_MS: "100",
       DEFAULT_MODE: "local",
       GEMINI_API_KEY: "",
+      PREVIEW_IDLE_MS: "2500", // the live preview stops after 2.5 s without use (15 min normally)
     },
   });
   api.stdout.on("data", (d) => (apiLog += d));
@@ -406,5 +407,60 @@ describe("Check (Step 16): a page without markers stops the project", () => {
     } finally {
       await zip.cleanup();
     }
+  });
+});
+
+// ---- Step 16: the live preview (the Pages tab's "Live" view) ----
+describe("Live preview: the wired app on its own test database, through /preview/<project>/", () => {
+  const origin = () => base.replace(/\/api$/, "");
+  let id;
+  before(async () => {
+    id = await upload(["m1-edit-delete.png"], [employeesScreen]);
+    assert.equal((await waitFor(id, settled)).state, "READY");
+  });
+
+  it("starts on request and serves the wired pages and their API under /preview/<project>/", async () => {
+    const res = await fetch(`${base}/projects/${id}/preview`, { method: "POST" });
+    assert.equal(res.status, 200);
+    const preview = await res.json();
+    assert.equal(preview.url, `/preview/${id}/page-1.html`);
+    assert.equal(preview.credentials, null, "no login screen: nothing to sign in with");
+    assert.match(await (await fetch(origin() + preview.url)).text(), /<script src="app\.js"><\/script>/);
+    assert.deepEqual(await (await fetch(`${origin()}/preview/${id}/health`)).json(), { ok: true, db: true });
+    assert.deepEqual((await (await fetch(`${origin()}/preview/${id}/api/employees`)).json()).items, []);
+  });
+
+  it("reuses the running preview, and stops on request", async () => {
+    const again = await (await fetch(`${base}/projects/${id}/preview`, { method: "POST" })).json();
+    assert.equal(again.url, `/preview/${id}/page-1.html`);
+    assert.equal((await fetch(`${base}/projects/${id}/preview`, { method: "DELETE" })).status, 204);
+    assert.equal((await fetch(`${origin()}/preview/${id}/health`)).status, 404);
+  });
+
+  it("gives sign-in details for an app with a login screen, and they work", async () => {
+    const loginId = await upload(["m4-login.png", "m1-edit-delete.png"], [loginScreen, employeesScreen]);
+    assert.equal((await waitFor(loginId, settled)).state, "READY");
+    const { credentials } = await (await fetch(`${base}/projects/${loginId}/preview`, { method: "POST" })).json();
+    assert.ok(credentials.email && credentials.password);
+    const login = await fetch(`${origin()}/preview/${loginId}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(credentials),
+    });
+    assert.equal(login.status, 200);
+    await fetch(`${base}/projects/${loginId}/preview`, { method: "DELETE" });
+  });
+
+  it("is not available before the app is built and wired", async () => {
+    const failed = await upload(["m4-login.png"], [emptyScreen]);
+    await waitFor(failed, settled);
+    assert.equal((await fetch(`${base}/projects/${failed}/preview`, { method: "POST" })).status, 409);
+  });
+
+  it("stops by itself when nobody uses it (PREVIEW_IDLE_MS)", async () => {
+    await fetch(`${base}/projects/${id}/preview`, { method: "POST" });
+    assert.equal((await fetch(`${origin()}/preview/${id}/health`)).status, 200);
+    await new Promise((r) => setTimeout(r, 3500));
+    assert.equal((await fetch(`${origin()}/preview/${id}/health`)).status, 404);
   });
 });
