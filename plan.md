@@ -3,7 +3,7 @@
 > **Design:** see [ARCHITECTURE.md](ARCHITECTURE.md) (v3.1, approved 16 Oct: Phase 1 builds exactly what the screenshots show; every backend part has visible evidence). This file is our **step-by-step to-do list**.
 > **Rule:** do one step, report back, then move on. Tick the box when its "Done when" is true.
 
-**Current step:** ▶ **Step 16: Verifier + repair loop**, then Steps 13–14 (order changed 21 Oct: wiring first, so every demo has working buttons)
+**Current step:** ▶ **Step 16: Verifier** (Mac check), then Steps 13–14 (order changed 21 Oct: wiring first, so every demo has working buttons)
 
 ---
 
@@ -50,7 +50,7 @@ Every step has four parts:
 ## Phase 5: Wire, verify, ship
 
 - [x] **Step 15: Wirer.** ✅ 21 Oct: on Laptop B, checked in real Chrome on two real projects (Products 7/7, Staff + login 6/6); on the Mac, tests pass and a downloaded app adds, edits, searches and deletes on its own page. Runtime binder `app.js` + `api-map.json`; multiple pages; token only if login. *Done when:* every control on every page works against the backend.
-- [ ] **Step 16: Verifier + repair loop.** Headless-browser marker check, "every control backed", "nothing unnecessary", tests, Playwright smoke; repair with Gateway `update` jobs.
+- [ ] **Step 16: Verifier + repair loop.** ◐ 22 Oct, on Laptop B: Wire → Check → Ready stages, the Verifier (markers, health, person-like run, app tests, layer to blame), rule-based marker repair in the binder, Check report in the UI, Download at READY, live preview; real employees run READY 8/8, live preview 7/7 in Chrome. Gateway redraw repair left for later; the Mac check is still to do. Headless-browser marker check, "every control backed", "nothing unnecessary", tests, Playwright smoke; repair with Gateway `update` jobs.
 - [ ] **Step 17: Our React UI.** ◐ 20 Oct: **UI v1 for the presentation** done early (`web/`, served by the Builder API): upload, live metro-line pipeline with "how it works" per station, screenshots / plan with evidence / pages / backend files, download app as zip once SYNCED. Still to do: edit the spec in the UI. Upload screenshots, review the spec with its evidence, live status, download.
 - [ ] **Step 18: Sandbox preview.** Docker, limits, no secrets, auto-stop.
 - [ ] **Step 19: GitHub login + Publish.** OAuth App, encrypted token, new repo, CI turns green.
@@ -101,3 +101,4 @@ Every step has four parts:
 | 21 Oct 2026 | Step 15 (TDD) on Laptop B: `api-map.json` from the spec + binder `app.js` added to the zip at download time (UI and states unchanged). The binder keeps each page's look (rows copied from its sample row, badge/number looks per value, browser's own messages) and stops the page's sample-only scripts. Unit 195/195, integration 47/47 (incl. end to end with the real backend), web 8/8. Real run: m2 and m4+m1 → SYNCED → unzip → npm start → real Chrome: 7/7 and 6/6, after fixing what the real pages showed (Add button with no form, numbered page buttons, `$2.50` prices, "Showing 1-3 of 24"). Report: `docs/tdd/step15-wirer.tdd.md`. |
 | 21 Oct 2026 | Step 15 checked on the Mac by the user: tests pass, and the downloaded app works on its own page as on Laptop B. Step 15 ticked; current step 16. |
 | 22 Oct 2026 | Bug (user report): Add Employee never worked for a form with a closed Department dropdown. The deriver had made the prompt "Select Department" the only allowed value. Fixed test-first: prompts are never values, and a dropdown with no visible choices is stored as text but still drawn as a dropdown. Real run 7/7 in Chrome. Details in `docs/tdd/step15-wirer.tdd.md`. |
+| 22 Oct 2026 | Step 16 (TDD) on Laptop B: pipeline SYNCED → Wire → Check → READY (or NEEDS_ATTENTION with the report). The Verifier starts the app on throwaway databases, reads each page's markers after the binder's rule-based repair, uses every page like a person (jsdom + binder), runs the app's own tests, and names the part to blame. UI: Check station report, Download at READY ("anyway" after failed checks), Pages → Live preview on its own local port. The Mac caught a real page whose own script didn't parse; the binder now builds rows from the table header. Unit 229/229, integration 80/80, web 12/12. Report: `docs/tdd/step16-verifier.tdd.md`. |

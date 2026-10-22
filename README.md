@@ -41,10 +41,11 @@ The name is Hindi for "the code inside": the code that is hidden inside a screen
 | **Wiring:** the page buttons really call the backend (add, edit, delete, search, filter, pages, stats, login) | ✅ |
 | Our web UI: upload, live pipeline view with "how it works" for each stage, plan with evidence, page previews, generated files, **Download app (.zip)** | ✅ |
 | AI-written code for buttons no template covers (they answer "not available yet" for now) | ⏳ Step 13 |
-| Automatic verifier + repair before download | ⏳ Step 16 |
+| **Check before download:** the app is started on a throwaway database and every page is used like a person would; the report names the part to blame (page, spec or backend); missing markers are repaired by rule | ✅ Step 16 |
+| **Live preview:** use the real app in the UI (Pages → Live) on a test database before downloading | ✅ Step 16 |
 | Memory (instant repeats, similar screenshots), sandbox preview, push to GitHub | ⏳ Steps 14, 18, 19 |
 
-Test counts today: **Builder API 195 unit + 47 integration**, **web UI 8**, vision evaluation **41/41** on the sample screenshots. Every step was built test-first (red → green), with a report in [docs/tdd/](docs/tdd/).
+Test counts today: **Builder API 229 unit + 80 integration**, **web UI 12**, vision evaluation **41/41** on the sample screenshots. Every step was built test-first (red → green), with a report in [docs/tdd/](docs/tdd/).
 
 ---
 
@@ -309,7 +310,6 @@ Each service reads its own `.env` (copy it from `.env.example`). `.env` files ar
 ## What comes next
 
 The order is in [plan.md](plan.md):
-- **Step 16:** an automatic verifier (every marker present, every control backed, nothing unnecessary, the app's own tests pass) with repair before download.
 - **Step 13:** AI code for buttons no template covers, checked for safety, tested in a sandbox, repaired or isolated.
 - **Step 14:** memory, so repeats are instant and similar screenshots reuse earlier work.
 - **Steps 17–20:** editing the spec in the UI, sandbox preview, publishing to GitHub, demo rehearsal.
