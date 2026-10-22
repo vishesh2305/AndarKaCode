@@ -3,6 +3,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { expectedMarkers, markerCheck, pageMarkers } from "../src/verify/markers.js";
+import { apiMap } from "../src/wirer/index.js";
 import { dashboardSpec, employeesSpec } from "./fixtures/page-specs.js";
 import { authSpec, editDeleteSpec } from "./fixtures/specs.js";
 import { page } from "./helpers/page.js";
@@ -88,6 +89,26 @@ describe("markerCheck: pass, or say what is missing in a person's words", () => 
     const check = markerCheck(expectedMarkers(employeesSpec, 1), await pageMarkers(html));
     assert.equal(check.status, "pass");
     assert.match(check.warnings.join(" "), /archiveAll/);
+  });
+
+  it("counts a marker the binder could add from the page (a label, a header) as there, and lists the repair", async () => {
+    const html = page("employees-real.html").replaceAll('data-field="salary"', "");
+    const found = await pageMarkers(html, { map: apiMap(employeesSpec), file: "page-1.html" });
+    assert.ok(found.fields.includes("salary"));
+    const check = markerCheck(expectedMarkers(employeesSpec, 1), found);
+    assert.equal(check.status, "pass");
+    assert.match(check.warnings.join(" "), /added by AndarKaCode.*salary/i);
+  });
+
+  it("still fails when nothing on the page shows where the marker belongs", async () => {
+    const html = page("employees-real.html")
+      .replaceAll('data-field="salary"', "")
+      .replace('id="salary" name="salary"', 'id="pay" name="pay"')
+      .replace(/>Salary</g, ">Pay<");
+    const found = await pageMarkers(html, { map: apiMap(employeesSpec), file: "page-1.html" });
+    const check = markerCheck(expectedMarkers(employeesSpec, 1), found);
+    assert.equal(check.status, "fail");
+    assert.match(check.detail, /Salary/);
   });
 
   it("a missing Edit/Delete button in the sample rows is a page problem too", async () => {

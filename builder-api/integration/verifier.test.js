@@ -85,8 +85,20 @@ describe("the 'Select Department' bug (22 Oct): Add refused by the spec's rules"
 });
 
 describe("a page that lost a marker", () => {
-  it("fails the marker check and blames the page", async () => {
+  it("passes when the binder can add it back from the page (label, header), with a warning that says so", async () => {
     const html = fixture("employees-real.html").replaceAll('data-field="salary"', "");
+    const appDir = await build("repaired", employeesSpec, [{ screenshot: 1, html }]);
+    const report = await verify("repaired", employeesSpec, appDir);
+    assert.equal(statusOf(report, "markers:p1"), "pass", check(report, "markers:p1")?.detail);
+    assert.ok(report.checks.some((c) => c.status === "warn" && /added by AndarKaCode.*salary/i.test(c.detail)));
+    assert.equal(statusOf(report, "add:p1"), "pass", "Add works with the repaired marker");
+  });
+
+  it("fails the marker check and blames the page when nothing shows where it belongs", async () => {
+    const html = fixture("employees-real.html")
+      .replaceAll('data-field="salary"', "")
+      .replace('id="salary" name="salary"', 'id="pay" name="pay"')
+      .replace(/>Salary</g, ">Pay<");
     const appDir = await build("marker", employeesSpec, [{ screenshot: 1, html }]);
     const report = await verify("marker", employeesSpec, appDir);
     const markers = check(report, "markers:p1");
