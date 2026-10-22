@@ -80,13 +80,16 @@ flowchart LR
 | 4a | **Pages** | B | One job per screenshot: Screenshot-to-Code rebuilds the page with exact markers (`data-field`, `data-action`, `data-filter`, `data-stat`) taken from the spec | ~2–4 min per page locally, ~30 s with cloud |
 | 4b | **Backend** | A | The template generator writes only the parts the spec lists, plus a test for each part | milliseconds |
 | 5 | **Sync check** | A | Every page and the backend carry the spec's fingerprint (hash). Only when all of them match the current version does the project become **SYNCED** | instant |
-| 6 | **Download** | A | The zip is assembled: backend, tests, the pages **wired** to the backend, screenshots, a README that explains why each part exists, and the spec | instant |
+| 6 | **Wire** | A | Each page gets the binder (see below) and the wired pages are written into the app folder, which is now the finished app | instant |
+| 7 | **Check** | A | The app is started on a throwaway database; in a browser without a screen, every page is used like a person would (add, reload, edit, search, filter, buttons, delete, sign in); then the app's own tests run. Each check says what happened and which part to blame: the **page**, the **spec** or the **backend** | ~5–15 s |
+| 8 | **Ready** | A | Every check passed: try the app in **Pages → Live**, then download the zip (backend, tests, wired pages, screenshots, a README that explains why each part exists, the spec and `verify-report.md`) | instant |
 
-**Wiring** (Step 15) works like this. Each downloaded page gets one extra line, `<script src="app.js"></script>`, and a small "phone book", `api-map.json`, that says which marker calls which backend address. The binder (`app.js`) then:
+**Wiring** (Step 15) works like this. Each page gets one extra line, `<script src="app.js"></script>`, and a small "phone book", `api-map.json`, that says which marker calls which backend address. The binder (`app.js`) then:
 - replaces the screenshot's sample rows with real records, as copies of the page's own sample row, so badge colours and price formats (`$2.50`) look the same;
 - sends Add / Edit / Delete, search, filters, page buttons, stat cards and login to the backend;
 - shows problems with the browser's own message boxes, so the page's design is untouched;
-- stops the page's own "sample only" scripts from running.
+- stops the page's own "sample only" scripts from running;
+- adds a marker Laptop B forgot when the page clearly shows where it belongs (a label, a column header, a button's text), and builds rows from the table header if the page drew none (Step 16).
 
 ---
 
@@ -102,7 +105,7 @@ flowchart LR
 
 **5. Local first, cloud as backup.** By default the models run locally and for free (Ollama). Gemini is the backup, or the faster "cloud" mode. *Why:* no cost and no data leaving the laptops in normal use, with a quick fallback for demos.
 
-**6. Wiring at download time, without changing the page's look.** The pages Laptop B builds are kept byte for byte; one script line is added. *Why:* the user gets exactly the design from the screenshot, and our UI's page previews stay as built. The wiring is plain code, so it takes milliseconds.
+**6. Wiring without changing the page's look, then checking it like a person would.** The pages Laptop B builds are kept byte for byte; one script line is added. Before anyone downloads, the app is started and used page by page. *Why:* the user gets exactly the design from the screenshot, AI-drawn pages sometimes miss a marker or even contain a script error, and it is better to catch that (and say which part to fix) than to ship a button that does nothing.
 
 **7. Test first, for every step.** Each feature started as a failing test, then the code to pass it, with checkpoint commits and an evidence report. Real runs (real screenshots, real models, real browser) found bugs that hand-made tests did not, and each one became a new test. *Why:* a generator must be trustworthy, because a bug in it is a bug in every app it makes.
 
@@ -159,7 +162,7 @@ The pages need an internet connection for their styling (they load Tailwind CSS 
 
 | Folder | Runs on | What it is |
 |---|---|---|
-| [`builder-api/`](builder-api/) | Laptop A | Orchestrator: upload, vision reading, spec deriver, pipeline state machine, Sync check, backend generator, Wirer, zip download; serves the UI |
+| [`builder-api/`](builder-api/) | Laptop A | Orchestrator: upload, vision reading, spec deriver, pipeline state machine, Sync check, backend generator, Wirer, Verifier, live preview, zip download; serves the UI |
 | [`web/`](web/) | Laptop A | Our React UI (built into `web/dist`, served by the Builder API) |
 | [`templates/`](templates/) | Laptop A | Backend templates (`templates/backend/`) and the page binder (`templates/frontend/app.js`) |
 | [`shared/`](shared/) | Both | Spec / inventory JSON schemas and the spec fingerprint (hash) |
@@ -218,7 +221,7 @@ curl -s http://127.0.0.1:4000/api/health   # optional: "db":true and "reachable"
 **3. Open http://127.0.0.1:4000** on Laptop A. The two lights in the top right (Mac, Windows GPU) should be green.
 - **New project** → drop screenshots → set their order → name → AI mode (**Local**: free, on your GPUs; **Cloud**: Gemini, faster, limited free requests; **Auto**: local, then cloud) → start.
 - Watch the stations; click one to read how it works.
-- When the Sync check is done, click **Download app (.zip)**.
+- After the Sync check come **Wire** and **Check**. At **Ready**, try the app in **Pages → Live** (a real copy on a test database), then click **Download app (.zip)**. If a check fails, the Check station says which control failed, what the backend answered, and which part to blame; **Download anyway** gives you the zip with its report.
 
 **While changing the UI:** `cd web && npm run dev` serves it at http://127.0.0.1:5173 with live reload (the Builder API must be running).
 
@@ -231,12 +234,12 @@ curl -s http://127.0.0.1:4000/api/health   # optional: "db":true and "reachable"
 ```bash
 # Builder API (Laptop A or B)
 cd builder-api
-npm test                         # unit tests (195): spec rules, generator, wirer, binder in jsdom, zip, …
+npm test                         # unit tests (229): spec rules, generator, wirer, binder in jsdom, verifier, zip, …
 npm run test:coverage            # the same, with a coverage table
 TEST_MONGODB_URI=mongodb://127.0.0.1:27017/builder_test \
   node --test --test-concurrency=1 --test-reporter=tap "integration/**/*.test.js" | grep -E "^# (pass|fail)"
-                                 # integration tests (47): whole pipeline with a fake Gateway, generated
-                                 # backends on a real MongoDB, wired pages end to end. The database is dropped.
+                                 # integration tests (80): whole pipeline (Wire, Check, Ready) with a fake Gateway,
+                                 # generated apps on a real MongoDB, the Verifier, the live preview. Databases are dropped.
 npm run eval:inventory           # reads the sample screenshots with the real vision model (needs Ollama)
 
 # A downloaded app, in real headless Chrome (the app must be running with npm start)
@@ -244,7 +247,7 @@ npm run smoke:wire -- http://localhost:3000
 npm run smoke:wire -- http://localhost:3000 --email admin@example.com --password <its ADMIN_PASSWORD>   # apps with a login
 
 # Our web UI
-cd ../web && npm test            # pipeline view logic (8)
+cd ../web && npm test            # pipeline view logic (12)
 ```
 
 On Windows PowerShell, set the database for the integration tests with `$env:TEST_MONGODB_URI = "mongodb://127.0.0.1:27017/builder_test"` and run the same `node --test …` line.
@@ -260,6 +263,8 @@ Each service reads its own `.env` (copy it from `.env.example`). `.env` files ar
 | Variable | Meaning |
 |---|---|
 | `PORT`, `HOST` | Where the Builder API and UI listen (default `127.0.0.1:4000`: this computer only) |
+| `PREVIEW_PORT` | The live preview's own local port (default: `PORT` + 1, e.g. 4001) |
+| `PREVIEW_IDLE_MS` | How long a live preview runs without use before it stops (default 15 minutes) |
 | `MONGODB_URI` | Our own database (default `mongodb://127.0.0.1:27017/builder_db`) |
 | `DEFAULT_MODE` | `local`, `cloud` or `auto` for new projects |
 | `GATEWAY_URL` | Laptop B's Gateway on its Tailscale address, e.g. `http://100.x.y.z:8787` |
@@ -289,6 +294,7 @@ Each service reads its own `.env` (copy it from `.env.example`). `.env` files ar
   - Login exists only if a login screen was shown. Passwords are hashed with scrypt; only a SHA-256 fingerprint of each login token is stored; sign-in for an email pauses for a minute after 5 wrong passwords.
   - CSV export guards against spreadsheet formulas.
   - The binder inserts data as text, never as HTML.
+- **Checking and previews run the generated app safely:** in its own process, on `127.0.0.1` only, with its own throwaway database and no keys in its environment. It stops with the Builder API. The live preview has its own local port, so the browser treats it as another site than our UI, and a generated page can't reach the UI.
 - **Local first.** In Local mode, screenshots and code never leave the two laptops.
 
 ---
@@ -304,6 +310,8 @@ Each service reads its own `.env` (copy it from `.env.example`). `.env` files ar
 | The Read station fails | Ollama on Laptop A is not running, or the model is missing (`ollama list`) |
 | Pages look unstyled | Connect to the internet (Tailwind CDN) |
 | A downloaded page shows an alert about `npm start` | Open it through `npm start` and `http://localhost:3000`, not as a file |
+| "The live preview could not start" / port 4001 in use | Set `PREVIEW_PORT` to a free port in `builder-api/.env` and restart the Builder API |
+| The Check station failed | Read its report: each failed check names the control, the backend's answer and the part to fix (page, spec or backend) |
 
 ---
 
