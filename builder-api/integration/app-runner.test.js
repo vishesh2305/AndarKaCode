@@ -107,7 +107,7 @@ describe("startApp: an app that cannot start", () => {
   it("gives up after a time limit when the app never says it is ready", async () => {
     const dir = await writeApp("hangs", editDeleteSpec, [{ screenshot: 1, html: page("Employees") }]);
     const server = path.join(dir, "backend/server.js");
-    await writeFile(server, (await readFile(server, "utf8")) + "\nawait new Promise(() => {});\n");
+    await writeFile(server, (await readFile(server, "utf8")) + "\nawait new Promise(() => setInterval(() => {}, 1000)); // never ready, still alive\n");
     await assert.rejects(startApp({ appDir: dir, mongoUri: dbUri("runner_hangs"), timeoutMs: 1500 }), /did not start within/);
     assert.equal(runningApps().filter((a) => a.appDir === dir).length, 0);
   });
