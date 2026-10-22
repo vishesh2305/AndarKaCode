@@ -117,6 +117,7 @@ before(async () => {
       DEFAULT_MODE: "local",
       GEMINI_API_KEY: "",
       PREVIEW_IDLE_MS: "2500", // the live preview stops after 2.5 s without use (15 min normally)
+      PREVIEW_PORT: "0", // any free port (normally the API's port + 1)
     },
   });
   api.stdout.on("data", (d) => (apiLog += d));
@@ -411,28 +412,34 @@ describe("Check (Step 16): a page without markers stops the project", () => {
 });
 
 // ---- Step 16: the live preview (the Pages tab's "Live" view) ----
-describe("Live preview: the wired app on its own test database, through /preview/<project>/", () => {
-  const origin = () => base.replace(/\/api$/, "");
+describe("Live preview: the wired app on its own test database, on its own local address", () => {
+  // e.g. http://127.0.0.1:4001: another site than the UI, so a generated page can't reach the UI.
+  let previewOrigin;
+  const origin = () => previewOrigin;
   let id;
   before(async () => {
     id = await upload(["m1-edit-delete.png"], [employeesScreen]);
     assert.equal((await waitFor(id, settled)).state, "READY");
   });
 
-  it("starts on request and serves the wired pages and their API under /preview/<project>/", async () => {
+  it("starts on request, on another port than the UI, and serves the wired pages and their API", async () => {
     const res = await fetch(`${base}/projects/${id}/preview`, { method: "POST" });
     assert.equal(res.status, 200);
     const preview = await res.json();
-    assert.equal(preview.url, `/preview/${id}/page-1.html`);
+    const url = new URL(preview.url);
+    assert.equal(url.hostname, "127.0.0.1");
+    assert.notEqual(url.port, new URL(base).port, "not the UI's address");
+    assert.equal(url.pathname, `/preview/${id}/page-1.html`);
+    previewOrigin = url.origin;
     assert.equal(preview.credentials, null, "no login screen: nothing to sign in with");
-    assert.match(await (await fetch(origin() + preview.url)).text(), /<script src="app\.js"><\/script>/);
+    assert.match(await (await fetch(preview.url)).text(), /<script src="app\.js"><\/script>/);
     assert.deepEqual(await (await fetch(`${origin()}/preview/${id}/health`)).json(), { ok: true, db: true });
     assert.deepEqual((await (await fetch(`${origin()}/preview/${id}/api/employees`)).json()).items, []);
   });
 
   it("reuses the running preview, and stops on request", async () => {
     const again = await (await fetch(`${base}/projects/${id}/preview`, { method: "POST" })).json();
-    assert.equal(again.url, `/preview/${id}/page-1.html`);
+    assert.equal(again.url, `${previewOrigin}/preview/${id}/page-1.html`);
     assert.equal((await fetch(`${base}/projects/${id}/preview`, { method: "DELETE" })).status, 204);
     assert.equal((await fetch(`${origin()}/preview/${id}/health`)).status, 404);
   });
