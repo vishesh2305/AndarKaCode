@@ -48,10 +48,14 @@ async function gatewayHealth() {
 
 const app = express();
 
-// The live preview (Step 16): /preview/<project>/... goes to that project's running app, untouched
-// (mounted before the JSON parser, so request bodies pass through as they are).
+// The live preview (Step 16) has its own small server on another local port (another site than the UI),
+// so a generated page in the Live view can keep its own login without reaching the UI or its API.
+// /preview/<project>/... goes to that project's running app, untouched.
+const PREVIEW_PORT = process.env.PREVIEW_PORT === undefined ? PORT + 1 : Number(process.env.PREVIEW_PORT);
+let previewOrigin = null; // set once the preview server listens
+const previewSite = express();
 const PASS_HEADERS = ["content-type", "authorization", "accept"];
-app.use("/preview/:id", (req, res) => {
+previewSite.use("/preview/:id", (req, res) => {
   const preview = previewOf(req.params.id);
   if (!preview) return res.status(404).type("text/plain").send("No live preview is running for this project. Start it from the Pages tab.");
   touchPreview(req.params.id);
@@ -240,7 +244,7 @@ app.post("/api/projects/:id/preview", async (req, res) => {
       mongoUri: databaseUri(MONGODB_URI, `preview_${project.id}`),
     });
     const first = contract.body.pages[0]?.screenshot ?? 1;
-    res.json({ url: `/preview/${project.id}/page-${first}.html`, credentials: preview.credentials });
+    res.json({ url: `${previewOrigin}/preview/${project.id}/page-${first}.html`, credentials: preview.credentials });
   } catch (err) {
     res.status(500).json({ error: `The live preview could not start: ${err.message}` });
   }
@@ -299,4 +303,13 @@ app.listen(PORT, HOST, (err) => {
     process.exit(1);
   }
   console.log(`Builder API listening on http://${HOST}:${PORT}`);
+});
+
+const previewServer = previewSite.listen(PREVIEW_PORT, HOST, (err) => {
+  if (err) {
+    console.error(`The live preview could not start on ${HOST}:${PREVIEW_PORT}: ${err.code ?? err.message} (set PREVIEW_PORT to a free port)`);
+    return;
+  }
+  previewOrigin = `http://${HOST}:${previewServer.address().port}`;
+  console.log(`Live preview on ${previewOrigin}`);
 });

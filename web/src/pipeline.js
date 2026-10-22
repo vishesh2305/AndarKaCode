@@ -2,8 +2,9 @@
 // Pure: no React, no network, so it can be tested on its own (web/test/pipeline.test.js).
 
 export const STATION_IDS = ["upload", "read", "plan", "pages", "backend", "sync", "wire", "verify", "ready"];
-const SOON = ["wire", "verify", "ready"]; // planned steps, shown honestly as "coming soon"
 const BUILD_STATES = ["CONTRACT_DRAFT", "BUILDING"];
+const AFTER_SYNC = ["SYNCED", "INTEGRATING", "VERIFYING", "READY"];
+const RANK = { fail: 0, warn: 1, note: 2, skip: 3, pass: 4 }; // the report shows problems first
 
 const secondsOf = (job, now) =>
   job?.startedAt ? Math.round(((job.finishedAt ? Date.parse(job.finishedAt) : now) - Date.parse(job.startedAt)) / 1000) : null;
@@ -60,25 +61,48 @@ export function pipelineStatus(project, now = Date.now()) {
     note: backend?.note ?? null,
   };
 
+  // Check (Step 16): the Verifier's job for the CURRENT spec, with its report.
+  const verify = hash ? latest("verify", (j) => j.contractHash === hash) : null;
+  const report = verify?.report ?? null;
+
   // Sync check: every page and the backend carry the current spec's fingerprint.
   const branchesDone = stations.pages.status === "done" && stations.backend.status === "done";
   const somethingFailed = ["read", "plan", "pages", "backend"].some((id) => stations[id].status === "failed");
+  const pastSync = AFTER_SYNC.includes(state) || Boolean(verify);
   stations.sync = {
     status:
-      state === "SYNCED" ? "done"
+      pastSync ? "done"
       : state === "NEEDS_ATTENTION" && spec && !somethingFailed ? "failed"
       : branchesDone ? "active"
       : "waiting",
     hash: hash ?? null,
   };
 
-  for (const id of SOON) stations[id] = { status: "soon" };
+  // Wire: the wired pages are written into the app folder, right after the sync check.
+  stations.wire = { status: ["SYNCED", "INTEGRATING"].includes(state) ? "active" : pastSync ? "done" : "waiting" };
 
-  const order = ["read", "plan", "pages", "backend", "sync"];
+  // Check: the app is started on a throwaway database and used like a person would.
+  stations.verify = {
+    status:
+      state === "READY" || report?.ok ? "done"
+      : report && !report.ok ? "failed"
+      : verify?.status === "failed" ? "failed"
+      : state === "VERIFYING" || verify?.status === "running" ? "active"
+      : "waiting",
+    summary: report?.summary ?? null,
+    seconds: report?.seconds ?? null,
+    error: verify?.status === "failed" ? verify.error ?? null : null,
+    checks: report ? [...report.checks].sort((a, b) => RANK[a.status] - RANK[b.status]) : [],
+  };
+
+  // Ready: every check passed; the app can be downloaded.
+  stations.ready = { status: state === "READY" ? "done" : "waiting" };
+
+  const order = ["read", "plan", "pages", "backend", "sync", "wire", "verify"];
   const current =
     order.find((id) => stations[id].status === "failed") ??
     order.find((id) => stations[id].status === "active") ??
-    (state === "SYNCED" ? "sync" : "upload");
+    (state === "READY" ? "ready" : "upload");
 
-  return { stations, current, error: project.error ?? null };
+  return { stations, current, error: project.error ?? null, canDownloadAnyway: state === "NEEDS_ATTENTION" && Boolean(report) };
 }
