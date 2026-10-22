@@ -40,7 +40,12 @@
 
   // ---------- talking to the backend ----------
 
+  // The backend is next to the page: "/" for the downloaded app, "/preview/<project>/" in the live preview.
+  const BASE = window.location.pathname.replace(/[^/]*$/, "");
+  const near = (url) => (url.startsWith("/") ? BASE + url.slice(1) : url);
+
   async function api(method, url, body) {
+    url = near(url);
     const headers = {};
     if (body !== undefined) headers["Content-Type"] = "application/json";
     const token = state.map && state.map.auth ? readToken() : null;

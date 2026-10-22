@@ -52,7 +52,7 @@ export async function startApp({ appDir, mongoUri, env = {}, timeoutMs = START_T
   const child = spawn(process.execPath, [RUNNER, appDir], {
     cwd: appDir,
     env: appEnv({ ...env, MONGODB_URI: mongoUri }),
-    stdio: ["ignore", "pipe", "pipe"],
+    stdio: ["ignore", "pipe", "pipe", "ipc"], // the channel closes when we stop, however we stop: the app then stops too
   });
   let errors = "";
   child.stderr.on("data", (chunk) => (errors = (errors + chunk).slice(-4000)));

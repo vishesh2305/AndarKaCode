@@ -23,3 +23,6 @@ async function shutdown() {
 }
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
+// The Builder API is gone (stopped, crashed, killed): stop too, so no app keeps its port. Windows already
+// does this for child processes; macOS and Linux do not.
+process.on("disconnect", shutdown);

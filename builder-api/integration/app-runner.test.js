@@ -112,3 +112,35 @@ describe("startApp: an app that cannot start", () => {
     assert.equal(runningApps().filter((a) => a.appDir === dir).length, 0);
   });
 });
+
+describe("startApp: when the Builder API itself stops", () => {
+  it("the app it started stops too (no orphan process keeps the port)", async () => {
+    const dir = await writeApp("orphan", editDeleteSpec, [{ screenshot: 1, html: page("Employees") }]);
+    const { spawn } = await import("node:child_process");
+    const runner = new URL("../src/verify/app-runner.js", import.meta.url).href;
+    // A stand-in Builder API: starts the app, prints its address, then is killed without any cleanup.
+    const parent = spawn(process.execPath, ["--input-type=module", "-e", `
+      const { startApp } = await import(${JSON.stringify(runner)});
+      const app = await startApp({ appDir: ${JSON.stringify(dir)}, mongoUri: ${JSON.stringify(dbUri("runner_orphan"))} });
+      console.log("URL " + app.url);
+      setInterval(() => {}, 1000);
+    `], { stdio: ["ignore", "pipe", "inherit"] });
+    const url = await new Promise((resolve, reject) => {
+      let out = "";
+      parent.stdout.on("data", (d) => {
+        out += d;
+        const m = out.match(/URL (\S+)/);
+        if (m) resolve(m[1]);
+      });
+      parent.once("exit", () => reject(new Error("the stand-in Builder API exited early")));
+    });
+    assert.equal((await fetch(`${url}/health`)).status, 200);
+    parent.kill("SIGKILL");
+    let alive = true;
+    for (let i = 0; i < 40 && alive; i++) {
+      await new Promise((r) => setTimeout(r, 250));
+      alive = await fetch(`${url}/health`).then(() => true, () => false);
+    }
+    assert.equal(alive, false, "the app is still answering after its parent died");
+  });
+});

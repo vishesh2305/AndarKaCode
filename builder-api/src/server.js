@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import http from "node:http";
 import express from "express";
 import mongoose from "mongoose";
 import multer from "multer";
@@ -12,6 +13,8 @@ import { currentContract, resumeAll, startPipeline } from "./orchestrator.js";
 import { checkSpec } from "./spec/check.js";
 import { appArchive, listAppFiles, safeAppPath, slug } from "./package-app.js";
 import { REPO_ROOT, saveScreenshot, sha256, shrinkScreenshot } from "./storage.js";
+import { databaseUri } from "./verify/index.js";
+import { previewOf, startPreview, stopPreview, touchPreview } from "./verify/preview.js";
 
 const PORT = Number(process.env.PORT ?? 4000);
 const HOST = process.env.HOST ?? "127.0.0.1"; // no login yet, so this Mac only (GitHub login: Step 15)
@@ -44,6 +47,24 @@ async function gatewayHealth() {
 }
 
 const app = express();
+
+// The live preview (Step 16): /preview/<project>/... goes to that project's running app, untouched
+// (mounted before the JSON parser, so request bodies pass through as they are).
+const PASS_HEADERS = ["content-type", "authorization", "accept"];
+app.use("/preview/:id", (req, res) => {
+  const preview = previewOf(req.params.id);
+  if (!preview) return res.status(404).type("text/plain").send("No live preview is running for this project. Start it from the Pages tab.");
+  touchPreview(req.params.id);
+  const headers = Object.fromEntries(PASS_HEADERS.filter((h) => req.headers[h]).map((h) => [h, req.headers[h]]));
+  const upstream = http.request(new URL(req.url, preview.app.url), { method: req.method, headers }, (answer) => {
+    const { connection, "keep-alive": keepAlive, "transfer-encoding": encoding, ...rest } = answer.headers;
+    res.writeHead(answer.statusCode, rest);
+    answer.pipe(res);
+  });
+  upstream.on("error", () => res.headersSent || res.status(502).type("text/plain").send("The live preview stopped answering."));
+  req.pipe(upstream);
+});
+
 app.use(express.json({ limit: "1mb" }));
 
 app.get("/api/health", async (_req, res) => {
@@ -199,6 +220,35 @@ app.get("/api/projects/:id/verify", async (req, res) => {
   const job = await latestVerify(project, contract);
   if (!job) return res.status(404).json({ error: `Not checked yet (state: ${project.state})` });
   res.json({ state: project.state, checkedAt: job.finishedAt, seconds: job.report.seconds, report: job.report });
+});
+
+// The live preview: start (or reuse) it, or stop it. Available once the app is wired (after the Wire stage).
+app.post("/api/projects/:id/preview", async (req, res) => {
+  const project = await findProject(req.params.id);
+  if (!project) return res.status(404).json({ error: "No such project" });
+  const { contract, backendJob } = await currentBuild(project);
+  const appDir = backendJob && path.join(REPO_ROOT, backendJob.artifactPath);
+  if (!appDir || !existsSync(path.join(appDir, "frontend", "app.js"))) {
+    return res.status(409).json({ error: `The live preview is available once the app is built and wired (now: ${project.state})` });
+  }
+  try {
+    const preview = await startPreview({
+      projectId: project.id,
+      hash: contract.hash,
+      appDir,
+      auth: Boolean(contract.body.auth),
+      mongoUri: databaseUri(MONGODB_URI, `preview_${project.id}`),
+    });
+    const first = contract.body.pages[0]?.screenshot ?? 1;
+    res.json({ url: `/preview/${project.id}/page-${first}.html`, credentials: preview.credentials });
+  } catch (err) {
+    res.status(500).json({ error: `The live preview could not start: ${err.message}` });
+  }
+});
+
+app.delete("/api/projects/:id/preview", async (req, res) => {
+  await stopPreview(String(req.params.id));
+  res.status(204).end();
 });
 
 // READY: download. Checks failed: only when asked for anyway (?anyway=1), with the report in the zip.
