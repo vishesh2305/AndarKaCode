@@ -17,7 +17,7 @@ const json = (status, body) =>
  * html: the page as Laptop B built it. map: api-map.json. api(req) -> { status, body } | Response | undefined (404).
  * req = { method, path, query, body, auth }.
  */
-export async function openPage({ html, map, api = () => undefined, url = "http://localhost:3000/page-1.html", token, confirmAnswer = true }) {
+export async function openPage({ html, map, api = () => undefined, url = "http://localhost:3000/page-1.html", token, confirmAnswer = true, hooks = {} }) {
   const calls = [];
   const alerts = [];
   const confirms = [];
@@ -67,7 +67,7 @@ export async function openPage({ html, map, api = () => undefined, url = "http:/
       w.fetch = fakeFetch;
       w.alert = (message) => alerts.push(String(message));
       w.confirm = (message) => (confirms.push(String(message)), confirmAnswer);
-      w.andarkacodeTestHooks = { navigate: (to) => navigations.push(String(to)) };
+      w.andarkacodeTestHooks = { navigate: (to) => navigations.push(String(to)), ...hooks };
       w.URL.createObjectURL = (blob) => (downloads.push(blob), "blob:test");
       w.URL.revokeObjectURL = () => {};
       w.HTMLElement.prototype.scrollIntoView = () => {};
