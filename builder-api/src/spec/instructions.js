@@ -15,9 +15,13 @@ const INPUT_HINT = {
   ref: "a <select>",
 };
 
+// A dropdown stored as text (its choices were not visible) is still drawn as a dropdown.
+const inputHint = (f) => (f.control === "select" ? "a <select>" : INPUT_HINT[f.type]);
+
 function describeField(f) {
   const extras = [];
   if (f.type === "enum") extras.push(`one of: ${f.options.join(", ")}`);
+  else if (f.control === "select") extras.push("a dropdown");
   else if (f.type === "ref") extras.push(`chosen from the ${f.ref} list`);
   else if (f.type !== "string") extras.push(f.type);
   if (f.required) extras.push("required");
@@ -71,7 +75,7 @@ export function pageInstructions(spec, n) {
     }
     if (has("create") || has("update")) {
       rules.push(
-        `The form has one input per field, each with name="<fieldName>" and data-field="<fieldName>".\n   Input types: ${fields.map((f) => `${f.name} = ${INPUT_HINT[f.type]}`).join(", ")}.`
+        `The form has one input per field, each with name="<fieldName>" and data-field="<fieldName>".\n   Input types: ${fields.map((f) => `${f.name} = ${inputHint(f)}`).join(", ")}.`
       );
     }
 

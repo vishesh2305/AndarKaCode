@@ -9,6 +9,12 @@ const UPDATE = /^(edit|update|modify)$/i;
 const DELETE = /^(delete|remove|trash)$/i;
 const VIEW = /^(view|details|open)$/i;
 const CREATE = /^(\+|(add|new|create)\b)/i; // "+ Add Product": there is no word boundary after "+"
+// A dropdown's prompt is not one of its values: "Select Department", "Choose…", "-- Select --", "All departments".
+const PLACEHOLDER = /^(select|choose|pick)\b|^-+.*-+$|^all\b/i;
+const realOptions = (options, label) =>
+  (options ?? [])
+    .map((o) => String(o).trim())
+    .filter((o) => o && !PLACEHOLDER.test(o) && o.toLowerCase() !== String(label).trim().toLowerCase());
 const EXPORT = /\bexport\b/i;
 const ARCHIVE = /archiv|restore|deleted|trash/i;
 
@@ -129,6 +135,7 @@ export function deriveSpec(screens) {
     }
     // A later sighting (usually the form) adds what the first one could not show.
     existing.required ||= incoming.required;
+    if (incoming.control) existing.control ??= incoming.control;
     if (existing.type !== "ref" && incoming.fromForm && incoming.type !== "string") {
       existing.type = incoming.type;
       if (incoming.options) existing.options = incoming.options;
@@ -217,13 +224,25 @@ export function deriveSpec(screens) {
         const target = relationFor(input.label, entity);
         if (target) addField(entity, { ...base, type: "ref", ref: target.name, evidence: `${base.evidence}; ${target.where}` });
         else if (input.kind === "select") {
-          addField(entity, { ...base, type: "enum", options: input.options ?? [] });
-          openQuestions.push({
-            entity: entity.name,
-            field: name,
-            question: `Is "${input.label}" a fixed list, or data you manage on its own page?`,
-            default: "enum",
-          });
+          const options = realOptions(input.options, input.label);
+          if (options.length) {
+            addField(entity, { ...base, type: "enum", options });
+            openQuestions.push({
+              entity: entity.name,
+              field: name,
+              question: `Is "${input.label}" a fixed list, or data you manage on its own page?`,
+              default: "enum",
+            });
+          } else {
+            // A closed dropdown shows no choices: storing it as a fixed list would allow nothing real.
+            addField(entity, { ...base, type: "string", control: "select" });
+            openQuestions.push({
+              entity: entity.name,
+              field: name,
+              question: `"${input.label}" is a dropdown whose choices are not visible in the screenshot, so it is stored as text. Is it a fixed list, or data you manage on its own page?`,
+              default: "text",
+            });
+          }
         } else addField(entity, { ...base, type: INPUT_TYPE[input.kind] ?? "string" });
       }
       if (s.kind === "form") entity.endpoints.create ??= { evidence: at(`form '${form.submitLabel ?? "submit"}'`) };
