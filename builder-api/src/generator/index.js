@@ -6,6 +6,7 @@ import { camelCase } from "../spec/derive.js";
 import apiTests from "../../../templates/backend/api-tests.js";
 import * as auth from "../../../templates/backend/auth.js";
 import controller from "../../../templates/backend/controller.js";
+import * as customRuntime from "../../../templates/backend/custom-runtime.js";
 import envExample from "../../../templates/backend/env-example.js";
 import model from "../../../templates/backend/model.js";
 import packageJson from "../../../templates/backend/package-json.js";
@@ -50,7 +51,12 @@ export function generateBackend(spec, { name }) {
     const entity = { ...e, Model: pascal(e.name), operations };
     entities.push(entity);
     files[`backend/models/${e.name}.model.js`] = model({ entity, comment, pascal });
-    if (e.endpoints.create || e.endpoints.update) {
+    const custom = operations.some((o) => o.kind === "custom"); // its code checks values like Add and Edit do
+    if (custom) {
+      files["backend/custom/run.js"] = customRuntime.runFile();
+      files["backend/custom/worker.js"] = customRuntime.workerFile();
+    }
+    if (e.endpoints.create || e.endpoints.update || custom) {
       files[`backend/validation/${e.name}.validation.js`] = validation({ entity, comment });
     }
     files[`backend/controllers/${e.name}.controller.js`] = controller({ entity, spec, comment, pascal });

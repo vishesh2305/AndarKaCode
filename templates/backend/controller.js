@@ -17,6 +17,7 @@ export default ({ entity, spec, comment, pascal }) => {
   const M = entity.Model;
   const soft = Boolean(endpoints.delete?.soft);
   const writes = Boolean(endpoints.create || endpoints.update);
+  const custom = (entity.operations ?? []).some((o) => o.kind === "custom"); // buttons whose code the AI layer writes
   const refFields = entity.fields.filter((f) => f.type === "ref");
   const refModels = writes ? [...new Set(refFields.map((f) => f.ref))] : [];
   const operations = entity.operations ?? [];
@@ -31,7 +32,8 @@ export default ({ entity, spec, comment, pascal }) => {
 
   const imports = [
     `import { ${M} } from "../models/${entity.name}.model.js";`,
-    writes && `import { validate${M} } from "../validation/${entity.name}.validation.js";`,
+    (writes || custom) && `import { validate${M} } from "../validation/${entity.name}.validation.js";`,
+    custom && 'import { runCustom } from "../custom/run.js";',
     ...refModels.map((ref) => `import { ${pascal(ref)} } from "../models/${ref}.model.js";`),
   ].filter(Boolean);
 
@@ -159,9 +161,12 @@ export async function ${op.name}(_req, res) {
   res.type("text/csv").attachment(${JSON.stringify(`${entity.plural}.csv`)}).send(lines.join("\\n") + "\\n");
 }`);
     } else {
-      handlers.push(`// ${comment(op.evidence)}: what this button does is written by the AI layer (Step 13)
-export async function ${op.name}(_req, res) {
-  res.status(501).json({ error: ${JSON.stringify(`"${comment(op.button)}" is not available yet`)}, operation: ${JSON.stringify(op.name)} });
+      handlers.push(`// ${comment(op.evidence)}: what this button does is written by the AI layer (Step 13), in
+// backend/custom/${op.name}.js; until then it answers "not available yet".
+export async function ${op.name}(req, res) {
+  const result = await runCustom({ name: ${JSON.stringify(op.name)}, Model: ${M}, validate: validate${M}, id: ${op.route.row ? "req.params.id" : "null"}, input: req.body ?? {} });
+  if (!result) return res.status(501).json({ error: ${JSON.stringify(`"${comment(op.button)}" is not available yet`)}, operation: ${JSON.stringify(op.name)} });
+  res.status(result.status).json(result.body);
 }`);
     }
   }
