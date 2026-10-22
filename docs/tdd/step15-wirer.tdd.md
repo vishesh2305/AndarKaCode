@@ -72,3 +72,19 @@ Laptop B's real Products page (from the m2 screenshot) differed from the hand-wr
 - **Other text the page made up** (for example "Page 1 of 13" written in another way, or a column the spec doesn't have) stays as the sample showed it.
 - **Generated pages need internet** for the Tailwind script, as before.
 - **The binder's own code coverage can't be measured by Node,** because it runs inside the fake browser. Its behaviour is covered by 49 page tests, plus the end-to-end and real-Chrome runs.
+
+## Bug found after Step 15 (22 Oct): Add Employee never worked for samples/employees.png
+
+**What the user saw:** the page was built and wired, but Add Employee saved nothing.
+
+**Cause, from the real run:** the screenshot's Department dropdown is closed, so the vision model saw only its prompt, "Select Department". The Spec Deriver made Department a fixed list (`enum`) whose only allowed value was that prompt. The backend then refused every real department ("must be one of: Select Department"). The binder showed this only as a small bubble on the dropdown. The binder also gave the page's empty prompt the value "Select Department", so the smoke check (which picked the first non-empty option) saved the prompt and passed.
+
+**Fix (test-first):**
+
+| Stage | Result |
+|---|---|
+| RED `ee7e984` | 5 fail: placeholders became allowed values; a closed dropdown became an enum with no real choices |
+| GREEN `648e07c` | Spec Deriver: dropdown prompts ("Select …", "Choose …", "-- Select --", "All …", the label itself) are never values. A dropdown with no visible choices is stored as text with `control: "select"`, and the page instructions still ask for a `<select>`. The open question says the choices were not visible. Unit 200/200 |
+| RED `2a87ed2` | binder gave the empty prompt a value; the smoke script now picks a real choice like a person, and fails on the before-fix app with the same message the user saw |
+| GREEN `60998b0` | binder keeps an empty prompt empty. Unit 201/201, integration 47/47 |
+| Real run | same screenshot, fixed code → SYNCED in 151 s → `npm start` → real Chrome: **7/7** (add with "Engineering", reload, edit, search, delete) |
