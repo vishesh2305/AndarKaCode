@@ -121,7 +121,9 @@ try {
     const before = await rows();
     const inDatabase = await evaluate(`(() => {
       const token = localStorage.getItem("andarkacode.token");
-      return fetch(${JSON.stringify(entity.url)}, { headers: token ? { Authorization: "Bearer " + token } : {} }).then((r) => r.json()).then((d) => d.items.length);
+      // Next to the page, like the binder: "/" for a downloaded app, "/preview/<project>/" in the live preview.
+      const url = location.pathname.replace(/[^/]*$/, "") + ${JSON.stringify(entity.url.slice(1))};
+      return fetch(url, { headers: token ? { Authorization: "Bearer " + token } : {} }).then((r) => r.json()).then((d) => d.items.length);
     })()`);
     check("the rows on the page are the database's rows (not the samples)", before === inDatabase, `${before} on the page, ${inDatabase} in the first page of the API`);
 
