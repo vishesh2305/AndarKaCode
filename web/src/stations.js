@@ -91,9 +91,9 @@ export const STATIONS = {
   },
   verify: {
     title: "Check",
-    where: "Mac, a browser without a screen",
+    where: "Mac",
     how: [
-      "The app is started on a throwaway database. Each page is used like a person would: add a record, reload, edit it, search, filter, press its buttons, delete it, sign in.",
+      "The app is started on a throwaway database. In a browser without a screen, each page is used like a person would: add a record, reload, edit it, search, filter, press its buttons, delete it, sign in.",
       "Every result must reach the database. Then the app's own tests run. If something fails, the report says which control, what the backend answered, and which part to blame: the page, the spec or the backend.",
     ],
     details: (project, s) => [

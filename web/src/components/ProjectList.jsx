@@ -3,10 +3,13 @@ const STATE_WORDS = {
   UPLOADED: "Reading",
   CONTRACT_DRAFT: "Planning",
   BUILDING: "Building",
-  SYNCED: "Ready to download",
+  SYNCED: "Wiring",
+  INTEGRATING: "Wiring",
+  VERIFYING: "Checking",
+  READY: "Ready to download",
   NEEDS_ATTENTION: "Needs attention",
 };
-const STATE_LOOK = { SYNCED: "done", NEEDS_ATTENTION: "failed" };
+const STATE_LOOK = { READY: "done", NEEDS_ATTENTION: "failed" };
 
 export function ago(date) {
   const s = Math.max(0, Math.round((Date.now() - Date.parse(date)) / 1000));
