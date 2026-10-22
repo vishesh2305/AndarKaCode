@@ -24,11 +24,11 @@ const withSpec = (overrides) =>
 const statuses = (p) => Object.fromEntries(Object.entries(pipelineStatus(p).stations).map(([id, s]) => [id, s.status]));
 
 describe("pipelineStatus", () => {
-  it("just uploaded: reading is in progress, everything after waits, future steps are coming soon", () => {
+  it("just uploaded: reading is in progress, everything after waits", () => {
     const s = statuses(project({ jobs: [job("contract", "running")] }));
     assert.deepEqual(s, {
       upload: "done", read: "active", plan: "waiting", pages: "waiting", backend: "waiting",
-      sync: "waiting", wire: "soon", verify: "soon", ready: "soon",
+      sync: "waiting", wire: "waiting", verify: "waiting", ready: "waiting",
     });
     assert.equal(pipelineStatus(project({ jobs: [job("contract", "running")] })).current, "read");
   });
@@ -47,14 +47,15 @@ describe("pipelineStatus", () => {
     assert.deepEqual(pipelineStatus(p).stations.pages.pages, [{ page: 1, status: "done" }, { page: 2, status: "running" }]);
   });
 
-  it("SYNCED: everything up to the sync check is done", () => {
+  it("SYNCED: everything up to the sync check is done, and wiring is next", () => {
     const p = withSpec({
       state: "SYNCED",
       jobs: [job("contract", "done"), job("backend", "done", { contractHash: HASH }), job("frontend", "done", { contractHash: HASH, page: 1 }), job("frontend", "done", { contractHash: HASH, page: 2 })],
     });
     const s = statuses(p);
     for (const id of ["upload", "read", "plan", "pages", "backend", "sync"]) assert.equal(s[id], "done", id);
-    assert.equal(pipelineStatus(p).current, "sync");
+    assert.equal(s.wire, "active");
+    assert.equal(pipelineStatus(p).current, "wire");
   });
 
   it("ignores jobs built for an older spec version", () => {
@@ -93,5 +94,56 @@ describe("pipelineStatus", () => {
   it("reports how long each finished station took", () => {
     const p = withSpec({ state: "BUILDING", jobs: [job("contract", "done")] });
     assert.equal(pipelineStatus(p).stations.read.seconds, 10);
+  });
+
+  // ---- Step 16: Wire, Check, Ready ----
+  const built = [job("contract", "done"), job("backend", "done", { contractHash: HASH }), job("frontend", "done", { contractHash: HASH, page: 1 }), job("frontend", "done", { contractHash: HASH, page: 2 })];
+  const report = (fails = 0) => ({
+    ok: fails === 0,
+    seconds: 7.5,
+    summary: { pass: 9, fail: fails, warn: 1, note: 1, skip: 0 },
+    checks: [
+      { id: "add:p1", page: 1, title: "Add saves", status: fails ? "fail" : "pass", layer: fails ? "spec" : undefined, detail: fails ? "Department: must be one of: Select Department" : "Saved" },
+      { id: "tests", title: "The app's own tests pass", status: "pass", detail: "12 tests passed." },
+    ],
+  });
+
+  it("VERIFYING: wired, the Check is running", () => {
+    const p = withSpec({ state: "VERIFYING", jobs: [...built, job("verify", "running", { contractHash: HASH })] });
+    const s = statuses(p);
+    assert.equal(s.sync, "done");
+    assert.equal(s.wire, "done");
+    assert.equal(s.verify, "active");
+    assert.equal(s.ready, "waiting");
+    assert.equal(pipelineStatus(p).current, "verify");
+  });
+
+  it("READY: every check passed; the Check station carries the report", () => {
+    const p = withSpec({ state: "READY", jobs: [...built, job("verify", "done", { contractHash: HASH, report: report() })] });
+    const s = statuses(p);
+    for (const id of ["sync", "wire", "verify", "ready"]) assert.equal(s[id], "done", id);
+    assert.equal(pipelineStatus(p).current, "ready");
+    const verify = pipelineStatus(p).stations.verify;
+    assert.deepEqual(verify.summary, { pass: 9, fail: 0, warn: 1, note: 1, skip: 0 });
+    assert.equal(verify.seconds, 7.5);
+    assert.equal(verify.checks.length, 2);
+  });
+
+  it("checks failed: the Check station is failed (not the sync), Ready waits, the failures come first", () => {
+    const p = withSpec({ state: "NEEDS_ATTENTION", error: "1 check failed. First: Add saves", jobs: [...built, job("verify", "done", { contractHash: HASH, report: report(1) })] });
+    const s = statuses(p);
+    assert.equal(s.sync, "done");
+    assert.equal(s.wire, "done");
+    assert.equal(s.verify, "failed");
+    assert.equal(s.ready, "waiting");
+    assert.equal(pipelineStatus(p).current, "verify");
+    assert.equal(pipelineStatus(p).stations.verify.checks[0].status, "fail");
+    assert.equal(pipelineStatus(p).canDownloadAnyway, true);
+  });
+
+  it("only a check of the CURRENT spec counts", () => {
+    const p = withSpec({ state: "BUILDING", jobs: [...built.slice(0, 1), job("verify", "done", { contractHash: OLD, report: report() })] });
+    assert.equal(statuses(p).verify, "waiting");
+    assert.equal(pipelineStatus(p).canDownloadAnyway, false);
   });
 });
