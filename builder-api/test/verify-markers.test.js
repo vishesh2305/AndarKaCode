@@ -76,7 +76,7 @@ describe("markerCheck: pass, or say what is missing in a person's words", () => 
   });
 
   it("fails with the field's label and blames the page when a marker is missing", async () => {
-    const html = page("employees-real.html").replace('data-field="salary" class="mt-1', 'class="mt-1');
+    const html = page("employees-real.html").replaceAll('data-field="salary"', ""); // in the form and in the rows
     const check = markerCheck(expectedMarkers(employeesSpec, 1), await pageMarkers(html));
     assert.equal(check.status, "fail");
     assert.equal(check.layer, "page");
