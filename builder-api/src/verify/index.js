@@ -60,6 +60,13 @@ async function drop(uri) {
   }
 }
 
+/** Another database on the same MongoDB server: databaseUri("mongodb://h:27017/builder_db", "verify_x"). */
+export function databaseUri(base, name) {
+  const url = new URL(base);
+  url.pathname = `/${name}`;
+  return url.toString();
+}
+
 const summarize = (checks) => Object.fromEntries(["pass", "fail", "warn", "note", "skip"].map((s) => [s, checks.filter((c) => c.status === s).length]));
 
 /** Verifies the wired app in appDir. mongoUri and testsMongoUri are throwaway databases (dropped). */

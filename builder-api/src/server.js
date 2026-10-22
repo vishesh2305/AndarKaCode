@@ -188,13 +188,31 @@ app.get("/api/projects/:id/files/content", async (req, res) => {
   res.type("text/plain; charset=utf-8").sendFile(file, (err) => err && !res.headersSent && res.status(404).json({ error: "No such file" }));
 });
 
+// The Verifier's latest report for the current spec (Step 16).
+const latestVerify = (project, contract) =>
+  contract && Job.findOne({ projectId: project._id, kind: "verify", contractHash: contract.hash, report: { $exists: true } }).sort({ createdAt: -1 });
+
+app.get("/api/projects/:id/verify", async (req, res) => {
+  const project = await findProject(req.params.id);
+  if (!project) return res.status(404).json({ error: "No such project" });
+  const contract = await currentContract(project);
+  const job = await latestVerify(project, contract);
+  if (!job) return res.status(404).json({ error: `Not checked yet (state: ${project.state})` });
+  res.json({ state: project.state, checkedAt: job.finishedAt, seconds: job.report.seconds, report: job.report });
+});
+
+// READY: download. Checks failed: only when asked for anyway (?anyway=1), with the report in the zip.
 app.get("/api/projects/:id/download", async (req, res) => {
   const project = await findProject(req.params.id);
   if (!project) return res.status(404).json({ error: "No such project" });
-  if (project.state !== "SYNCED") return res.status(409).json({ error: `The app can be downloaded once it is SYNCED (now: ${project.state})` });
   const { contract, backendJob, frontendJobs } = await currentBuild(project);
+  const verify = await latestVerify(project, contract);
+  const anyway = req.query.anyway === "1" && project.state === "NEEDS_ATTENTION" && verify;
+  if (project.state !== "READY" && !anyway) {
+    return res.status(409).json({ error: `The app can be downloaded once every check passes (now: ${project.state})` });
+  }
   if (!backendJob) return res.status(409).json({ error: "The generated backend is missing; rebuild the project" });
-  const zip = await appArchive({ project, contract, backendJob, frontendJobs, screenshots: screenshotsOf(project) });
+  const zip = await appArchive({ project, contract, backendJob, frontendJobs, screenshots: screenshotsOf(project), report: verify?.report });
   res.type("application/zip").attachment(`${slug(project.name)}-v${contract.version}.zip`).send(zip);
 });
 

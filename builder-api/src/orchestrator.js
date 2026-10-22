@@ -13,7 +13,11 @@ import { deriveSpec } from "./spec/derive.js";
 import { pageInstructions } from "./spec/instructions.js";
 import { readInventory } from "./spec/inventory.js";
 import { REPO_ROOT, RUNS_DIR, saveArtifact } from "./storage.js";
+import { databaseUri, verifyApp } from "./verify/index.js";
+import { failureLine } from "./verify/report.js";
+import { wireApp } from "./wirer/index.js";
 
+const MONGODB_URI = process.env.MONGODB_URI ?? "mongodb://127.0.0.1:27017/builder_db"; // the Verifier's throwaway databases live next to it
 const POLL_MS = Number(process.env.GATEWAY_POLL_MS ?? 2000); // A polls B every 2 s (ARCHITECTURE.md §6)
 const MAX_POLL_ERRORS = 30; // about a minute of Gateway/Tailscale trouble before giving up
 const MAX_BUILD_ROUNDS = 3; // how many Contract edits one build follows before asking for attention
@@ -190,12 +194,46 @@ async function buildStage(projectId) {
   throw new Error(`The Contract changed ${MAX_BUILD_ROUNDS} times during one build`);
 }
 
+// SYNCED -> INTEGRATING (Wire: the wired pages go into the app folder, so the folder is the finished app)
+// -> VERIFYING (Check: the Verifier on throwaway databases) -> READY, or NEEDS_ATTENTION with the report.
+async function verifyStage(projectId) {
+  let project = await Project.findById(projectId);
+  const contract = await currentContract(project);
+  const query = { projectId: project._id, contractHash: contract.hash, status: "done" };
+  const backend = await Job.findOne({ ...query, kind: "backend" });
+  const pages = await Job.find({ ...query, kind: "frontend" });
+  const appDir = path.join(REPO_ROOT, backend.artifactPath);
+
+  await setState(project, "INTEGRATING");
+  const built = await Promise.all(pages.map(async (job) => ({ screenshot: job.page, html: await readFile(path.join(REPO_ROOT, job.artifactPath), "utf8") })));
+  await writeBackend(appDir, wireApp({ spec: contract.body, pages: built }));
+
+  await setState(project, "VERIFYING");
+  const job = await runJob(project, "verify", async (job) => {
+    job.contractHash = contract.hash;
+    job.report = await verifyApp({
+      spec: contract.body,
+      appDir,
+      mongoUri: databaseUri(MONGODB_URI, `verify_${project.id}`),
+      testsMongoUri: databaseUri(MONGODB_URI, `verify_${project.id}_tests`),
+    });
+    job.note = `${job.report.summary.pass} passed, ${job.report.summary.fail} failed, in ${job.report.seconds} s`;
+    return job;
+  });
+
+  project = await Project.findById(projectId);
+  if ((await currentContract(project)).hash !== contract.hash) return; // the spec was edited meanwhile: the rerun builds again
+  if (job.report.ok) await setState(project, "READY");
+  else await setState(project, "NEEDS_ATTENTION", failureLine(job.report).slice(0, 500));
+}
+
 async function run(projectId) {
   const project = await Project.findById(projectId);
   if (!project) return;
   try {
     if (project.state === "UPLOADED") await contractStage(project);
     if (["CONTRACT_DRAFT", "BUILDING"].includes(project.state)) await buildStage(project._id);
+    if (["SYNCED", "INTEGRATING", "VERIFYING"].includes((await Project.findById(projectId)).state)) await verifyStage(project._id);
   } catch (err) {
     await setState(await Project.findById(projectId), "NEEDS_ATTENTION", err.message.slice(0, 500));
   }
@@ -220,10 +258,11 @@ export function startPipeline(projectId) {
 /** On startup: finish what a restart cut off. Running frontend jobs keep their Gateway jobId and resume. */
 export async function resumeAll() {
   const interrupted = await Job.updateMany(
-    { status: "running", kind: "contract" },
+    { status: "running", kind: { $in: ["contract", "verify"] } },
     { status: "failed", error: "Interrupted by a Builder API restart", finishedAt: new Date() }
   );
-  const projects = await Project.find({ state: { $in: ["UPLOADED", "CONTRACT_DRAFT", "BUILDING"] } }, { _id: 1 });
+  // SYNCED projects from before Step 16 get wired and checked too.
+  const projects = await Project.find({ state: { $in: ["UPLOADED", "CONTRACT_DRAFT", "BUILDING", "SYNCED", "INTEGRATING", "VERIFYING"] } }, { _id: 1 });
   projects.forEach((p) => startPipeline(p._id));
   if (projects.length) console.log(`Resuming ${projects.length} project(s), ${interrupted.modifiedCount} interrupted job(s)`);
 }

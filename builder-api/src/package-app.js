@@ -2,6 +2,7 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { REPO_ROOT } from "./storage.js";
+import { reportMarkdown } from "./verify/report.js";
 import { wireApp } from "./wirer/index.js";
 import { createZip } from "./zip.js";
 
@@ -80,10 +81,13 @@ export function readme({ project, contract, pages }) {
 }
 
 /** Zip of the whole app: generated backend + pages + screenshots + README + spec. */
-export async function appArchive({ project, contract, backendJob, frontendJobs, screenshots }) {
+export async function appArchive({ project, contract, backendJob, frontendJobs, screenshots, report }) {
   const appDir = path.join(REPO_ROOT, backendJob.artifactPath);
   const entries = [];
-  for (const file of await listAppFiles(appDir)) entries.push({ name: file.path, data: await readFile(path.join(appDir, file.path)) });
+  // frontend/ is wired again below from the pages Laptop B built (same result as the Wire stage).
+  for (const file of await listAppFiles(appDir)) {
+    if (!file.path.startsWith("frontend/")) entries.push({ name: file.path, data: await readFile(path.join(appDir, file.path)) });
+  }
 
   // The pages as Laptop B built them, wired to the backend by the binder (Step 15).
   const pages = contract.body.pages;
@@ -97,6 +101,7 @@ export async function appArchive({ project, contract, backendJob, frontendJobs, 
     entries.push({ name: `screenshots/screenshot-${i + 1}.png`, data: await readFile(path.join(REPO_ROOT, shot.path)) });
   }
   entries.push({ name: "README.md", data: readme({ project, contract, pages }) });
+  if (report) entries.push({ name: "verify-report.md", data: reportMarkdown(report, { version: contract.version, hash: contract.hash }) });
   entries.push({ name: "app-spec.json", data: JSON.stringify({ version: contract.version, hash: contract.hash, spec: contract.body }, null, 2) + "\n" });
   return createZip(entries);
 }
