@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { operationRoute } from "../generator/index.js";
 import { camelCase } from "../spec/derive.js";
 
-const BINDER = readFileSync(new URL("../../../templates/frontend/app.js", import.meta.url), "utf8");
+export const BINDER = readFileSync(new URL("../../../templates/frontend/app.js", import.meta.url), "utf8");
 const SCRIPT = '<script src="app.js"></script>';
 
 const pageFile = (page) => `page-${page.screenshot}.html`;

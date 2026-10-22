@@ -3,6 +3,9 @@
 // what Laptop B was asked for. Missing markers are named the way a person sees them.
 import { JSDOM, VirtualConsole } from "jsdom";
 import { camelCase } from "../spec/derive.js";
+import { BINDER, wirePage } from "../wirer/index.js";
+
+const SCRIPT = '<script src="app.js"></script>';
 
 const onPage = (item, n) => new RegExp(`(^|; )s${n}: `).test(item?.evidence ?? "");
 // "s1: button 'Add Employee'; s2: ..." -> "Add Employee" (the text on THIS page's element).
@@ -47,27 +50,45 @@ export function expectedMarkers(spec, n) {
 
 const unique = (values) => [...new Set(values)];
 
-/** The markers a page really has once its own scripts ran (no network, no binder). */
-export async function pageMarkers(html) {
+/**
+ * The markers a page really has once its own scripts ran (no network). With { map, file }, the binder
+ * runs too, in markers-only mode: markers it can add from the page (labels, headers, button text)
+ * count, and found.repaired lists them.
+ */
+export async function pageMarkers(html, { map, file = "page.html" } = {}) {
   const quiet = new VirtualConsole(); // the page's own console and script errors are not ours to report here
-  const dom = new JSDOM(String(html).replace('<script src="app.js"></script>', ""), {
-    url: "http://127.0.0.1/page.html",
+  const page = map ? wirePage(html).replace(SCRIPT, () => `<script>${BINDER}</script>`) : String(html).replace(SCRIPT, "");
+  const dom = new JSDOM(page, {
+    url: `http://127.0.0.1/${file}`,
     runScripts: "dangerously",
     pretendToBeVisual: true,
     virtualConsole: quiet,
     beforeParse(w) {
-      w.fetch = () => Promise.reject(new Error("no network while reading markers"));
+      w.fetch = async (input) =>
+        map && String(input).endsWith("api-map.json")
+          ? new Response(JSON.stringify(map), { headers: { "content-type": "application/json" } })
+          : Promise.reject(new Error("no network while reading markers"));
       w.alert = w.confirm = () => true;
+      w.andarkacodeTestHooks = { markersOnly: true, navigate: () => {} };
     },
   });
   const { window } = dom;
+  const root = window.document.documentElement;
   await new Promise((resolve) => (window.document.readyState === "complete" ? resolve() : window.addEventListener("load", resolve)));
   await new Promise((resolve) => setTimeout(resolve, 50)); // rows some pages draw just after loading
+  for (let waited = 0; map && root.dataset.andarkacode === "loading" && waited < 3000; waited += 25) await new Promise((r) => setTimeout(r, 25));
   const all = (attr) => unique([...window.document.querySelectorAll(`[${attr}]`)].map((el) => el.getAttribute(attr)));
   const submitForm = [...window.document.querySelectorAll("form")].some(
     (form) => form.querySelector("input:not([type=hidden]), select, textarea") && form.querySelector('button:not([type=button]):not([type=reset]), input[type="submit"]')
   );
-  const found = { fields: all("data-field"), actions: all("data-action"), filters: all("data-filter"), stats: all("data-stat"), submitForm };
+  const found = {
+    fields: all("data-field"),
+    actions: all("data-action"),
+    filters: all("data-filter"),
+    stats: all("data-stat"),
+    submitForm,
+    repaired: JSON.parse(root.dataset.andarkacodeRepaired ?? "[]"),
+  };
   window.close();
   return found;
 }
@@ -87,6 +108,7 @@ export function markerCheck(expected, found) {
 
   const known = new Set([...expected.actions.map((a) => a.name), "logout"]);
   const warnings = [
+    ...(found.repaired ?? []).map((what) => `added by AndarKaCode when the page opens (Laptop B forgot it): ${what}`),
     ...found.actions.filter((a) => !known.has(a)).map((a) => `the page has a button data-action="${a}" the spec does not know: it does nothing`),
     ...found.fields.filter((f) => !IGNORED_FIELDS.has(f) && !expected.fields.some((x) => x.name === f)).map((f) => `the page shows data-field="${f}", which the spec does not have`),
   ];

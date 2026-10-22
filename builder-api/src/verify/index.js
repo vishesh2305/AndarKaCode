@@ -79,7 +79,7 @@ export async function verifyApp({ spec, appDir, mongoUri, testsMongoUri }) {
       continue;
     }
     files.set(n, file);
-    const result = markerCheck(expectedMarkers(spec, n), await pageMarkers(html));
+    const result = markerCheck(expectedMarkers(spec, n), await pageMarkers(html, { map, file }));
     checks.push({ id: `markers:p${n}`, page: n, title: "Every field and button the spec needs is on the page", status: result.status, layer: result.layer, detail: result.detail });
     result.warnings.forEach((warning, i) => checks.push({ id: `warn:p${n}:${i + 1}`, page: n, title: "Something on the page the spec does not have", status: "warn", detail: warning }));
   }
