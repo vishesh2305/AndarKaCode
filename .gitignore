@@ -12,6 +12,8 @@ coverage/
 # OS files
 .DS_Store
 Thumbs.db
+~$*.pptx
+felo-skills/
 
 # Generated apps and job workspaces (Builder API output)
 runs/
