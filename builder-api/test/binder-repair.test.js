@@ -39,6 +39,7 @@ describe("repairing a field marker", () => {
     const html = page("employees-real.html")
       .replaceAll('data-field="salary"', "")
       .replace('id="salary" name="salary"', 'id="pay1" name="pay1"')
+      .replace('for="salary"', 'for="pay1"')
       .replace("</form>", '<label for="pay2">Salary</label><input id="pay2" name="pay2"></form>');
     const p = await start({ html, map: apiMap(employeesSpec), api: employees() });
     assert.equal(p.$('#employeeForm [data-field="salary"]'), null);
@@ -62,7 +63,9 @@ describe("repairing a button marker", () => {
   });
 
   it("finds the search box by its placeholder", async () => {
-    const html = page("employees-real.html").replace('data-action="search"', "");
+    const html = page("employees-real.html")
+      .replace('data-action="search"', "")
+      .replace(`document.querySelector('[data-action="search"]')`, `document.querySelector('[placeholder="Search employees"]')`); // the page's own script
     const p = await start({ html, map: apiMap(employeesSpec), api: employees() });
     const box = p.$('[data-action="search"]');
     assert.equal(box?.placeholder, "Search employees");

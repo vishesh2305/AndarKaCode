@@ -109,6 +109,109 @@
     }
   }
 
+  // ---------- forgotten markers: added from what a person sees ----------
+  // Only when the match is clear (exactly one candidate); a marker already there is never changed.
+  // Every repair is written to <html data-andarkacode-repaired> for the Verifier.
+
+  const repaired = [];
+  const noteRepair = (what) => {
+    repaired.push(what);
+    root.dataset.andarkacodeRepaired = JSON.stringify(repaired);
+  };
+  const cleanLabel = (text) => norm(String(text ?? "").replace(/[*:]/g, ""));
+  const onlyOne = (list) => (list.length === 1 ? list[0] : null);
+  const BUTTONS = 'button, a, [role="button"], input[type="button"], input[type="submit"]';
+  const unmarked = (el) => !el.hasAttribute("data-action") && !el.hasAttribute("data-filter") && !el.hasAttribute("data-field");
+  const buttonText = (el) => norm(el.tagName === "INPUT" ? el.value : el.textContent);
+
+  function labelOf(control) {
+    const byFor = control.id && [...document.querySelectorAll("label[for]")].find((label) => label.htmlFor === control.id);
+    const around = control.closest("label");
+    return byFor ? byFor.textContent : around ? around.textContent : "";
+  }
+
+  function repairInputs(fields) {
+    const free = [...document.querySelectorAll(CONTROLS)].filter((el) => unmarked(el) && el.type !== "hidden");
+    for (const field of fields) {
+      if (document.querySelector(`[data-field="${field.name}"]:is(${CONTROLS})`)) continue;
+      const want = cleanLabel(field.label);
+      const ways = [
+        [free.filter((el) => el.name === field.name || el.id === field.name), `its name "${field.name}"`],
+        [free.filter((el) => cleanLabel(labelOf(el)) === want), `its label "${field.label}"`],
+        [free.filter((el) => cleanLabel(el.placeholder) === want), `its placeholder "${field.label}"`],
+        [field.type === "email" || field.type === "password" ? free.filter((el) => el.type === field.type) : [], `its type "${field.type}"`],
+      ];
+      for (const [found, why] of ways) {
+        const el = onlyOne(found);
+        if (!el) continue;
+        el.setAttribute("data-field", field.name);
+        noteRepair(`data-field="${field.name}" on an input, from ${why}`);
+        break;
+      }
+    }
+  }
+
+  function repairCells(entity) {
+    for (const field of entity.fields) {
+      if (displayCells(entity, document).some((cell) => cell.dataset.field === field.name)) continue;
+      const head = onlyOne([...document.querySelectorAll("thead th, thead td")].filter((th) => cleanLabel(th.textContent) === cleanLabel(field.label)));
+      if (!head) continue;
+      const index = [...head.parentElement.children].indexOf(head);
+      let count = 0;
+      for (const tr of head.closest("table").querySelectorAll("tbody tr")) {
+        const td = tr.children[index];
+        if (td && !td.hasAttribute("data-field") && !td.querySelector("[data-field]")) {
+          td.setAttribute("data-field", field.name);
+          count++;
+        }
+      }
+      if (count) noteRepair(`data-field="${field.name}" on the "${field.label}" column, from its header`);
+    }
+  }
+
+  function repairButtons(entity, rows) {
+    const missing = (name) => !document.querySelector(`[data-action="${name}"]`);
+    const inRows = rows.flatMap((row) => [...row.querySelectorAll(BUTTONS)].filter(unmarked));
+    const onPage = [...document.querySelectorAll(BUTTONS)].filter((el) => unmarked(el) && !rows.some((row) => row.contains(el)));
+    const markAll = (name, list, why) => {
+      if (!list.length) return;
+      for (const el of list) el.setAttribute("data-action", name);
+      noteRepair(`data-action="${name}" on ${list.length} button(s), from ${why}`);
+    };
+    const markOne = (name, list, why) => markAll(name, onlyOne(list) ? list : [], why);
+    const rowWord = (pattern) => inRows.filter((el) => pattern.test(buttonText(el)));
+
+    if (entity.update && missing("update")) markAll("update", rowWord(/^(edit|update|modify)\b/), 'the text "Edit"');
+    if (entity.delete && missing("delete")) markAll("delete", rowWord(/^(delete|remove)\b/), 'the text "Delete"');
+    for (const [name, action] of Object.entries(entity.actions)) {
+      if (!missing(name)) continue;
+      const same = (el) => buttonText(el) === norm(action.button);
+      if (action.row) markAll(name, inRows.filter(same), `the text "${action.button}"`);
+      else markOne(name, onPage.filter(same), `the text "${action.button}"`);
+    }
+    const formAdds = editorOf(entity)?.tagName === "FORM"; // a form's own submit button already adds
+    if (entity.create && missing("create") && !formAdds) markOne("create", onPage.filter((el) => /^\+?\s*(add|new|create)\b/.test(buttonText(el))), 'its text ("Add …")');
+    if (entity.list && entity.list.pagination) {
+      if (missing("prevPage")) markOne("prevPage", onPage.filter((el) => /^(‹|<|«|prev|previous)$/.test(buttonText(el))), 'its text ("Previous")');
+      if (missing("nextPage")) markOne("nextPage", onPage.filter((el) => /^(›|>|»|next)$/.test(buttonText(el))), 'its text ("Next")');
+    }
+    if (entity.list && entity.list.search && missing("search")) {
+      const boxes = [...document.querySelectorAll("input, textarea")].filter((el) => unmarked(el) && (el.type === "search" || /search/i.test(el.placeholder || "")));
+      const box = onlyOne(boxes);
+      if (box) {
+        box.setAttribute("data-action", "search");
+        noteRepair('data-action="search" on the search box, from its placeholder');
+      }
+    }
+  }
+
+  // Everything that can be repaired on a data page; safe to run again (it only adds what is missing).
+  function repairPage(entity) {
+    repairInputs(entity.fields);
+    repairCells(entity);
+    repairButtons(entity, findRows(entity));
+  }
+
   // ---------- the list: real records, stamped from the page's own sample row ----------
 
   const displayCells = (entity, scope) =>
@@ -285,13 +388,20 @@
     return counters;
   }
 
-  async function setupList(entity) {
+  // Some pages draw their sample rows a moment after loading: repair markers and look again for ~1 s.
+  async function waitForRows(entity) {
+    repairPage(entity);
     let rows = findRows(entity);
-    // Some pages draw their sample rows a moment after loading.
     for (let tries = 0; !rows.length && tries < 10; tries++) {
       await new Promise((resolve) => setTimeout(resolve, 100));
+      repairPage(entity);
       rows = findRows(entity);
     }
+    return rows;
+  }
+
+  async function setupList(entity) {
+    const rows = await waitForRows(entity);
     if (!rows.length) return null;
     const view = {
       entity,
@@ -817,13 +927,26 @@
     const map = (state.map = answer.data);
     const file = decodeURIComponent(window.location.pathname.split("/").pop() || "") || "index.html";
     state.page = map.pages[file] || map.pages["index.html"] || { kind: "unknown" };
+    const entity = (state.entity = (state.page.entity && map.entities[state.page.entity]) || null);
+
+    if (state.page.kind === "login") {
+      repairInputs([
+        { name: "email", label: "Email", type: "email" },
+        { name: "password", label: "Password", type: "password" },
+      ]);
+    }
+    // The Verifier reads the markers after repair, without using the API (the sample rows stay).
+    if (hooks.markersOnly) {
+      if (entity) await waitForRows(entity);
+      return setStatus("ready");
+    }
     if (map.auth && state.page.kind !== "login" && !readToken()) {
       goToLogin();
       return setStatus("ready");
     }
 
-    const entity = (state.entity = (state.page.entity && map.entities[state.page.entity]) || null);
     if (entity) {
+      if (!entity.list) repairPage(entity);
       alignEnumDropdowns(entity);
       if (entity.list) state.view = await setupList(entity);
       await Promise.all([state.view ? loadList() : null, fillRelationDropdowns(entity)]);
