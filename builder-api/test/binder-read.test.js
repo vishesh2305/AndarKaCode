@@ -1,6 +1,7 @@
 // Binder (Step 15), reading: real records replace the sample rows in the page's own look; search,
 // filters, previous/next and stat cards ask the backend. The page's own fake behaviour never runs.
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { afterEach, describe, it } from "node:test";
 import { apiMap } from "../src/wirer/index.js";
 import { dashboardSpec, employeesSpec, productsSpec, relationSpec } from "./fixtures/page-specs.js";
@@ -127,6 +128,29 @@ describe("search, filters, previous/next: the backend does the work", () => {
     await cards.settle();
     assert.equal(gets(cards, "/api/products").at(-1).query.category, "Stationery", "option value 'stationery' is the spec's 'Stationery'");
     cards.close();
+  });
+
+  // Found by the Verifier (Step 16) on the real m2 page: its filter had only "All categories".
+  it("fills a filter dropdown that has no choices: the values in the list (text fields)", async () => {
+    const realMap = apiMap(JSON.parse(readFileSync(new URL("./fixtures/pages/products-real.spec.json", import.meta.url), "utf8")));
+    const api = memoryApi("/api/products", [
+      { name: "Pen", category: "Stationery", price: 2, inStock: true },
+      { name: "Cable", category: "Electronics", price: 9, inStock: false },
+      { name: "Ink", category: "Stationery", price: 4, inStock: true },
+    ]);
+    const p = await start({ html: page("products-real.html"), map: realMap, api });
+    const options = [...p.$('[data-filter="category"]').options].map((o) => o.textContent.trim());
+    assert.deepEqual(options, ["All categories", "Stationery", "Electronics"]);
+    p.choose(p.$('[data-filter="category"]'), "Electronics");
+    await p.settle();
+    assert.equal(gets(p, "/api/products").at(-1).query.category, "Electronics");
+    assert.deepEqual([...p.$('[data-filter="category"]').options].map((o) => o.textContent.trim()), ["All categories", "Stationery", "Electronics"], "choices stay while filtered");
+  });
+
+  it("fills a filter dropdown that has no choices: the spec's values (fixed list)", async () => {
+    const html = page("leave-dashboard.html").replace(/<option>Pending<\/option>\s*<option>Approved<\/option>\s*<option>Rejected<\/option>/, "");
+    const p = await start({ html, map: apiMap(dashboardSpec), api: memoryApi("/api/leaveRequests", []) });
+    assert.deepEqual([...p.$('[data-filter="status"]').options].map((o) => o.textContent.trim()), ["All statuses", "Pending", "Approved", "Rejected"]);
   });
 
   it("goes to the next and previous page, and disables the buttons at the ends", async () => {
