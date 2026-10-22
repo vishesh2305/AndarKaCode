@@ -51,6 +51,17 @@ describe("Add", () => {
     assert.equal(writes(p).length, 1);
   });
 
+  it("never turns a dropdown's empty prompt ('Select Department') into a value, even if a spec lists it", async () => {
+    const spec = structuredClone(employeesSpec);
+    spec.entities[0].fields.find((f) => f.name === "department").options = ["Select Department", "HR"];
+    const p = await start({ html: page("employees-real.html"), map: apiMap(spec), api: memoryApi("/api/employees", []) }); // its prompt: <option value="">Select Department</option>
+    const select = p.$('select[data-field="department"]');
+    assert.equal(select.options[0].value, "", "the prompt keeps its empty value");
+    fill(p, { fullName: "Kavya Rao", email: "kavya@example.com", salary: "52000" });
+    await p.click(p.$('#employeeForm button[type="submit"]'));
+    assert.equal(writes(p)[0].body.department, undefined, "no department chosen: none sent");
+  });
+
   it("does not send a form the browser finds incomplete (required fields)", async () => {
     const { p } = await employeesPage();
     fill(p, { fullName: "", email: "kavya@example.com" });

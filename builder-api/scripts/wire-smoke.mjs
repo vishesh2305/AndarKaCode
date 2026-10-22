@@ -139,7 +139,11 @@ try {
         for (const el of controls) {
           const v = values[el.dataset.field];
           if (el.type === "checkbox") el.checked = true;
-          else if (el.tagName === "SELECT") { const o = [...el.options].find((o) => o.value !== ""); if (o) el.value = o.value; }
+          else if (el.tagName === "SELECT") {
+            // Like a person: a real choice, never the "Select …" prompt.
+            const o = [...el.options].find((o) => o.value !== "" && !/^(select|choose|pick|all)\\b|^-+/i.test(o.textContent.trim()));
+            if (o) el.value = o.value;
+          }
           else if (v !== null && v !== undefined) el.value = v;
         }
         const form = controls[0]?.closest("form");
