@@ -3,9 +3,12 @@
 import { readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { contractHash } from "../../shared/hash.mjs";
+import { checkCustomCode } from "./custom/safety.js";
 import { pressOnce } from "./custom/tester.js";
 import { writeCustomCode, writtenButtons } from "./custom/writer.js";
 import { generateBackend, writeBackend } from "./generator/index.js";
+import { origin, recall, rememberProject } from "./memory/index.js";
+import { customKey, inventoryKey, pageKey } from "./memory/keys.js";
 import { getFrontend, submitFrontend } from "./gateway-client.js";
 import { Contract } from "./models/contract.js";
 import { Job } from "./models/job.js";
@@ -64,11 +67,19 @@ const screenshotsOf = (project) => (project.screenshots?.length ? project.screen
 async function contractStage(project) {
   const { body, hash } = await runJob(project, "contract", async (job) => {
     const inventories = [];
+    const reused = [];
     for (const shot of screenshotsOf(project)) {
-      const image = await readFile(path.join(REPO_ROOT, shot.path));
-      const { inventory, provider } = await readInventory(image.toString("base64"), { mode: project.mode });
+      // A screenshot read before, in a project that reached READY: its reading is reused (Step 14).
+      const memory = project.useMemory !== false && shot.sha256 ? await recall("inventory", inventoryKey(shot.sha256)) : null;
+      if (memory) reused.push(memory);
+      const { inventory, provider } = memory
+        ? { inventory: memory.payload, provider: memory.provider }
+        : await readInventory((await readFile(path.join(REPO_ROOT, shot.path))).toString("base64"), { mode: project.mode });
       inventories.push(inventory);
       if (job.provider !== "cloud") job.provider = provider; // "cloud" if any screenshot needed the backup
+    }
+    if (reused.length) {
+      job.fromMemory = { ...origin(reused[0]), count: reused.length, seconds: reused.reduce((s, m) => s + (m.seconds ?? 0), 0) };
     }
     project.screenshots.forEach((shot, i) => (shot.inventory = inventories[i]));
     project.markModified("screenshots");
@@ -109,6 +120,16 @@ async function frontendBranch(project, contract, n) {
   const query = { projectId: project._id, kind: "frontend", contractHash: contract.hash, page: n };
   const existing = await Job.findOne({ ...query, status: { $in: ["done", "running"] } }).sort({ createdAt: -1 });
   if (existing?.status === "done") return existing;
+
+  // The same screenshot with the same instructions drew a page that passed the Check before (Step 14).
+  const shot = screenshotsOf(project)[n - 1];
+  const memory = !existing && project.useMemory !== false && shot.sha256 ? await recall("page", pageKey(shot.sha256, pageInstructions(contract.body, n))) : null;
+  if (memory) {
+    const now = new Date();
+    const artifactPath = await saveArtifact(project._id, `frontend/v${contract.version}/page-${n}.html`, memory.payload);
+    return Job.create({ ...query, status: "done", provider: memory.provider, artifactPath, fromMemory: origin(memory), startedAt: now, finishedAt: now });
+  }
+
   const job = existing ?? (await Job.create({ ...query, status: "running", startedAt: new Date() }));
 
   try {
@@ -168,10 +189,27 @@ async function backendBranch(project, contract) {
     if (!customOps.length) return job;
     job.custom = [];
     for (const op of customOps) {
+      const started = Date.now();
       const mongoUri = databaseUri(MONGODB_URI, `custom_${project.id}`);
-      const result = await writeCustomCode({ spec, op, mode: project.mode, test: (code) => pressOnce({ spec, op, appDir: dir, mongoUri, code }) });
+      const test = (code) => pressOnce({ spec, op, appDir: dir, mongoUri, code });
+      // The same button on the same kind of table got verified code before (Step 14): it is pressed in this
+      // app first, and only if it doesn't pass here does the coding AI write new code.
+      const memory = project.useMemory !== false ? await recall("custom", customKey(spec, op)) : null;
+      const remembered = memory && checkCustomCode(memory.payload).ok && !(await test(memory.payload));
+      const result = remembered
+        ? { ok: true, provider: memory.provider, answers: 0, fromMemory: origin(memory) }
+        : await writeCustomCode({ spec, op, mode: project.mode, test });
       if (!result.ok) await rm(path.join(dir, "backend", "custom", `${op.name}.js`), { force: true });
-      job.custom.push({ operation: op.name, button: op.button, ok: result.ok, provider: result.provider ?? null, answers: result.answers, ...(result.problem && { problem: result.problem.slice(0, 500) }) });
+      job.custom.push({
+        operation: op.name,
+        button: op.button,
+        ok: result.ok,
+        provider: result.provider ?? null,
+        answers: result.answers,
+        seconds: Math.round((Date.now() - started) / 100) / 10,
+        ...(result.fromMemory && { fromMemory: result.fromMemory }),
+        ...(result.problem && { problem: result.problem.slice(0, 500) }),
+      });
     }
     const written = job.custom.filter((c) => c.ok);
     if (written.length) {
@@ -247,7 +285,11 @@ async function verifyStage(projectId) {
 
   project = await Project.findById(projectId);
   if ((await currentContract(project)).hash !== contract.hash) return; // the spec was edited meanwhile: the rerun builds again
-  if (job.report.ok) await setState(project, "READY");
+  if (job.report.ok) {
+    // Every check passed: this project's readings, pages and custom code may be reused (Step 14).
+    await rememberProject(project, contract).catch((err) => console.error(`[${project.id}] could not remember: ${err.message}`));
+    await setState(project, "READY");
+  }
   else await setState(project, "NEEDS_ATTENTION", failureLine(job.report).slice(0, 500));
 }
 

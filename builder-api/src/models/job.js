@@ -20,6 +20,8 @@ const jobSchema = new mongoose.Schema(
     report: mongoose.Schema.Types.Mixed, // verify jobs: the Verifier's report (src/verify/index.js)
     // backend jobs: one entry per custom button, { operation, button, ok, provider, answers, problem? } (Step 13)
     custom: { type: [mongoose.Schema.Types.Mixed], default: undefined },
+    // reused work (Step 14): { sourceProjectId, sourceName, seconds } (+ count for readings)
+    fromMemory: mongoose.Schema.Types.Mixed,
     error: String,
     startedAt: Date,
     finishedAt: Date,

@@ -11,6 +11,7 @@ import { Project } from "./models/project.js";
 import path from "node:path";
 import { contractHash } from "../../shared/hash.mjs";
 import { currentContract, resumeAll, startPipeline } from "./orchestrator.js";
+import { forgetAll, memoryCounts } from "./memory/index.js";
 import { checkSpec } from "./spec/check.js";
 import { appArchive, listAppFiles, safeAppPath, slug } from "./package-app.js";
 import { REPO_ROOT, saveScreenshot, sha256, shrinkScreenshot } from "./storage.js";
@@ -97,7 +98,8 @@ app.post("/api/projects", upload.array("image", MAX_SCREENSHOTS), async (req, re
   }
 
   const fallbackName = files[0].originalname.replace(/\.[^.]+$/, "") || "Untitled";
-  const project = new Project({ name: (req.body.name ?? "").trim() || fallbackName, imageHash: sha256(files[0].buffer), mode });
+  const useMemory = req.body.fresh !== "true"; // "Start fresh" skips memory for this project
+  const project = new Project({ name: (req.body.name ?? "").trim() || fallbackName, imageHash: sha256(files[0].buffer), mode, useMemory });
   for (const [i, file] of files.entries()) {
     project.screenshots.push({ ...(await saveScreenshot(project._id, i + 1, shrunk[i])), sha256: sha256(file.buffer) });
   }
@@ -227,6 +229,10 @@ app.get("/api/projects/:id/verify", async (req, res) => {
   if (!job) return res.status(404).json({ error: `Not checked yet (state: ${project.state})` });
   res.json({ state: project.state, checkedAt: job.finishedAt, seconds: job.report.seconds, report: job.report });
 });
+
+// Memory (Step 14): how much is remembered, and forgetting it all (projects are kept).
+app.get("/api/memory", async (_req, res) => res.json(await memoryCounts()));
+app.delete("/api/memory", async (_req, res) => res.json({ deleted: await forgetAll() }));
 
 // The live preview: start (or reuse) it, or stop it. Available once the app is wired (after the Wire stage).
 app.post("/api/projects/:id/preview", async (req, res) => {
