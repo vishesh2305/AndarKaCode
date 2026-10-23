@@ -18,6 +18,7 @@ if (!MONGODB_URI) throw new Error("Set TEST_MONGODB_URI (a throwaway database; i
 
 // ---- fake Ollama: answers /api/chat with the next prepared inventory ----
 const inventoryQueue = [];
+const visionRequests = { count: 0 }; // screenshots the fake vision AI was asked to read
 // ---- fake Gateway: finishes every job at once with a page built from the instructions (see helpers/fake-s2c.js);
 // a "Staff" page comes back without markers, so the Verifier has something to catch ----
 const gatewayJobs = new Map();
@@ -46,6 +47,7 @@ const fakeOllama = await jsonServer(async (req, body) => {
     const code = `export default async function ({ record, input, helpers }) {\n${fnBody ?? "  process.exit(1);"}\n}`;
     return { json: { message: { content: "```js\n" + code + "\n```" } } };
   }
+  visionRequests.count++;
   const inventory = inventoryQueue.shift();
   if (!inventory) return { status: 500, json: { error: "test prepared no inventory" } };
   return { json: { message: { content: JSON.stringify(inventory) } } };
@@ -146,9 +148,11 @@ after(() => {
   fakeGateway.close();
 });
 
-async function upload(files, inventories) {
+// Every test starts fresh (memory not used), except the memory tests (Step 14), which pass { fresh: false }.
+async function upload(files, inventories, { fresh = true } = {}) {
   inventoryQueue.push(...inventories);
   const form = new FormData();
+  form.append("fresh", String(fresh));
   for (const file of files) {
     const bytes = await import("node:fs/promises").then((fs) => fs.readFile(path.join(MOCKS, file)));
     form.append("image", new Blob([bytes], { type: "image/png" }), file);
@@ -265,7 +269,7 @@ describe("pipeline: custom buttons get code from the coding AI (Step 13)", () =>
     codeFor["Give Raise"] = '  return { message: "Raise noted for " + record.fullName };';
     codeFor["Sync Payroll"] = null; // every answer is unsafe: the button is isolated
     const screen = { ...employeesScreen, tables: [{ ...employeesScreen.tables[0], rowActions: ["Edit", "Delete", "Give Raise"] }], buttons: [{ label: "Sync Payroll" }] };
-    const id = await upload(["m1-edit-delete.png"], [screen]);
+    const id = await upload(["m7-custom-buttons.png"], [screen]);
     project = await waitFor(id, settled);
     backend = project.jobs.find((j) => j.kind === "backend" && j.contractHash === project.contract.hash);
     root = path.resolve(API_DIR, "..", backend.artifactPath);
@@ -305,6 +309,21 @@ describe("pipeline: custom buttons get code from the coding AI (Step 13)", () =>
     assert.equal(raise?.status, "pass", JSON.stringify(raise));
     assert.match(raise.detail, /Raise noted for/);
     assert.equal(report.checks.find((c) => c.id === "action:syncPayrollEmployee:p1")?.status, "note");
+  });
+
+  it("a repeat upload takes the verified code from memory (no coding AI call); the isolated button is asked again", async () => {
+    const [asked, vision, sent] = [codeRequests.length, visionRequests.count, submissions.length];
+    const again = await waitFor(await upload(["m7-custom-buttons.png"], [], { fresh: false }), settled);
+    assert.equal(again.state, "READY", again.error);
+    const job = again.jobs.find((j) => j.kind === "backend" && j.contractHash === again.contract.hash);
+    const raise = job.custom.find((c) => c.operation === "giveRaiseEmployee");
+    assert.equal(raise.ok, true);
+    assert.equal(raise.fromMemory?.sourceName, project.name);
+    const newAsks = codeRequests.slice(asked);
+    assert.ok(!newAsks.includes("Give Raise"), "the remembered code was used");
+    assert.equal(newAsks.filter((b) => b === "Sync Payroll").length, 4, "an isolated button is never remembered");
+    assert.equal(visionRequests.count, vision);
+    assert.equal(submissions.length, sent);
   });
 });
 
@@ -532,5 +551,66 @@ describe("Live preview: the wired app on its own test database, on its own local
     assert.equal((await fetch(`${origin()}/preview/${id}/health`)).status, 200);
     await new Promise((r) => setTimeout(r, 3500));
     assert.equal((await fetch(`${origin()}/preview/${id}/health`)).status, 404);
+  });
+});
+
+// ---- Step 14: memory. Work from a project that reached READY is reused: same screenshot -> same reading,
+// same screenshot + same page instructions -> same page, same button on the same kind of table -> same code ----
+describe("Memory (Step 14): work from a Ready project is reused", () => {
+  const jobOf = (project, kind) => project.jobs.find((j) => j.kind === kind && j.contractHash === project.contract.hash);
+  let first;
+  before(async () => {
+    assert.equal((await fetch(`${base}/memory`, { method: "DELETE" })).status, 200);
+    first = await waitFor(await upload(["m5b-departments.png"], [departmentsScreen], { fresh: false }), settled);
+    assert.equal(first.state, "READY", first.error);
+  });
+
+  it("remembers a Ready project's reading and page", async () => {
+    assert.deepEqual(await (await fetch(`${base}/memory`)).json(), { inventory: 1, page: 1, custom: 0 });
+  });
+
+  it("the same screenshot again reaches READY with no vision AI and no Laptop B call, and says where it came from", async () => {
+    const [vision, sent] = [visionRequests.count, submissions.length];
+    const again = await waitFor(await upload(["m5b-departments.png"], [], { fresh: false }), settled);
+    assert.equal(again.state, "READY", again.error);
+    assert.equal(visionRequests.count, vision, "no screenshot read");
+    assert.equal(submissions.length, sent, "no page sent to Laptop B");
+    assert.equal(again.contract.hash, first.contract.hash);
+    assert.deepEqual(again.screenshots[0].inventory, first.screenshots[0].inventory);
+    const read = jobOf(again, "contract").fromMemory;
+    assert.deepEqual({ count: read?.count, sourceName: read?.sourceName }, { count: 1, sourceName: first.name });
+    assert.equal(jobOf(again, "frontend").fromMemory?.sourceName, first.name);
+    assert.ok(jobOf(again, "frontend").fromMemory.seconds >= 0, "how long it took the first time");
+  });
+
+  it("Start fresh reads and draws again", async () => {
+    const [vision, sent] = [visionRequests.count, submissions.length];
+    const fresh = await waitFor(await upload(["m5b-departments.png"], [departmentsScreen], { fresh: true }), settled);
+    assert.equal(fresh.state, "READY", fresh.error);
+    assert.equal(fresh.useMemory, false);
+    assert.equal(visionRequests.count, vision + 1);
+    assert.equal(submissions.length, sent + 1);
+    assert.equal(jobOf(fresh, "frontend").fromMemory, undefined);
+  });
+
+  it("learns nothing from a project that needs attention", async () => {
+    const failed = await waitFor(await upload(["m2-add-search-page.png"], [staffScreen], { fresh: false }), settled);
+    assert.equal(failed.state, "NEEDS_ATTENTION");
+    const [vision, sent] = [visionRequests.count, submissions.length];
+    const again = await waitFor(await upload(["m2-add-search-page.png"], [staffScreen], { fresh: false }), settled);
+    assert.equal(visionRequests.count, vision + 1);
+    assert.equal(submissions.length, sent + 1);
+    assert.equal(jobOf(again, "contract").fromMemory, undefined);
+  });
+
+  it("Clear memory forgets everything, and the projects stay", async () => {
+    const res = await fetch(`${base}/memory`, { method: "DELETE" });
+    assert.equal(res.status, 200);
+    assert.ok((await res.json()).deleted >= 2);
+    assert.deepEqual(await (await fetch(`${base}/memory`)).json(), { inventory: 0, page: 0, custom: 0 });
+    assert.equal((await fetch(`${base}/projects/${first.id}`)).status, 200);
+    const vision = visionRequests.count;
+    await waitFor(await upload(["m5b-departments.png"], [departmentsScreen], { fresh: false }), settled);
+    assert.equal(visionRequests.count, vision + 1);
   });
 });
