@@ -4,7 +4,7 @@ import { readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { contractHash } from "../../shared/hash.mjs";
 import { pressOnce } from "./custom/tester.js";
-import { writeCustomCode } from "./custom/writer.js";
+import { writeCustomCode, writtenButtons } from "./custom/writer.js";
 import { generateBackend, writeBackend } from "./generator/index.js";
 import { getFrontend, submitFrontend } from "./gateway-client.js";
 import { Contract } from "./models/contract.js";
@@ -228,7 +228,8 @@ async function verifyStage(projectId) {
 
   await setState(project, "INTEGRATING");
   const built = await Promise.all(pages.map(async (job) => ({ screenshot: job.page, html: await readFile(path.join(REPO_ROOT, job.artifactPath), "utf8") })));
-  await writeBackend(appDir, wireApp({ spec: contract.body, pages: built }));
+  const customWritten = writtenButtons(backend);
+  await writeBackend(appDir, wireApp({ spec: contract.body, pages: built, customWritten }));
 
   await setState(project, "VERIFYING");
   const job = await runJob(project, "verify", async (job) => {
@@ -236,6 +237,7 @@ async function verifyStage(projectId) {
     job.report = await verifyApp({
       spec: contract.body,
       appDir,
+      customWritten,
       mongoUri: databaseUri(MONGODB_URI, `verify_${project.id}`),
       testsMongoUri: databaseUri(MONGODB_URI, `verify_${project.id}_tests`),
     });

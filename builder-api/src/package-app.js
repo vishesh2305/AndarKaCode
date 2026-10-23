@@ -1,6 +1,7 @@
 // The generated app as the user receives it: backend (templates) + pages (Laptop B) + README + spec.
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
+import { writtenButtons } from "./custom/writer.js";
 import { REPO_ROOT } from "./storage.js";
 import { reportMarkdown } from "./verify/report.js";
 import { wireApp } from "./wirer/index.js";
@@ -96,7 +97,7 @@ export async function appArchive({ project, contract, backendJob, frontendJobs, 
     const job = frontendJobs.find((j) => j.page === page.screenshot);
     if (job) built.push({ screenshot: page.screenshot, html: await readFile(path.join(REPO_ROOT, job.artifactPath), "utf8") });
   }
-  for (const [name, data] of Object.entries(wireApp({ spec: contract.body, pages: built }))) entries.push({ name, data });
+  for (const [name, data] of Object.entries(wireApp({ spec: contract.body, pages: built, customWritten: writtenButtons(backendJob) }))) entries.push({ name, data });
   for (const [i, shot] of screenshots.entries()) {
     entries.push({ name: `screenshots/screenshot-${i + 1}.png`, data: await readFile(path.join(REPO_ROOT, shot.path)) });
   }

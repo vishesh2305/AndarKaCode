@@ -1,6 +1,7 @@
 // The four views of a project: what you uploaded, what was planned, the pages, and the backend code.
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
+import { startView } from "../pipeline.js";
 
 export function Screenshots({ project }) {
   const count = project.screenshots?.length || 1;
@@ -136,15 +137,18 @@ export function Pages({ project, pages, wired }) {
     if (!ready.includes(page) && ready.length) setPage(ready[0]);
   }, [ready.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // A new spec version means a new app: go back to "as built" until it is started again.
+  // A new spec version means a new app. Once it is Ready, open on the working app (started with the
+  // screenshots' rows); before that, show Laptop B's drawing.
+  const opensLive = startView(project) === "live" && wired;
   useEffect(() => {
-    setView("built");
     setLive({ url: null, credentials: null, error: null, starting: false });
-  }, [project.id, project.contract?.hash]);
+    if (opensLive) goLive({ fresh: true });
+    else setView("built");
+  }, [project.id, project.contract?.hash, opensLive]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function goLive() {
+  async function goLive({ fresh = false } = {}) {
     setView("live");
-    if (live.url) return;
+    if (live.url && !fresh) return;
     setLive((l) => ({ ...l, starting: true, error: null }));
     try {
       const preview = await api.startPreview(project.id);
@@ -180,7 +184,7 @@ export function Pages({ project, pages, wired }) {
             role="radio"
             aria-checked={view === "live"}
             className={`chip chip-live${view === "live" ? " chip-on" : ""}`}
-            onClick={goLive}
+            onClick={() => goLive()}
             disabled={!wired}
             title={wired ? "Use the real app, on a test database" : "Available once the pages are wired"}
           >
@@ -221,10 +225,10 @@ export function Pages({ project, pages, wired }) {
       </div>
 
       {view === "built" ? (
-        <p className="muted">As Laptop B drew it: the screenshots' sample data, with buttons not connected. Choose Live to use the real app.</p>
+        <p className="muted">A drawing only: the page as Laptop B drew it, with the screenshots' sample data. Its buttons don't save anything. Choose Live to use the working app.</p>
       ) : (
         <p className="muted live-foot">
-          The real app on a test database: what you add here is saved there. It stops after 15 minutes without use, and its test data is deleted.{" "}
+          The working app on a test database, started with the screenshots' rows: every button works, and what you change is saved there. It stops after 15 minutes without use, and its test data is deleted.{" "}
           <button className="btn btn-quiet" onClick={stopLive}>
             Stop the live app
           </button>

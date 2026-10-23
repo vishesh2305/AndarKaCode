@@ -1,7 +1,9 @@
 // The live preview (Step 16): a project's wired app running on its own test database, reached through
 // the Builder API at /preview/<project>/ (one address, nothing new opened to the network). One preview per
 // project; it stops by itself after PREVIEW_IDLE_MS without a request, and its test data is deleted.
+// It starts with the rows the screenshots show (sample-rows.js), so every row button can be tried at once.
 import { randomBytes } from "node:crypto";
+import mongoose from "mongoose";
 import { startApp } from "./app-runner.js";
 
 const IDLE_MS = Number(process.env.PREVIEW_IDLE_MS ?? 15 * 60_000);
@@ -24,8 +26,21 @@ export function touchPreview(projectId) {
   if (preview) arm(projectId, preview);
 }
 
-/** Starts (or reuses) the preview for the current spec version. */
-export async function startPreview({ projectId, hash, appDir, auth, mongoUri }) {
+// A fresh test database with the starting rows ({ collection: records }), before the app opens it.
+async function fillDatabase(mongoUri, records) {
+  const conn = await mongoose.createConnection(mongoUri).asPromise();
+  try {
+    await conn.dropDatabase();
+    for (const [collection, docs] of Object.entries(records ?? {})) {
+      if (docs.length) await conn.collection(collection).insertMany(docs, { ordered: false }).catch(() => {});
+    }
+  } finally {
+    await conn.close();
+  }
+}
+
+/** Starts (or reuses) the preview for the current spec version. seed() -> the starting rows, for a new start. */
+export async function startPreview({ projectId, hash, appDir, auth, mongoUri, seed }) {
   const existing = previews.get(projectId);
   if (existing?.hash === hash) {
     const ready = existing.app ? existing : await existing.pending;
@@ -36,7 +51,11 @@ export async function startPreview({ projectId, hash, appDir, auth, mongoUri }) 
 
   const credentials = auth ? { email: "preview@example.com", password: randomBytes(9).toString("base64url") } : null;
   const entry = { hash, credentials, app: null, timer: null };
-  entry.pending = startApp({ appDir, mongoUri, env: credentials ? { ADMIN_EMAIL: credentials.email, ADMIN_PASSWORD: credentials.password } : {} }).then(
+  const env = credentials ? { ADMIN_EMAIL: credentials.email, ADMIN_PASSWORD: credentials.password } : {};
+  entry.pending = (async () => {
+    if (seed) await fillDatabase(mongoUri, await seed());
+    return startApp({ appDir, mongoUri, env });
+  })().then(
     (app) => {
       entry.app = app;
       arm(projectId, entry);

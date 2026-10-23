@@ -21,7 +21,7 @@ function fieldInfo(f) {
   };
 }
 
-function entityInfo(entity, spec) {
+function entityInfo(entity, spec, customWritten) {
   const url = `/api/${entity.plural}`;
   const { list, get, create, update, delete: remove } = entity.endpoints;
   const actions = {};
@@ -33,7 +33,7 @@ function entityInfo(entity, spec) {
       method: route.method.toUpperCase(),
       url: `${url}${route.path}`,
       row: route.row,
-      available: op.kind !== "custom", // written by the AI layer (Step 13); until then the backend answers 501
+      available: op.kind !== "custom" || customWritten.includes(op.name), // custom: once the AI layer wrote its code (Step 13)
     };
   }
   return {
@@ -50,8 +50,8 @@ function entityInfo(entity, spec) {
   };
 }
 
-/** The binder's phone book: pure, same spec -> same map. */
-export function apiMap(spec) {
+/** The binder's phone book: pure, same spec -> same map. customWritten: custom buttons whose code was written. */
+export function apiMap(spec, { customWritten = [] } = {}) {
   const pages = {};
   for (const page of spec.pages) pages[pageFile(page)] = { kind: page.kind, ...(page.entity && { entity: page.entity }) };
   if (spec.pages.length) pages["index.html"] = pages[pageFile(spec.pages[0])];
@@ -73,7 +73,7 @@ export function apiMap(spec) {
     home: home ? pageFile(home) : null,
     pages,
     auth,
-    entities: Object.fromEntries(spec.entities.map((e) => [e.name, entityInfo(e, spec)])),
+    entities: Object.fromEntries(spec.entities.map((e) => [e.name, entityInfo(e, spec, customWritten)])),
     stats: spec.stats.length ? { url: "/api/stats", keys: spec.stats.map((s) => camelCase(s.label)) } : null,
   };
 }
@@ -87,10 +87,10 @@ export function wirePage(html) {
 }
 
 /** The frontend folder of the downloaded app: { "frontend/<file>": contents }. pages: [{ screenshot, html }]. */
-export function wireApp({ spec, pages }) {
+export function wireApp({ spec, pages, customWritten = [] }) {
   const files = {
     "frontend/app.js": BINDER,
-    "frontend/api-map.json": JSON.stringify(apiMap(spec), null, 2) + "\n",
+    "frontend/api-map.json": JSON.stringify(apiMap(spec, { customWritten }), null, 2) + "\n",
   };
   for (const page of spec.pages) {
     const built = pages.find((p) => p.screenshot === page.screenshot);

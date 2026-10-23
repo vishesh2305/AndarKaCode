@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import http from "node:http";
 import express from "express";
 import mongoose from "mongoose";
@@ -15,6 +16,7 @@ import { appArchive, listAppFiles, safeAppPath, slug } from "./package-app.js";
 import { REPO_ROOT, saveScreenshot, sha256, shrinkScreenshot } from "./storage.js";
 import { databaseUri } from "./verify/index.js";
 import { previewOf, startPreview, stopPreview, touchPreview } from "./verify/preview.js";
+import { previewSeed } from "./verify/sample-rows.js";
 
 const PORT = Number(process.env.PORT ?? 4000);
 const HOST = process.env.HOST ?? "127.0.0.1"; // no login yet, so this Mac only (GitHub login: Step 15)
@@ -242,6 +244,15 @@ app.post("/api/projects/:id/preview", async (req, res) => {
       appDir,
       auth: Boolean(contract.body.auth),
       mongoUri: databaseUri(MONGODB_URI, `preview_${project.id}`),
+      // The rows the screenshots show: from each page's sample array, else from the screenshot's table.
+      seed: async () => {
+        const pages = [];
+        for (const page of contract.body.pages) {
+          const html = await readFile(path.join(appDir, "frontend", `page-${page.screenshot}.html`), "utf8").catch(() => "");
+          pages.push({ screenshot: page.screenshot, html });
+        }
+        return previewSeed({ spec: contract.body, pages, inventories: (project.screenshots ?? []).map((s) => s.inventory) });
+      },
     });
     const first = contract.body.pages[0]?.screenshot ?? 1;
     res.json({ url: `${previewOrigin}/preview/${project.id}/page-${first}.html`, credentials: preview.credentials });

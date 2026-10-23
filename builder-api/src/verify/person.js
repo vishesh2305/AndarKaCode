@@ -272,6 +272,13 @@ export async function runDataPage({ base, map, spec, n, file, expected, token, e
       await p.settled();
       if (!action.available) {
         add(id, title, { status: "note", detail: p.alerts.some((a) => /not available yet/.test(a)) ? `Says "not available yet": its code is written by the AI layer (Step 13).` : "Not built yet (Step 13)." });
+      } else if (op.kind === "custom") {
+        // Code written by the coding AI: there is no right answer to compare with, so it passes when the
+        // backend answers (or refuses with a message) and the page shows what it said.
+        const request = lastRequest(p, action.method, new RegExp(`^${action.url.replace(":id", "[^/]+")}$`));
+        const said = request?.body?.message ?? request?.body?.error;
+        const answered = request?.status === 200 || (request?.status === 400 && request.body?.error);
+        add(id, title, answered ? { status: "pass", detail: request.status === 200 ? `Answered: "${said ?? "done"}".` : `Refused with a message: "${said}".` } : failure(p, entity, request, null, `"${op.button}" was clicked`));
       } else if (op.kind === "export") {
         const request = lastRequest(p, "GET", action.url);
         add(id, title, request?.status === 200 && /csv/.test(request.type) && p.downloads.length ? { status: "pass", detail: "Downloaded a CSV file." } : failure(p, entity, request, null, `"${op.button}" was clicked`));

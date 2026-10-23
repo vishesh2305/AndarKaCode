@@ -11,6 +11,9 @@ const secondsOf = (job, now) =>
 
 const fromJob = (job) => (job?.status === "done" ? "done" : job?.status === "failed" ? "failed" : "active");
 
+/** Which view the Pages tab opens on: the working app once it is Ready, otherwise Laptop B's drawing. */
+export const startView = (project) => (project.state === "READY" ? "live" : "built");
+
 export function pipelineStatus(project, now = Date.now()) {
   const jobs = project.jobs ?? [];
   const latest = (kind, match = () => true) => jobs.filter((j) => j.kind === kind && match(j)).at(-1);
@@ -53,12 +56,13 @@ export function pipelineStatus(project, now = Date.now()) {
     provider: pageJobs.at(-1)?.provider ?? null,
   };
 
-  // Backend: the template generator, for the CURRENT spec only.
+  // Backend: the template generator, then the coding AI for custom buttons, for the CURRENT spec only.
   const backend = hash ? latest("backend", (j) => j.contractHash === hash) : null;
   stations.backend = {
     status: backend ? fromJob(backend) : spec && BUILD_STATES.includes(state) ? "active" : "waiting",
     seconds: secondsOf(backend, now),
     note: backend?.note ?? null,
+    custom: backend?.custom ?? [],
   };
 
   // Check (Step 16): the Verifier's job for the CURRENT spec, with its report.

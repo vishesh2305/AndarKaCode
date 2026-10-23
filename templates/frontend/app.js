@@ -805,6 +805,8 @@
     const answer = await api(action.method, url);
     if (!answer.ok) return answer.status === 401 || say(problem(answer));
     await refresh();
+    // A custom button's code says what it did ("Raise given to Ann Lee").
+    if (action.kind === "custom" && answer.data && typeof answer.data.message === "string" && answer.data.message) say(answer.data.message);
   }
 
   async function removeRow(row) {

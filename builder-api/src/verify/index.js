@@ -70,9 +70,9 @@ export function databaseUri(base, name) {
 const summarize = (checks) => Object.fromEntries(["pass", "fail", "warn", "note", "skip"].map((s) => [s, checks.filter((c) => c.status === s).length]));
 
 /** Verifies the wired app in appDir. mongoUri and testsMongoUri are throwaway databases (dropped). */
-export async function verifyApp({ spec, appDir, mongoUri, testsMongoUri }) {
+export async function verifyApp({ spec, appDir, mongoUri, testsMongoUri, customWritten = [] }) {
   const started = Date.now();
-  const map = apiMap(spec);
+  const map = apiMap(spec, { customWritten });
   const checks = [];
 
   // 1. Markers, page by page (the page as Laptop B built it, with its own scripts).

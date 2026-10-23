@@ -7,6 +7,9 @@ import { checkCustomCode } from "./safety.js";
 
 const MAX_REPAIRS = 3; // per model, after its first answer
 
+/** The custom buttons whose code was written, from a backend job's results ({ operation, ok }). */
+export const writtenButtons = (backendJob) => (backendJob?.custom ?? []).filter((c) => c.ok).map((c) => c.operation);
+
 /** Which coding AI is asked, from the project's mode. Auto: Gemini first (right more often), local as backup. */
 export const providerOrder = (mode) => (mode === "auto" ? ["cloud", "local"] : [mode]);
 

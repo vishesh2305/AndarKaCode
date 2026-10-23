@@ -64,12 +64,19 @@ export const STATIONS = {
   },
   backend: {
     title: "Backend",
-    where: "Mac, templates only",
+    where: "Mac, templates + a coding AI",
     how: [
-      "Templates write only the backend parts the spec asks for: data models, routes, input checks, login if a login screen is shown, and a test for each part.",
-      "It takes under a second, and the same spec always gives the same code.",
+      "Templates write only the backend parts the spec asks for: data models, routes, input checks, login if a login screen is shown, and a test for each part. The same spec always gives the same code.",
+      "A button no template covers (like “Give 10% Raise”) gets its code from a coding AI. The code is checked for anything unsafe, then the button is pressed once in the real app. If it fails, the AI gets the problem and tries again, up to 3 times. A button that still fails says “not available yet”.",
     ],
-    details: (project, s) => [["Result", s.note ?? "—"], ["Time", secs(s.seconds)]],
+    details: (project, s) => [
+      ["Result", s.note ?? "—"],
+      ...s.custom.map((c) => [
+        c.button,
+        c.ok ? `written by ${providerName(c.provider)}, ${c.answers} answer${c.answers === 1 ? "" : "s"}` : `not written, says "not available yet": ${c.problem ?? "no answer"}`,
+      ]),
+      ["Time", secs(s.seconds)],
+    ],
   },
   sync: {
     title: "Sync check",
