@@ -35,9 +35,18 @@ function tableHelpers(Model, validate) {
     if (!OBJECT_ID.test(String(id))) throw new Refused("No such record: " + id);
     return { ...alive, _id: String(id) };
   };
+  // A filter names fields only. A name the table doesn't have would be dropped by the checks, and the
+  // filter would quietly match every record, so it is refused instead.
+  const fields = Object.keys(Model.schema.paths).filter((p) => !["_id", "__v", "createdAt", "updatedAt", "deletedAt"].includes(p));
+  const where = (filter) => {
+    for (const key of Object.keys(filter ?? {})) {
+      if (!fields.includes(key)) throw new Refused('filter: "' + key + '" is not a field of this table (to change one record, use helpers.update(id, changes))');
+    }
+    return { ...alive, ...check(filter, true) };
+  };
   return {
     get: async (id) => plain(await Model.findOne(byId(id))),
-    list: async (filter) => (await Model.find({ ...alive, ...check(filter, true) }).limit(LIST_CAP)).map(plain),
+    list: async (filter) => (await Model.find(where(filter)).limit(LIST_CAP)).map(plain),
     create: async (values) => plain(await Model.create(check(values, false))),
     update: async (id, changes) => {
       const record = await Model.findOneAndUpdate(byId(id), { $set: check(changes, true) }, { returnDocument: "after", runValidators: true });
@@ -45,7 +54,7 @@ function tableHelpers(Model, validate) {
       return plain(record);
     },
     updateMany: async (filter, changes) =>
-      (await Model.updateMany({ ...alive, ...check(filter, true) }, { $set: check(changes, true) })).modifiedCount,
+      (await Model.updateMany(where(filter), { $set: check(changes, true) })).modifiedCount,
     remove: async (id) => {
       const record = alive.deletedAt === null
         ? await Model.findOneAndUpdate(byId(id), { $set: { deletedAt: new Date() } })

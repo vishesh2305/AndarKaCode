@@ -27,7 +27,11 @@ export async function pressOnce({ spec, op, appDir, mongoUri, code }) {
   try {
     db = await mongoose.createConnection(mongoUri).asPromise();
     await db.dropDatabase();
-    const { insertedId } = await db.collection(entity.plural).insertOne(sampleRecord(entity.name, spec));
+    const collection = db.collection(entity.plural);
+    // Two rows: the button is pressed on the first; a row button must leave the other one as it was.
+    const { insertedIds } = await collection.insertMany([sampleRecord(entity.name, spec), sampleRecord(entity.name, spec)]);
+    const [insertedId, otherId] = [insertedIds[0], insertedIds[1]];
+    const other = await collection.findOne({ _id: otherId });
     app = await startApp({ appDir, mongoUri, env: spec.auth ? { ADMIN_EMAIL: credentials.email, ADMIN_PASSWORD: credentials.password } : {} });
 
     const headers = { "Content-Type": "application/json" };
@@ -40,8 +44,13 @@ export async function pressOnce({ spec, op, appDir, mongoUri, code }) {
     const url = `${app.url}/api/${entity.plural}${route.path.replace(":id", String(insertedId))}`;
     const res = await fetch(url, { method: "POST", headers, body: "{}", signal: AbortSignal.timeout(PRESS_TIMEOUT_MS) });
     const body = await res.json().catch(() => ({}));
-    if (res.status === 200 || res.status === 400) return null;
-    return `pressing "${op.button}" answered ${res.status}: ${body.error ?? JSON.stringify(body)}`;
+    if (res.status !== 200 && res.status !== 400) return `pressing "${op.button}" answered ${res.status}: ${body.error ?? JSON.stringify(body)}`;
+    if (route.row) {
+      const fields = (doc) => JSON.stringify(entity.fields.map((f) => doc?.[f.name] ?? null).concat(doc?.deletedAt ?? null));
+      const after = await collection.findOne({ _id: otherId });
+      if (fields(after) !== fields(other)) return `pressing "${op.button}" on one row also changed another row: a row button may change only its own row (use helpers.update(record.id, changes))`;
+    }
+    return null;
   } catch (err) {
     return `pressing "${op.button}" failed: ${err.message}`;
   } finally {

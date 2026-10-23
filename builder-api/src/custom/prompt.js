@@ -51,7 +51,9 @@ function request(spec, op) {
     "- no import or require; nothing but the helpers above (no process, fetch, timers, eval, Function, this, classes);",
     "- loops: only for ... of over a list (no while, no for (;;), no for ... in);",
     "- dot notation for fields (record.salary), not record[name];",
-    "- change only this table's fields; to calculate with dates, make Date objects first.",
+    "- change only this table's fields; to calculate with dates, make Date objects first;",
+    "- filters use the table's field names only, never id; to change one record, use helpers.update(id, changes);",
+    "- round calculated money to 2 decimals (Math.round(x * 100) / 100).",
     "",
     "Answer with the function only, in one ```js block.",
   ].join("\n");

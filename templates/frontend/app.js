@@ -82,6 +82,7 @@
     if (value === null || value === undefined || value === "") return "";
     if (field.type === "boolean") return value ? "Yes" : "No";
     if (field.type === "date") return String(value).slice(0, 10);
+    if (typeof value === "number") return String(Math.round(value * 100) / 100);
     if (field.type === "ref" && typeof value === "object") {
       const ref = state.map.entities[field.ref];
       const key = ref && ref.labelField;
@@ -277,7 +278,8 @@
 
   function formatNumber(format, value) {
     if (!format || typeof value !== "number") return null;
-    const digits = format.decimals ? { minimumFractionDigits: format.decimals, maximumFractionDigits: format.decimals } : { maximumFractionDigits: 20 };
+    // At most 2 decimals when the samples had none: 57200.00000000001 (a calculation's leftover) is 57200.
+    const digits = format.decimals ? { minimumFractionDigits: format.decimals, maximumFractionDigits: format.decimals } : { maximumFractionDigits: 2 };
     return format.before + value.toLocaleString("en-US", { ...digits, useGrouping: format.grouping }) + format.after;
   }
 
