@@ -31,6 +31,12 @@ describe("customPrompt: one button, its table, the fixed shape and the rules", (
     assert.match(prompt, /dot notation/);
   });
 
+  it("says filters use field names only (one record: update by id) and calculated money is rounded", () => {
+    assert.match(prompt, /filters use the table's field names only, never id/);
+    assert.match(prompt, /to change one record, use helpers\.update\(id, changes\)/);
+    assert.match(prompt, /round calculated money to 2 decimals/);
+  });
+
   it("says a page button has no record", () => {
     assert.match(customPrompt(opsSpec, op("syncPayrollLeaveRequest")), /a button on the "Leave Requests" page[\s\S]*record: null/);
   });

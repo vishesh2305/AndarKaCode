@@ -54,6 +54,15 @@ describe("pressOnce: the button pressed once in the generated app", () => {
     assert.match(problem, /pressing "Recalculate" answered 500: custom code failed/);
   });
 
+  it("a row button that also changes other rows: the problem says so", async () => {
+    const problem = await press("recalculateLeaveRequest", wrap("  await helpers.updateMany({}, { days: 42 });\n  return { message: 'Recalculated' };"));
+    assert.match(problem, /pressing "Recalculate" on one row also changed another row/);
+  });
+
+  it("a row button may add a new row (Duplicate) without that counting as changing others", async () => {
+    assert.equal(await press("recalculateLeaveRequest", wrap("  await helpers.create({ employee: record.employee, days: record.days });\n  return { message: 'Copied' };")), null);
+  });
+
   it("a stuck loop: the problem says it took too long", async () => {
     const problem = await press("recalculateLeaveRequest", wrap("  for (const x of [1]) { while (true) {} }"));
     assert.match(problem, /took too long/);

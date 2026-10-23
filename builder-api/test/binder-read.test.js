@@ -55,6 +55,12 @@ describe("rows: real records in the page's own look", () => {
     assert.equal(p.$$("#employeeTableBody tr").length, 0);
   });
 
+  it("shows a calculated number without floating-point noise (at most 2 decimals)", async () => {
+    const api = memoryApi("/api/employees", [{ fullName: "Ann Lee", email: "ann@example.com", department: "HR", salary: 57200.00000000001 }]);
+    const p = await start({ html: page("employees-real.html"), map: apiMap(employeesSpec), api });
+    assert.equal(text(p.$('#employeeTableBody [data-field="salary"]')), "57200");
+  });
+
   it("works for a card grid as well as a table, and keeps the Yes/No badge look of the sample cards", async () => {
     const api = memoryApi("/api/products", [
       { name: "Stapler", category: "Stationery", price: 90, inStock: false },

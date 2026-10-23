@@ -102,6 +102,17 @@ describe("helpers check values like Add and Edit do", () => {
     assert.match(res.body.error, /days: must be a number/);
   });
 
+  it("refuses a filter with a name that is not a field (never 'every record'), and changes nothing", async () => {
+    await write("syncPayrollLeaveRequest", wrap(`  await helpers.updateMany({ id: "${"a".repeat(24)}" }, { days: 99 });\n  return {};`));
+    const res = await call("POST", "/leaveRequests/sync-payroll");
+    assert.equal(res.status, 400);
+    assert.match(res.body.error, /filter: "id" is not a field of this table/);
+    assert.equal(await LeaveRequest.countDocuments({ days: 99 }), 0);
+
+    await write("syncPayrollLeaveRequest", wrap(`  const found = await helpers.list({ nickname: "x" });\n  return { message: String(found.length) };`));
+    assert.match((await call("POST", "/leaveRequests/sync-payroll")).body.error, /filter: "nickname" is not a field/);
+  });
+
   it("a page button can list and count (filters use the table's fields)", async () => {
     await write("syncPayrollLeaveRequest", wrap(`  const open = await helpers.list({ status: "Pending" });\n  return { message: open.length + " pending" };`));
     const res = await call("POST", "/leaveRequests/sync-payroll");
