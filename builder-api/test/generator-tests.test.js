@@ -33,6 +33,14 @@ describe("generated tests/api.test.js", () => {
     assert.match(tests, /it\("stat cards/);
   });
 
+  it("a custom button whose code was written is tested to answer (no 500, no 501); the others stay 501", () => {
+    const tests = generateBackend(opsSpec, { name: "x", customWritten: ["recalculateLeaveRequest"] })["tests/api.test.js"];
+    assert.match(tests, /it\("Recalculate answers \(its code is in backend\/custom\/recalculateLeaveRequest\.js\)/);
+    assert.match(tests, /assert\.ok\(\[200, 400\]\.includes\(res\.status\)/);
+    assert.doesNotMatch(tests, /it\("Recalculate answers 501/);
+    assert.match(tests, /it\("Sync Payroll answers 501/);
+  });
+
   it("names each test after its screenshot evidence", () => {
     assert.match(testsOf(editDeleteSpec), /s1: row action 'Delete'/);
   });

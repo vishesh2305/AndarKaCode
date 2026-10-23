@@ -35,7 +35,17 @@ function jsonServer(handler) {
   });
 }
 
-const fakeOllama = await jsonServer(async (req) => {
+// A request without an image is the coding AI (Step 13): it gets the code prepared for that button.
+const codeFor = {}; // button label -> function body, or null for code that is always refused
+const codeRequests = [];
+const fakeOllama = await jsonServer(async (req, body) => {
+  if (!body.messages[0].images) {
+    const button = Object.keys(codeFor).find((label) => body.messages[0].content.includes(`"${label}"`));
+    codeRequests.push(button);
+    const fnBody = button ? codeFor[button] : null;
+    const code = `export default async function ({ record, input, helpers }) {\n${fnBody ?? "  process.exit(1);"}\n}`;
+    return { json: { message: { content: "```js\n" + code + "\n```" } } };
+  }
   const inventory = inventoryQueue.shift();
   if (!inventory) return { status: 500, json: { error: "test prepared no inventory" } };
   return { json: { message: { content: JSON.stringify(inventory) } } };
@@ -244,6 +254,49 @@ describe("pipeline: real backend from the generator", () => {
     for (const file of ["package.json", "backend/server.js", "backend/routes/employee.routes.js", "backend/routes/department.routes.js", "tests/api.test.js"]) {
       await fs.access(path.join(root, file));
     }
+  });
+});
+
+describe("pipeline: custom buttons get code from the coding AI (Step 13)", () => {
+  let project;
+  let backend;
+  let root;
+  before(async () => {
+    codeFor["Give Raise"] = '  return { message: "Raise noted for " + record.fullName };';
+    codeFor["Sync Payroll"] = null; // every answer is unsafe: the button is isolated
+    const screen = { ...employeesScreen, tables: [{ ...employeesScreen.tables[0], rowActions: ["Edit", "Delete", "Give Raise"] }], buttons: [{ label: "Sync Payroll" }] };
+    const id = await upload(["m1-edit-delete.png"], [screen]);
+    project = await waitFor(id, settled);
+    backend = project.jobs.find((j) => j.kind === "backend" && j.contractHash === project.contract.hash);
+    root = path.resolve(API_DIR, "..", backend.artifactPath);
+  });
+
+  it("writes the code of a button that works when pressed, and says which AI wrote it", async () => {
+    const fs = await import("node:fs/promises");
+    assert.match(await fs.readFile(path.join(root, "backend/custom/giveRaiseEmployee.js"), "utf8"), /Raise noted/);
+    const raise = backend.custom.find((c) => c.operation === "giveRaiseEmployee");
+    assert.deepEqual({ ok: raise.ok, provider: raise.provider, answers: raise.answers }, { ok: true, provider: "local", answers: 1 });
+    assert.equal(backend.provider, "local");
+  });
+
+  it("isolates a button whose code never passes: no file, the problem kept, the app still READY", async () => {
+    const fs = await import("node:fs/promises");
+    await assert.rejects(fs.access(path.join(root, "backend/custom/syncPayrollEmployee.js")));
+    const sync = backend.custom.find((c) => c.operation === "syncPayrollEmployee");
+    assert.equal(sync.ok, false);
+    assert.equal(sync.answers, 4, "the first answer and 3 repairs");
+    assert.match(sync.problem, /safety check refused it/);
+    assert.match(backend.note, /custom buttons: 1 of 2 written/);
+    assert.equal(project.state, "READY", project.error);
+  });
+
+  it("the app's own tests expect an answer from the written button and 501 from the isolated one", async () => {
+    const fs = await import("node:fs/promises");
+    const tests = await fs.readFile(path.join(root, "tests/api.test.js"), "utf8");
+    assert.match(tests, /Give Raise answers \(its code is in backend\/custom\/giveRaiseEmployee\.js\)/);
+    assert.match(tests, /Sync Payroll answers 501/);
+    const { report } = await (await fetch(`${base}/projects/${project.id}/verify`)).json();
+    assert.equal(report.checks.find((c) => c.id === "tests").status, "pass");
   });
 });
 
