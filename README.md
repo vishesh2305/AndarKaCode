@@ -40,12 +40,12 @@ The name is Hindi for "the code inside": the code that is hidden inside a screen
 | Sync check: pages and backend must be built from the **same** spec version | ✅ |
 | **Wiring:** the page buttons really call the backend (add, edit, delete, search, filter, pages, stats, login) | ✅ |
 | Our web UI: upload, live pipeline view with "how it works" for each stage, plan with evidence, page previews, generated files, **Download app (.zip)** | ✅ |
-| AI-written code for buttons no template covers (they answer "not available yet" for now) | ⏳ Step 13 |
+| **AI-written code for buttons no template covers** ("Give 10% Raise", "Duplicate"): checked for safety, pressed once in the real app, repaired up to 3 times, or left out on its own | ✅ Step 13 |
 | **Check before download:** the app is started on a throwaway database and every page is used like a person would; the report names the part to blame (page, spec or backend); missing markers are repaired by rule | ✅ Step 16 |
-| **Live preview:** use the real app in the UI (Pages → Live) on a test database before downloading | ✅ Step 16 |
+| **Live preview:** use the real app in the UI before downloading, on a test database that starts with the screenshot's rows; the Pages tab opens on it once the app is Ready | ✅ Steps 16, 13 |
 | Memory (instant repeats, similar screenshots), sandbox preview, push to GitHub | ⏳ Steps 14, 18, 19 |
 
-Test counts today: **Builder API 229 unit + 80 integration**, **web UI 12**, vision evaluation **41/41** on the sample screenshots. Every step was built test-first (red → green), with a report in [docs/tdd/](docs/tdd/).
+Test counts today: **Builder API 296 unit + 106 integration**, **web UI 15**, vision evaluation **41/41** on the sample screenshots, coding-model test **5/5** (Gemini) and **4/5** (local Qwen). Every step was built test-first (red → green), with a report in [docs/tdd/](docs/tdd/).
 
 ---
 
@@ -61,6 +61,7 @@ flowchart LR
         API --> DB[(MongoDB)]
         API --> V[Vision AI<br/>Ollama, Gemini backup]
         API --> T[Backend templates]
+        API --> C[Coding AI<br/>custom buttons only]
         API --> W[Wirer]
     end
     subgraph B["Laptop B (Windows, RTX 4060): page builder"]
@@ -78,11 +79,11 @@ flowchart LR
 | 2 | **Read** | A | A vision model lists what each screenshot shows: tables and columns, forms and inputs, buttons, search boxes, filters, page buttons, badges, stat cards, login forms. It describes *what is there*, not what to build | 10–20 s per screenshot |
 | 3 | **Plan** | A | A fixed rule table turns that list into the **App Spec**: entities, fields, endpoints, buttons, stat cards, login. Every item says which screenshot element needs it. A checker rejects an incomplete spec | milliseconds |
 | 4a | **Pages** | B | One job per screenshot: Screenshot-to-Code rebuilds the page with exact markers (`data-field`, `data-action`, `data-filter`, `data-stat`) taken from the spec | ~2–4 min per page locally, ~30 s with cloud |
-| 4b | **Backend** | A | The template generator writes only the parts the spec lists, plus a test for each part | milliseconds |
+| 4b | **Backend** | A | The template generator writes only the parts the spec lists, plus a test for each part. A button no template covers gets its code from a coding AI (see below) | milliseconds; ~5–30 s per custom button |
 | 5 | **Sync check** | A | Every page and the backend carry the spec's fingerprint (hash). Only when all of them match the current version does the project become **SYNCED** | instant |
 | 6 | **Wire** | A | Each page gets the binder (see below) and the wired pages are written into the app folder, which is now the finished app | instant |
 | 7 | **Check** | A | The app is started on a throwaway database; in a browser without a screen, every page is used like a person would (add, reload, edit, search, filter, buttons, delete, sign in); then the app's own tests run. Each check says what happened and which part to blame: the **page**, the **spec** or the **backend** | ~5–15 s |
-| 8 | **Ready** | A | Every check passed: try the app in **Pages → Live**, then download the zip (backend, tests, wired pages, screenshots, a README that explains why each part exists, the spec and `verify-report.md`) | instant |
+| 8 | **Ready** | A | Every check passed: the Pages tab opens on **Live**, the working app with the screenshot's rows, then download the zip (backend, tests, wired pages, screenshots, a README that explains why each part exists, the spec and `verify-report.md`) | instant |
 
 **Wiring** (Step 15) works like this. Each page gets one extra line, `<script src="app.js"></script>`, and a small "phone book", `api-map.json`, that says which marker calls which backend address. The binder (`app.js`) then:
 - replaces the screenshot's sample rows with real records, as copies of the page's own sample row, so badge colours and price formats (`$2.50`) look the same;
@@ -91,13 +92,23 @@ flowchart LR
 - stops the page's own "sample only" scripts from running;
 - adds a marker Laptop B forgot when the page clearly shows where it belongs (a label, a column header, a button's text), and builds rows from the table header if the page drew none (Step 16).
 
+**Buttons no template covers** (Step 13). Templates know add, edit, delete, search, filters, status buttons ("Approve"), CSV export and stat cards. Any other button, such as "Give 10% Raise" or "Duplicate", is a **custom** button, and its code comes from a coding AI:
+1. **Ask.** The AI is asked for one small function in a fixed shape. It is told the button, its table's fields, and the only tools it may use: `helpers.get / list / create / update / updateMany / remove / fail`.
+2. **Safety check.** The code is read as a structure, never run. Anything that could reach outside is refused with its line number: imports, `process`, `eval`, timers, network calls, endless loops, prototype tricks.
+3. **Press once.** The button is pressed in the real app, on a throwaway database with two sample rows. It must answer, and a row button must leave the other row alone.
+4. **Repair or isolate.** If anything fails, the AI gets the problem and tries again, up to 3 times. A button that still fails says "not available yet", and the rest of the app is built as normal.
+
+In the downloaded app, each press runs in a separate worker thread, in a room with no access to files, settings or the network. It only reaches its own table, through the same checks as Add and Edit, and it is stopped if it hangs. The Backend station shows which AI wrote each button, or why one was left out. The Check presses each one like a person.
+
+**Which coding AI** follows the project's mode, like the screenshot reader: **Local** uses Qwen 2.5 Coder 7B on Ollama; **Cloud** uses Gemini; **Auto** uses Gemini first, because it was right the first time on 5 of 5 test buttons against Qwen's 2 of 5, with Qwen as the backup.
+
 ---
 
 ## Why it is built this way
 
 **1. No evidence, no code.** Every backend part must point to a visible element ("s1: row button 'Delete'"), and every visible control must work. A table with only Edit/Delete gets list, update and delete. It does *not* get "create", because there is no Add button. Login code exists only if a login screen is shown. *Why:* the app does what the screenshots show, nothing is invented, and every part can be explained in a review.
 
-**2. AI where it is needed, rules everywhere else.** AI reads the screenshots and draws the pages, because that needs vision. Turning "a table with a Delete button" into "a DELETE endpoint" is done by a fixed rule table, and the backend comes from tested templates. *Why:* the same screenshot always gives the same spec and the same code. It is fast (milliseconds), it can be tested, and it doesn't hallucinate. AI-written code will be used only for buttons no template covers (Step 13), and only if its tests pass.
+**2. AI where it is needed, rules everywhere else.** AI reads the screenshots and draws the pages, because that needs vision. Turning "a table with a Delete button" into "a DELETE endpoint" is done by a fixed rule table, and the backend comes from tested templates. *Why:* the same screenshot always gives the same spec and the same code. It is fast (milliseconds), it can be tested, and it doesn't hallucinate. AI-written code is used only for buttons no template covers, and only after a safety check and a real press.
 
 **3. One spec, fingerprinted, shared by both laptops.** The App Spec is the single source of truth. It is hashed in a fixed way (sorted keys, SHA-256, [shared/hash.mjs](shared/hash.mjs)), and every page and backend build is stamped with that hash. *Why:* if the spec is edited while a page is still building, the old page can't sneak into the app. The Sync check refuses anything built for an older version.
 
@@ -119,7 +130,8 @@ my-app/
 ├── app-spec.json        the spec it was built from (version + fingerprint)
 ├── package.json         Express + Mongoose only
 ├── .env.example         MONGODB_URI, PORT (+ first-account settings only if there is a login)
-├── backend/             server, models, validation, controllers, routes (+ auth/ only with a login screen)
+├── backend/             server, models, validation, controllers, routes (+ auth/ only with a login screen,
+│                        + custom/ only for buttons no template covers: their AI-written code and its runner)
 ├── tests/api.test.js    one test per generated part
 ├── frontend/            page-1.html, page-2.html, … index.html (= first page), app.js, api-map.json
 └── screenshots/         the screenshots it came from
@@ -148,6 +160,8 @@ The pages need an internet connection for their styling (they load Tailwind CSS 
 | Database | **MongoDB** + **Mongoose 9** | Specs, jobs and generated apps are document-shaped; the generated apps use the same stack |
 | Uploads / images | **multer 2**, **sharp** | In-memory upload with type and size limits; fast resizing before the vision pass |
 | Vision AI (read screenshots) | **Ollama** with `qwen3-vl:8b-instruct`; backup **Gemini** (`gemini-3-flash-preview`) | Runs locally for free; cloud backup when local is slow or down |
+| Coding AI (custom buttons) | **Ollama** with `qwen2.5-coder:7b`; **Gemini** (`gemini-3.5-flash` in our test) | Chosen by a test of 5 buttons with known right answers (see [docs/tdd/step13-custom.tdd.md](docs/tdd/step13-custom.tdd.md)) |
+| Code safety check | **acorn** (a JavaScript parser) | Reads AI code and page sample data as a structure, without running it |
 | Page builder | **[Screenshot-to-Code](https://github.com/abi/screenshot-to-code)** (commit `a813977` + [our patch](docs/s2c-local.patch)), on **Ollama with CUDA** (RTX 4060) | Proven screenshot → HTML tool; our patch adds Windows fixes, one variant, retries and a step limit |
 | Network between laptops | **Tailscale** + API key header | Private network; the Gateway is never on the open Wi-Fi |
 | Generated backend | **Express 5 + Mongoose 9**, Node's built-in test runner | Only two dependencies, easy to read and run |
@@ -168,7 +182,7 @@ The pages need an internet connection for their styling (they load Tailwind CSS 
 | [`shared/`](shared/) | Both | Spec / inventory JSON schemas and the spec fingerprint (hash) |
 | [`gateway/`](gateway/) | Laptop B | REST front door to Screenshot-to-Code: API key, one job at a time, local / cloud / auto mode, cache |
 | [`scripts/`](scripts/) | Laptop B | `start-laptop-b.ps1`: starts Ollama, Screenshot-to-Code and the Gateway |
-| [`samples/`](samples/) | Either | Test screenshots (`samples/mocks/m1…m6`) and example outputs |
+| [`samples/`](samples/) | Either | Test screenshots (`samples/mocks/m1…m7`; m7 has custom buttons) and example outputs |
 | [`spikes/`](spikes/) | Either | Early experiments from Phase 1 (kept for reference) |
 | [`docs/`](docs/) | – | Screenshot-to-Code patch, TDD evidence reports |
 | [`instructions/`](instructions/) | – | The instruction text used in the early page-building experiments |
@@ -186,6 +200,7 @@ The pages need an internet connection for their styling (they load Tailwind CSS 
 brew install mongodb-community && brew services start mongodb-community
 # Ollama app installed, then:
 ollama pull qwen3-vl:8b-instruct
+ollama pull qwen2.5-coder:7b        # the coding AI for custom buttons (about 4.7 GB)
 
 cd builder-api && npm install && cp .env.example .env    # fill in GATEWAY_URL and GATEWAY_API_KEY (see Configuration)
 cd ../web && npm install && npm run build                 # repeat the build after every change in web/
@@ -219,9 +234,9 @@ curl -s http://127.0.0.1:4000/api/health   # optional: "db":true and "reachable"
 ```
 
 **3. Open http://127.0.0.1:4000** on Laptop A. The two lights in the top right (Mac, Windows GPU) should be green.
-- **New project** → drop screenshots → set their order → name → AI mode (**Local**: free, on your GPUs; **Cloud**: Gemini, faster, limited free requests; **Auto**: local, then cloud) → start.
+- **New project** → drop screenshots → set their order → name → AI mode (**Local**: free, on your GPUs; **Cloud**: Gemini, faster, limited free requests; **Auto**: screenshots are read locally first, custom-button code is written by Gemini first, each with the other as backup) → start.
 - Watch the stations; click one to read how it works.
-- After the Sync check come **Wire** and **Check**. At **Ready**, try the app in **Pages → Live** (a real copy on a test database), then click **Download app (.zip)**. If a check fails, the Check station says which control failed, what the backend answered, and which part to blame; **Download anyway** gives you the zip with its report.
+- After the Sync check come **Wire** and **Check**. At **Ready**, the Pages tab opens on **Live**: the working app on a test database, already holding the screenshot's rows, so every button can be tried (As built is only Laptop B's drawing). Then click **Download app (.zip)**. If a check fails, the Check station says which control failed, what the backend answered, and which part to blame; **Download anyway** gives you the zip with its report.
 
 **While changing the UI:** `cd web && npm run dev` serves it at http://127.0.0.1:5173 with live reload (the Builder API must be running).
 
@@ -234,20 +249,23 @@ curl -s http://127.0.0.1:4000/api/health   # optional: "db":true and "reachable"
 ```bash
 # Builder API (Laptop A or B)
 cd builder-api
-npm test                         # unit tests (229): spec rules, generator, wirer, binder in jsdom, verifier, zip, …
+npm test                         # unit tests (296): spec rules, generator, wirer, binder in jsdom, verifier, code safety, …
 npm run test:coverage            # the same, with a coverage table
 TEST_MONGODB_URI=mongodb://127.0.0.1:27017/builder_test \
   node --test --test-concurrency=1 --test-reporter=tap "integration/**/*.test.js" | grep -E "^# (pass|fail)"
-                                 # integration tests (80): whole pipeline (Wire, Check, Ready) with a fake Gateway,
-                                 # generated apps on a real MongoDB, the Verifier, the live preview. Databases are dropped.
+                                 # integration tests (106): whole pipeline (Wire, Check, Ready) with a fake Gateway,
+                                 # generated apps on a real MongoDB, custom-button code, the Verifier, the live preview.
+                                 # Databases are dropped.
 npm run eval:inventory           # reads the sample screenshots with the real vision model (needs Ollama)
+TEST_MONGODB_URI=mongodb://127.0.0.1:27017/modeltest npm run eval:custom -- --provider local
+                                 # coding-model test: 5 buttons with known right answers (--provider cloud for Gemini)
 
 # A downloaded app, in real headless Chrome (the app must be running with npm start)
 npm run smoke:wire -- http://localhost:3000
 npm run smoke:wire -- http://localhost:3000 --email admin@example.com --password <its ADMIN_PASSWORD>   # apps with a login
 
 # Our web UI
-cd ../web && npm test            # pipeline view logic (12)
+cd ../web && npm test            # pipeline view logic (15)
 ```
 
 On Windows PowerShell, set the database for the integration tests with `$env:TEST_MONGODB_URI = "mongodb://127.0.0.1:27017/builder_test"` and run the same `node --test …` line.
@@ -271,6 +289,8 @@ Each service reads its own `.env` (copy it from `.env.example`). `.env` files ar
 | `GATEWAY_API_KEY` | Shared secret; must equal the Gateway's |
 | `OLLAMA_URL`, `OLLAMA_MODEL` | Local vision model (default `qwen3-vl:8b-instruct`) |
 | `GEMINI_API_KEY`, `GEMINI_MODEL` | Optional cloud backup for reading screenshots |
+| `OLLAMA_CODE_MODEL` | Local coding AI for custom buttons (default `qwen2.5-coder:7b`) |
+| `GEMINI_CODE_MODEL` | Cloud coding AI (default: `GEMINI_MODEL`; `gemini-3.5-flash` scored 5/5 in our test) |
 
 **`gateway/.env` (Laptop B)**
 
@@ -294,6 +314,8 @@ Each service reads its own `.env` (copy it from `.env.example`). `.env` files ar
   - Login exists only if a login screen was shown. Passwords are hashed with scrypt; only a SHA-256 fingerprint of each login token is stored; sign-in for an email pauses for a minute after 5 wrong passwords.
   - CSV export guards against spreadsheet formulas.
   - The binder inserts data as text, never as HTML.
+  - AI-written button code passes a safety check before it is ever run. In the app, each press runs in its own worker thread with no files, settings, network or code-from-strings; it reaches only its own table through the normal checks, and it is stopped after 2 s without progress (30 s in all).
+  - The live preview's starting rows are read from the page as data; the page's code is not run to get them.
 - **Checking and previews run the generated app safely:** in its own process, on `127.0.0.1` only, with its own throwaway database and no keys in its environment. It stops with the Builder API. The live preview has its own local port, so the browser treats it as another site than our UI, and a generated page can't reach the UI.
 - **Local first.** In Local mode, screenshots and code never leave the two laptops.
 
@@ -311,6 +333,7 @@ Each service reads its own `.env` (copy it from `.env.example`). `.env` files ar
 | Pages look unstyled | Connect to the internet (Tailwind CDN) |
 | A downloaded page shows an alert about `npm start` | Open it through `npm start` and `http://localhost:3000`, not as a file |
 | "The live preview could not start" / port 4001 in use | Set `PREVIEW_PORT` to a free port in `builder-api/.env` and restart the Builder API |
+| A custom button says "not available yet" | Its code never passed. The Backend station shows the last problem. Try Cloud or Auto mode (Gemini was right more often), or check that `ollama list` shows `qwen2.5-coder:7b` |
 | The Check station failed | Read its report: each failed check names the control, the backend's answer and the part to fix (page, spec or backend) |
 
 ---
@@ -318,7 +341,6 @@ Each service reads its own `.env` (copy it from `.env.example`). `.env` files ar
 ## What comes next
 
 The order is in [plan.md](plan.md):
-- **Step 13:** AI code for buttons no template covers, checked for safety, tested in a sandbox, repaired or isolated.
 - **Step 14:** memory, so repeats are instant and similar screenshots reuse earlier work.
 - **Steps 17–20:** editing the spec in the UI, sandbox preview, publishing to GitHub, demo rehearsal.
 - **Phase 2:** text requests and chat-style changes on top of the same spec, evidence and checks.
