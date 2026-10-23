@@ -231,6 +231,26 @@ describe("row and page buttons", () => {
     assert.deepEqual(p.alerts, ['"Recalculate" is not available yet.', '"Sync Payroll" is not available yet.']);
   });
 
+  it("runs a written custom button on its row, shows its message, then refreshes", async () => {
+    const list = memoryApi("/api/leaveRequests", [{ employee: "Isha", days: 4, status: "Pending" }]);
+    const api = (r) => {
+      if (r.path.endsWith("/recalculate")) {
+        list.rows[0].days = 5;
+        return { body: { message: "Now 5 days" } };
+      }
+      if (r.path.endsWith("/sync-payroll")) return { status: 400, body: { error: "Payroll is closed" } };
+      if (r.path === "/api/stats") return { body: { totalRequests: 1, pending: 1, totalDays: 5 } };
+      return list(r);
+    };
+    const map = apiMap(dashboardSpec, { customWritten: ["recalculateLeaveRequest", "syncPayrollLeaveRequest"] });
+    const p = await start({ html: page("leave-dashboard.html"), map, api });
+    await p.click(p.$('#requests [data-action="recalculateLeaveRequest"]'));
+    assert.deepEqual(writes(p).map((c) => [c.method, c.path]), [["POST", `/api/leaveRequests/${list.rows[0].id}/recalculate`]]);
+    assert.equal(text(p.$('#requests [data-field="days"]')), "5");
+    await p.click(p.$('[data-action="syncPayrollLeaveRequest"]'));
+    assert.deepEqual(p.alerts, ["Now 5 days", "Payroll is closed"]);
+  });
+
   it("downloads the real CSV for Export", async () => {
     const csv = (r) =>
       r.path === "/api/leaveRequests/export.csv" ? new Response("Employee,Days\nIsha,4\n", { headers: { "content-type": "text/csv" } }) : undefined;

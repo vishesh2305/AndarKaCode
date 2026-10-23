@@ -147,3 +147,29 @@ describe("pipelineStatus", () => {
     assert.equal(pipelineStatus(p).canDownloadAnyway, false);
   });
 });
+
+// Step 13: custom buttons, and which view the Pages tab opens on.
+describe("custom buttons and the Pages tab", () => {
+  const custom = [
+    { operation: "giveRaiseEmployee", button: "Give Raise", ok: true, provider: "cloud", answers: 2 },
+    { operation: "syncPayrollEmployee", button: "Sync Payroll", ok: false, provider: null, answers: 4, problem: "the safety check refused it: line 2: process is not allowed" },
+  ];
+  const built = withSpec({ jobs: [job("contract", "done"), job("backend", "done", { contractHash: HASH, note: "10 files", custom })] });
+
+  it("the Backend station carries each custom button's result", () => {
+    assert.deepEqual(pipelineStatus(built).stations.backend.custom, custom);
+  });
+
+  it("the Backend station says who wrote each button, or why it was left out", async () => {
+    const { STATIONS } = await import("../src/stations.js");
+    const facts = Object.fromEntries(STATIONS.backend.details(built, pipelineStatus(built).stations.backend));
+    assert.equal(facts["Give Raise"], "written by Gemini (cloud backup), 2 answers");
+    assert.match(facts["Sync Payroll"], /^not written, says "not available yet": the safety check refused it/);
+  });
+
+  it("opens the Pages tab on Live once the app is Ready, otherwise as built", async () => {
+    const { startView } = await import("../src/pipeline.js");
+    assert.equal(startView({ state: "READY" }), "live");
+    for (const state of ["BUILDING", "SYNCED", "VERIFYING", "NEEDS_ATTENTION"]) assert.equal(startView({ state }), "built", state);
+  });
+});

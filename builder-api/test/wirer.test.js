@@ -85,6 +85,13 @@ describe("apiMap: one entry per spec part, nothing else", () => {
     assert.equal(actions.syncPayrollLeaveRequest.url, "/api/leaveRequests/sync-payroll");
   });
 
+  it("marks a custom button available once the AI layer wrote its code", () => {
+    const { actions } = apiMap(opsSpec, { customWritten: ["recalculateLeaveRequest"] }).entities.leaveRequest;
+    assert.equal(actions.recalculateLeaveRequest.available, true);
+    assert.equal(actions.syncPayrollLeaveRequest.available, false);
+    assert.equal(actions.approveLeaveRequest.available, true);
+  });
+
   it("lists the stat cards by their data-stat key", () => {
     assert.deepEqual(apiMap(opsSpec).stats, { url: "/api/stats", keys: ["totalRequests", "pending", "totalDays", "happinessIndex"] });
   });
@@ -160,6 +167,11 @@ describe("wireApp: the frontend folder of the downloaded app", () => {
     assert.deepEqual(JSON.parse(files["frontend/api-map.json"]), apiMap(relationSpec));
     assert.equal(files["frontend/page-2.html"], wirePage(html(2)));
     assert.equal(files["frontend/index.html"], files["frontend/page-1.html"]);
+  });
+
+  it("puts the written custom buttons into the map", () => {
+    const files = wireApp({ spec: opsSpec, pages: [], customWritten: ["syncPayrollLeaveRequest"] });
+    assert.deepEqual(JSON.parse(files["frontend/api-map.json"]), apiMap(opsSpec, { customWritten: ["syncPayrollLeaveRequest"] }));
   });
 
   it("skips a page that was not built, and accepts Buffers", () => {

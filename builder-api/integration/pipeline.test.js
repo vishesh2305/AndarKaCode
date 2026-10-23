@@ -298,6 +298,14 @@ describe("pipeline: custom buttons get code from the coding AI (Step 13)", () =>
     const { report } = await (await fetch(`${base}/projects/${project.id}/verify`)).json();
     assert.equal(report.checks.find((c) => c.id === "tests").status, "pass");
   });
+
+  it("the Check presses the written button like a person and sees its answer; the isolated one says not available", async () => {
+    const { report } = await (await fetch(`${base}/projects/${project.id}/verify`)).json();
+    const raise = report.checks.find((c) => c.id === "action:giveRaiseEmployee:p1");
+    assert.equal(raise?.status, "pass", JSON.stringify(raise));
+    assert.match(raise.detail, /Raise noted for/);
+    assert.equal(report.checks.find((c) => c.id === "action:syncPayrollEmployee:p1")?.status, "note");
+  });
 });
 
 // ---- endpoints for the UI: screenshots, generated files, download as zip ----
@@ -487,7 +495,9 @@ describe("Live preview: the wired app on its own test database, on its own local
     assert.equal(preview.credentials, null, "no login screen: nothing to sign in with");
     assert.match(await (await fetch(preview.url)).text(), /<script src="app\.js"><\/script>/);
     assert.deepEqual(await (await fetch(`${origin()}/preview/${id}/health`)).json(), { ok: true, db: true });
-    assert.deepEqual((await (await fetch(`${origin()}/preview/${id}/api/employees`)).json()).items, []);
+    // It starts with the page's sample rows (here the fake page's one row), so row buttons can be tried at once.
+    const { items } = await (await fetch(`${origin()}/preview/${id}/api/employees`)).json();
+    assert.deepEqual(items.map((e) => e.fullName), ["Sample Full Name"]);
   });
 
   it("reuses the running preview, and stops on request", async () => {
