@@ -1,8 +1,10 @@
 // Moves projects through the lifecycle (ARCHITECTURE.md §3). MongoDB is the source of truth:
 // every step is saved before the next one starts, so a restart can pick up where it stopped.
-import { readFile } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { contractHash } from "../../shared/hash.mjs";
+import { pressOnce } from "./custom/tester.js";
+import { writeCustomCode } from "./custom/writer.js";
 import { generateBackend, writeBackend } from "./generator/index.js";
 import { getFrontend, submitFrontend } from "./gateway-client.js";
 import { Contract } from "./models/contract.js";
@@ -148,16 +150,36 @@ async function frontendBranch(project, contract, n) {
 }
 
 // Backend branch: the template generator (no AI, deterministic). Writes runs/<id>/app/v<N>/.
+// Then each custom button gets its code from the coding AI (Step 13), one at a time, tried in that app.
+// A button whose code never passes is left out: it answers "not available yet" and the rest still works.
 async function backendBranch(project, contract) {
   const existing = await Job.findOne({ projectId: project._id, kind: "backend", contractHash: contract.hash, status: "done" });
   if (existing) return existing;
   return runJob(project, "backend", async (job) => {
     job.contractHash = contract.hash;
-    const files = generateBackend(contract.body, { name: project.name });
+    const spec = contract.body;
+    const files = generateBackend(spec, { name: project.name });
     const dir = path.join(RUNS_DIR, project.id, "app", `v${contract.version}`);
     await writeBackend(dir, files);
     job.artifactPath = path.relative(REPO_ROOT, dir).split(path.sep).join("/");
     job.note = `${Object.keys(files).length} files generated from templates`;
+
+    const customOps = spec.operations.filter((op) => op.kind === "custom");
+    if (!customOps.length) return job;
+    job.custom = [];
+    for (const op of customOps) {
+      const mongoUri = databaseUri(MONGODB_URI, `custom_${project.id}`);
+      const result = await writeCustomCode({ spec, op, mode: project.mode, test: (code) => pressOnce({ spec, op, appDir: dir, mongoUri, code }) });
+      if (!result.ok) await rm(path.join(dir, "backend", "custom", `${op.name}.js`), { force: true });
+      job.custom.push({ operation: op.name, button: op.button, ok: result.ok, provider: result.provider ?? null, answers: result.answers, ...(result.problem && { problem: result.problem.slice(0, 500) }) });
+    }
+    const written = job.custom.filter((c) => c.ok);
+    if (written.length) {
+      job.provider = written.some((c) => c.provider === "cloud") ? "cloud" : "local";
+      const tests = generateBackend(spec, { name: project.name, customWritten: written.map((c) => c.operation) })["tests/api.test.js"];
+      await writeBackend(dir, { "tests/api.test.js": tests });
+    }
+    job.note += `; custom buttons: ${written.length} of ${customOps.length} written by the coding AI`;
     return job;
   });
 }

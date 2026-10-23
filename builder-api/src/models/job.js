@@ -18,6 +18,8 @@ const jobSchema = new mongoose.Schema(
     artifactPath: String, // what the job produced, relative to the repo root (e.g. runs/<id>/frontend/v1.html)
     note: String, // e.g. "placeholder until Step 10"
     report: mongoose.Schema.Types.Mixed, // verify jobs: the Verifier's report (src/verify/index.js)
+    // backend jobs: one entry per custom button, { operation, button, ok, provider, answers, problem? } (Step 13)
+    custom: { type: [mongoose.Schema.Types.Mixed], default: undefined },
     error: String,
     startedAt: Date,
     finishedAt: Date,

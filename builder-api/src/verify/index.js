@@ -40,7 +40,7 @@ export async function runAppTests(appDir, mongoUri) {
 }
 
 // Typed sample values for a record put in directly (pages without Add), from the page's spec.
-function sampleRecord(entity, spec) {
+export function sampleRecord(entity, spec) {
   const fields = spec.entities.find((e) => e.name === entity)?.fields ?? [];
   const doc = { createdAt: new Date(), updatedAt: new Date() };
   for (const f of fields) {

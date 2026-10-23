@@ -187,6 +187,12 @@ ${endpoints.get || endpoints.list ? gone : ""}
     assert.ok(res.type.includes("text/csv"));
     assert.equal(res.text.split("\\n")[0], ${q(csvHeader(entity.fields.map((x) => x.label)))});`)
       );
+    } else if (op.written) {
+      // Written by the AI layer (Step 13): it answers, or refuses with a message; an error in it would be 500.
+      tests.push(
+        it(`${op.button} answers (its code is in backend/custom/${op.name}.js)`, op.evidence, `${setup}    const res = await call("POST", ${url}, {});
+    assert.ok([200, 400].includes(res.status), JSON.stringify(res.body));`)
+      );
     } else {
       tests.push(
         it(`${op.button} answers 501 until it is written`, op.evidence, `${setup}    const res = await call("POST", ${url});

@@ -37,8 +37,11 @@ export function operationRoute(op, entityName) {
   return { method: "post", path: `${row ? "/:id" : ""}/${operationSegment(op, entityName)}`, row };
 }
 
-/** Returns { "relative/path": "file contents" }. Pure: same spec + name -> same files. */
-export function generateBackend(spec, { name }) {
+/**
+ * Returns { "relative/path": "file contents" }. Pure: same spec + options -> same files.
+ * customWritten: the custom buttons whose code the AI layer wrote (their tests expect an answer, not 501).
+ */
+export function generateBackend(spec, { name, customWritten = [] }) {
   const app = appInfo(name);
   const files = {
     "package.json": packageJson({ app }),
@@ -47,7 +50,7 @@ export function generateBackend(spec, { name }) {
   };
   const entities = [];
   for (const e of spec.entities) {
-    const operations = spec.operations.filter((o) => o.entity === e.name).map((o) => ({ ...o, route: operationRoute(o, e.name) }));
+    const operations = spec.operations.filter((o) => o.entity === e.name).map((o) => ({ ...o, route: operationRoute(o, e.name), written: customWritten.includes(o.name) }));
     const entity = { ...e, Model: pascal(e.name), operations };
     entities.push(entity);
     files[`backend/models/${e.name}.model.js`] = model({ entity, comment, pascal });
