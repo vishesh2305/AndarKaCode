@@ -20,8 +20,11 @@ const RUNTIME_VERSION = hash(customRuntime.runFile() + customRuntime.workerFile(
 /** What the vision AI read on one screenshot. */
 export const inventoryKey = (screenshotSha, version = READING_VERSION) => hash(`inventory|${version}|${screenshotSha}`);
 
+/** A page's instructions, as a hash. */
+export const instructionsHash = (instructions) => hash(instructions);
+
 /** One page Laptop B drew from this screenshot with these instructions. */
-export const pageKey = (screenshotSha, instructions) => hash(`page|${screenshotSha}|${hash(instructions)}`);
+export const pageKey = (screenshotSha, instructions) => hash(`page|${screenshotSha}|${instructionsHash(instructions)}`);
 
 /** One custom button's code: the same button on the same kind of table (its name doesn't matter). */
 export function customKey(spec, op) {

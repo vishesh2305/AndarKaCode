@@ -21,6 +21,7 @@ const screenshotSchema = new mongoose.Schema(
   {
     path: { type: String, required: true }, // relative to the repo root, e.g. runs/<id>/screenshot-1.png
     sha256: { type: String, required: true }, // of the uploaded file
+    dHash: String, // picture fingerprint: copies of the same screen stay close (Step 14)
     width: Number,
     height: Number,
     inventory: mongoose.Schema.Types.Mixed, // what the vision pass saw (shared/inventory.schema.json)

@@ -11,6 +11,7 @@ import { Project } from "./models/project.js";
 import path from "node:path";
 import { contractHash } from "../../shared/hash.mjs";
 import { currentContract, resumeAll, startPipeline } from "./orchestrator.js";
+import { dHash } from "./memory/dhash.js";
 import { forgetAll, memoryCounts } from "./memory/index.js";
 import { checkSpec } from "./spec/check.js";
 import { appArchive, listAppFiles, safeAppPath, slug } from "./package-app.js";
@@ -101,7 +102,7 @@ app.post("/api/projects", upload.array("image", MAX_SCREENSHOTS), async (req, re
   const useMemory = req.body.fresh !== "true"; // "Start fresh" skips memory for this project
   const project = new Project({ name: (req.body.name ?? "").trim() || fallbackName, imageHash: sha256(files[0].buffer), mode, useMemory });
   for (const [i, file] of files.entries()) {
-    project.screenshots.push({ ...(await saveScreenshot(project._id, i + 1, shrunk[i])), sha256: sha256(file.buffer) });
+    project.screenshots.push({ ...(await saveScreenshot(project._id, i + 1, shrunk[i])), sha256: sha256(file.buffer), dHash: await dHash(file.buffer) });
   }
   Object.assign(project, { imagePath: project.screenshots[0].path, imageWidth: shrunk[0].width, imageHeight: shrunk[0].height });
   await project.save();

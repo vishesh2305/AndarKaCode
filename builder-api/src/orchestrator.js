@@ -7,7 +7,7 @@ import { checkCustomCode } from "./custom/safety.js";
 import { pressOnce } from "./custom/tester.js";
 import { writeCustomCode, writtenButtons } from "./custom/writer.js";
 import { generateBackend, writeBackend } from "./generator/index.js";
-import { origin, recall, rememberProject } from "./memory/index.js";
+import { origin, recall, recallSimilarPage, rememberProject } from "./memory/index.js";
 import { customKey, inventoryKey, pageKey } from "./memory/keys.js";
 import { getFrontend, submitFrontend } from "./gateway-client.js";
 import { Contract } from "./models/contract.js";
@@ -122,12 +122,19 @@ async function frontendBranch(project, contract, n) {
   if (existing?.status === "done") return existing;
 
   // The same screenshot with the same instructions drew a page that passed the Check before (Step 14).
+  // Else a copy of that screenshot (resized, re-saved: nearly the same picture) with the same instructions.
   const shot = screenshotsOf(project)[n - 1];
-  const memory = !existing && project.useMemory !== false && shot.sha256 ? await recall("page", pageKey(shot.sha256, pageInstructions(contract.body, n))) : null;
-  if (memory) {
+  const instructions = pageInstructions(contract.body, n);
+  let reuse = null;
+  if (!existing && project.useMemory !== false && shot.sha256) {
+    const same = await recall("page", pageKey(shot.sha256, instructions));
+    const similar = same ? null : await recallSimilarPage(shot.dHash, instructions);
+    reuse = same ? { memory: same, fromMemory: origin(same) } : similar && { memory: similar.memory, fromMemory: { ...origin(similar.memory), similar: true, distance: similar.distance } };
+  }
+  if (reuse) {
     const now = new Date();
-    const artifactPath = await saveArtifact(project._id, `frontend/v${contract.version}/page-${n}.html`, memory.payload);
-    return Job.create({ ...query, status: "done", provider: memory.provider, artifactPath, fromMemory: origin(memory), startedAt: now, finishedAt: now });
+    const artifactPath = await saveArtifact(project._id, `frontend/v${contract.version}/page-${n}.html`, reuse.memory.payload);
+    return Job.create({ ...query, status: "done", provider: reuse.memory.provider, artifactPath, fromMemory: reuse.fromMemory, startedAt: now, finishedAt: now });
   }
 
   const job = existing ?? (await Job.create({ ...query, status: "running", startedAt: new Date() }));

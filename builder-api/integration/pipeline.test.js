@@ -618,15 +618,16 @@ describe("Memory (Step 14): work from a Ready project is reused", () => {
 
   // Piece 2: a copy of a remembered screenshot (resized, saved as JPEG) is another file but nearly the same
   // picture. It is read again, and its page is reused when the page instructions are the same too.
-  const copyOf = async (file) => {
+  // Each copy gets its own width, so it is another file (an identical file would be an exact repeat).
+  const copyOf = async (file, width) => {
     const fs = await import("node:fs/promises");
-    const bytes = await sharp(await fs.readFile(path.join(MOCKS, file))).resize(800).jpeg({ quality: 70 }).toBuffer();
+    const bytes = await sharp(await fs.readFile(path.join(MOCKS, file))).resize(width).jpeg({ quality: 70 }).toBuffer();
     return { name: "copy.jpg", bytes, type: "image/jpeg" };
   };
 
   it("a resized JPEG copy is read again, but its page comes from memory (near-duplicate)", async () => {
     const [vision, sent] = [visionRequests.count, submissions.length];
-    const copy = await waitFor(await upload([await copyOf("m5b-departments.png")], [departmentsScreen], { fresh: false }), settled);
+    const copy = await waitFor(await upload([await copyOf("m5b-departments.png", 800)], [departmentsScreen], { fresh: false }), settled);
     assert.equal(copy.state, "READY", copy.error);
     assert.equal(visionRequests.count, vision + 1, "the copy is another file: it is read again");
     assert.equal(submissions.length, sent, "no page sent to Laptop B");
@@ -639,7 +640,7 @@ describe("Memory (Step 14): work from a Ready project is reused", () => {
   it("a near-duplicate whose reading changed (a new column) is drawn again", async () => {
     const changed = listScreen("Departments", { singular: "department", plural: "departments" }, [["Name", ["HR"]], ["Head", ["Ann Lee"]]], ["Delete"]);
     const sent = submissions.length;
-    const copy = await waitFor(await upload([await copyOf("m5b-departments.png")], [changed], { fresh: false }), settled);
+    const copy = await waitFor(await upload([await copyOf("m5b-departments.png", 760)], [changed], { fresh: false }), settled);
     assert.equal(submissions.length, sent + 1);
     assert.equal(jobOf(copy, "frontend").fromMemory, undefined);
   });

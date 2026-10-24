@@ -12,9 +12,14 @@ const memorySchema = new mongoose.Schema(
     seconds: Number, // how long the work took the first time (the time a reuse saves)
     sourceProjectId: { type: mongoose.Schema.Types.ObjectId, ref: "Project" },
     sourceName: String,
+    // pages: the screenshot's picture fingerprint and the page instructions' hash, so a copy of the
+    // screenshot (resized, re-saved) with the same instructions finds this page (Step 14 piece 2)
+    dHash: String,
+    instructionsHash: String,
   },
   schemaOptions
 );
 memorySchema.index({ kind: 1, key: 1 }, { unique: true });
+memorySchema.index({ kind: 1, instructionsHash: 1 });
 
 export const Memory = mongoose.model("Memory", memorySchema);

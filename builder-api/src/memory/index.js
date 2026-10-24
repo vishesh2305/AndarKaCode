@@ -8,7 +8,8 @@ import { Job } from "../models/job.js";
 import { Memory } from "../models/memory.js";
 import { pageInstructions } from "../spec/instructions.js";
 import { REPO_ROOT } from "../storage.js";
-import { customKey, inventoryKey, pageKey } from "./keys.js";
+import { NEAR, hammingDistance } from "./dhash.js";
+import { customKey, instructionsHash, inventoryKey, pageKey } from "./keys.js";
 
 const KINDS = ["inventory", "page", "custom"];
 const secondsOf = (job) => (job?.startedAt && job.finishedAt ? Math.round((job.finishedAt - job.startedAt) / 100) / 10 : null);
@@ -20,12 +21,23 @@ export const recall = (kind, key) => Memory.findOne({ kind, key }).lean();
 export const origin = (memory) => ({ sourceProjectId: memory.sourceProjectId, sourceName: memory.sourceName, seconds: memory.seconds ?? null });
 
 // Keeps the first project's work: a later identical piece doesn't replace its source.
-const keep = (kind, key, { payload, provider, seconds, project }) =>
+const keep = (kind, key, { payload, provider, seconds, project, ...extra }) =>
   Memory.updateOne(
     { kind, key },
-    { $setOnInsert: { kind, key, payload, provider: provider ?? null, seconds, sourceProjectId: project._id, sourceName: project.name } },
+    { $setOnInsert: { kind, key, payload, provider: provider ?? null, seconds, sourceProjectId: project._id, sourceName: project.name, ...extra } },
     { upsert: true }
   );
+
+/**
+ * A page drawn from a copy of this screenshot (dHash at most NEAR bits away) with the same instructions:
+ * { memory, distance } for the closest one, or null.
+ */
+export async function recallSimilarPage(dHash, instructions) {
+  if (!dHash) return null;
+  const pages = await Memory.find({ kind: "page", instructionsHash: instructionsHash(instructions), dHash: { $type: "string" } }).lean();
+  const closest = pages.map((memory) => ({ memory, distance: hammingDistance(dHash, memory.dHash) })).sort((a, b) => a.distance - b.distance)[0];
+  return closest && closest.distance <= NEAR ? closest : null;
+}
 
 /** Called when a project reaches READY: its readings, pages and written custom code go into memory. */
 export async function rememberProject(project, contract) {
@@ -45,7 +57,15 @@ export async function rememberProject(project, contract) {
     const shot = project.screenshots[job.page - 1];
     if (!shot || !job.artifactPath) continue;
     const html = await readFile(path.join(REPO_ROOT, job.artifactPath), "utf8");
-    await keep("page", pageKey(shot.sha256, pageInstructions(spec, job.page)), { payload: html, provider: job.provider, seconds: secondsOf(job), project });
+    const instructions = pageInstructions(spec, job.page);
+    await keep("page", pageKey(shot.sha256, instructions), {
+      payload: html,
+      provider: job.provider,
+      seconds: secondsOf(job),
+      project,
+      dHash: shot.dHash ?? null,
+      instructionsHash: instructionsHash(instructions),
+    });
   }
 
   const backend = current("backend").at(-1);
