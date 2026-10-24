@@ -26,12 +26,14 @@ export const instructionsHash = (instructions) => hash(instructions);
 /** One page Laptop B drew from this screenshot with these instructions. */
 export const pageKey = (screenshotSha, instructions) => hash(`page|${screenshotSha}|${instructionsHash(instructions)}`);
 
+/** A custom button as the library finds it: its text and whether it sits on a row (piece 3). */
+export const buttonShape = (op) => ({ button: norm(op.button), row: operationRoute(op, op.entity).row });
+
 /** One custom button's code: the same button on the same kind of table (its name doesn't matter). */
 export function customKey(spec, op) {
   const entity = spec.entities.find((e) => e.name === op.entity);
   const shape = {
-    button: norm(op.button),
-    row: operationRoute(op, entity.name).row,
+    ...buttonShape(op),
     fields: entity.fields.map((f) => [f.name, f.type, f.options ?? null, f.ref ?? null, Boolean(f.required)]),
     runtime: RUNTIME_VERSION,
   };

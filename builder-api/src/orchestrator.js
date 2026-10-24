@@ -7,7 +7,7 @@ import { checkCustomCode } from "./custom/safety.js";
 import { pressOnce } from "./custom/tester.js";
 import { writeCustomCode, writtenButtons } from "./custom/writer.js";
 import { generateBackend, writeBackend } from "./generator/index.js";
-import { origin, recall, recallSimilarPage, rememberProject } from "./memory/index.js";
+import { origin, recall, recallLibrary, recallSimilarPage, rememberProject } from "./memory/index.js";
 import { customKey, inventoryKey, pageKey } from "./memory/keys.js";
 import { getFrontend, submitFrontend } from "./gateway-client.js";
 import { Contract } from "./models/contract.js";
@@ -199,13 +199,22 @@ async function backendBranch(project, contract) {
       const started = Date.now();
       const mongoUri = databaseUri(MONGODB_URI, `custom_${project.id}`);
       const test = (code) => pressOnce({ spec, op, appDir: dir, mongoUri, code });
-      // The same button on the same kind of table got verified code before (Step 14): it is pressed in this
-      // app first, and only if it doesn't pass here does the coding AI write new code.
-      const memory = project.useMemory !== false ? await recall("custom", customKey(spec, op)) : null;
-      const remembered = memory && checkCustomCode(memory.payload).ok && !(await test(memory.payload));
-      const result = remembered
-        ? { ok: true, provider: memory.provider, answers: 0, fromMemory: origin(memory) }
-        : await writeCustomCode({ spec, op, mode: project.mode, test });
+      // Verified code from memory is pressed in this app first (Step 14): the same button on the same kind of
+      // table, else the same button on a table whose fields still fit the code (the library). Only if none
+      // passes here does the coding AI write new code.
+      let result = null;
+      if (project.useMemory !== false) {
+        const exact = await recall("custom", customKey(spec, op));
+        const library = (await recallLibrary(spec, op)).filter((m) => m.key !== exact?.key);
+        const tries = [...(exact ? [{ memory: exact, similar: false }] : []), ...library.map((memory) => ({ memory, similar: true }))];
+        for (const { memory, similar } of tries) {
+          if (checkCustomCode(memory.payload).ok && !(await test(memory.payload))) {
+            result = { ok: true, provider: memory.provider, answers: 0, fromMemory: { ...origin(memory), ...(similar && { similar }) } };
+            break;
+          }
+        }
+      }
+      result ??= await writeCustomCode({ spec, op, mode: project.mode, test });
       if (!result.ok) await rm(path.join(dir, "backend", "custom", `${op.name}.js`), { force: true });
       job.custom.push({
         operation: op.name,

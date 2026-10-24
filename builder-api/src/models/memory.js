@@ -16,10 +16,16 @@ const memorySchema = new mongoose.Schema(
     // screenshot (resized, re-saved) with the same instructions finds this page (Step 14 piece 2)
     dHash: String,
     instructionsHash: String,
+    // custom code: the button's text, row or page, and the fields of the table it was verified on, so the
+    // same button on another table can find it (the verified-code library, Step 14 piece 3)
+    button: String,
+    row: Boolean,
+    fields: mongoose.Schema.Types.Mixed,
   },
   schemaOptions
 );
 memorySchema.index({ kind: 1, key: 1 }, { unique: true });
 memorySchema.index({ kind: 1, instructionsHash: 1 });
+memorySchema.index({ kind: 1, button: 1 });
 
 export const Memory = mongoose.model("Memory", memorySchema);

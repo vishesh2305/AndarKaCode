@@ -9,7 +9,8 @@ import { Memory } from "../models/memory.js";
 import { pageInstructions } from "../spec/instructions.js";
 import { REPO_ROOT } from "../storage.js";
 import { NEAR, hammingDistance } from "./dhash.js";
-import { customKey, instructionsHash, inventoryKey, pageKey } from "./keys.js";
+import { buttonShape, customKey, instructionsHash, inventoryKey, pageKey } from "./keys.js";
+import { fitsTable } from "./library.js";
 
 const KINDS = ["inventory", "page", "custom"];
 const secondsOf = (job) => (job?.startedAt && job.finishedAt ? Math.round((job.finishedAt - job.startedAt) / 100) / 10 : null);
@@ -42,6 +43,16 @@ export async function recallSimilarPage(dHash, instructions) {
   const pages = await Memory.find({ kind: "page", instructionsHash: instructionsHash(instructions), dHash: { $type: "string" } }).lean();
   const closest = pages.map((memory) => ({ memory, distance: hammingDistance(dHash, memory.dHash) })).sort((a, b) => a.distance - b.distance)[0];
   return closest && closest.distance <= NEAR ? closest : null;
+}
+
+/**
+ * The verified-code library: remembered code for the same button (text, row or page) that may be tried on
+ * this table, newest first. The exact match (customKey) is looked up before this.
+ */
+export async function recallLibrary(spec, op) {
+  const entity = spec.entities.find((e) => e.name === op.entity);
+  const candidates = await Memory.find({ kind: "custom", ...buttonShape(op), fields: { $type: "array" } }).sort({ createdAt: -1 }).limit(5).lean();
+  return candidates.filter((memory) => fitsTable(memory.payload, memory.fields, entity.fields));
 }
 
 /** Called when a project reaches READY: its readings, pages and written custom code go into memory. */
@@ -77,7 +88,9 @@ export async function rememberProject(project, contract) {
     const op = spec.operations.find((o) => o.name === c.operation);
     if (!c.ok || !op) continue;
     const code = await readFile(path.join(REPO_ROOT, backend.artifactPath, "backend", "custom", `${op.name}.js`), "utf8").catch(() => null);
-    if (code) await keep("custom", customKey(spec, op), { payload: code, provider: c.provider, seconds: c.seconds ?? null, project });
+    if (!code) continue;
+    const fields = spec.entities.find((e) => e.name === op.entity).fields.map(({ name, type, options, ref }) => ({ name, type, options, ref }));
+    await keep("custom", customKey(spec, op), { payload: code, provider: c.provider, seconds: c.seconds ?? null, project, lookup: { ...buttonShape(op), fields } });
   }
 }
 
