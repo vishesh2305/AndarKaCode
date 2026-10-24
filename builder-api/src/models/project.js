@@ -21,6 +21,7 @@ const screenshotSchema = new mongoose.Schema(
   {
     path: { type: String, required: true }, // relative to the repo root, e.g. runs/<id>/screenshot-1.png
     sha256: { type: String, required: true }, // of the uploaded file
+    dHash: String, // 64-bit perceptual difference hash
     width: Number,
     height: Number,
     inventory: mongoose.Schema.Types.Mixed, // what the vision pass saw (shared/inventory.schema.json)
@@ -34,6 +35,7 @@ const projectSchema = new mongoose.Schema(
     screenshots: { type: [screenshotSchema], default: [] },
     // First screenshot, kept for listings and for projects created before multi-screenshot uploads.
     imageHash: { type: String, required: true, index: true },
+    imageDHash: String,
     imagePath: { type: String },
     imageWidth: Number,
     imageHeight: Number,

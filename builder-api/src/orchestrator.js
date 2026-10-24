@@ -14,7 +14,8 @@ import { checkSpec } from "./spec/check.js";
 import { deriveSpec } from "./spec/derive.js";
 import { pageInstructions } from "./spec/instructions.js";
 import { readInventory } from "./spec/inventory.js";
-import { REPO_ROOT, RUNS_DIR, saveArtifact } from "./storage.js";
+import { findScreenshotMemory, rememberVerifiedProject } from "./memory/index.js";
+import { computeDHash, REPO_ROOT, RUNS_DIR, saveArtifact, sha256 } from "./storage.js";
 import { databaseUri, verifyApp } from "./verify/index.js";
 import { failureLine } from "./verify/report.js";
 import { wireApp } from "./wirer/index.js";
@@ -64,11 +65,32 @@ const screenshotsOf = (project) => (project.screenshots?.length ? project.screen
 async function contractStage(project) {
   const { body, hash } = await runJob(project, "contract", async (job) => {
     const inventories = [];
+    let allFromMemory = true;
     for (const shot of screenshotsOf(project)) {
-      const image = await readFile(path.join(REPO_ROOT, shot.path));
-      const { inventory, provider } = await readInventory(image.toString("base64"), { mode: project.mode });
-      inventories.push(inventory);
-      if (job.provider !== "cloud") job.provider = provider; // "cloud" if any screenshot needed the backup
+      let sha = shot.sha256;
+      let dHash = shot.dHash;
+      if (!sha || !dHash) {
+        try {
+          const raw = await readFile(path.join(REPO_ROOT, shot.path));
+          if (!sha) sha = sha256(raw);
+          if (!dHash) dHash = await computeDHash(raw);
+        } catch {
+          // unreadable
+        }
+      }
+      const mem = await findScreenshotMemory({ sha256: sha, dHash });
+      if (mem?.payload?.inventory) {
+        inventories.push(mem.payload.inventory);
+      } else {
+        allFromMemory = false;
+        const image = await readFile(path.join(REPO_ROOT, shot.path));
+        const { inventory, provider } = await readInventory(image.toString("base64"), { mode: project.mode });
+        inventories.push(inventory);
+        if (job.provider !== "cloud") job.provider = provider; // "cloud" if any screenshot needed the backup
+      }
+    }
+    if (allFromMemory && screenshotsOf(project).length > 0) {
+      job.provider = "memory";
     }
     project.screenshots.forEach((shot, i) => (shot.inventory = inventories[i]));
     project.markModified("screenshots");
@@ -247,7 +269,10 @@ async function verifyStage(projectId) {
 
   project = await Project.findById(projectId);
   if ((await currentContract(project)).hash !== contract.hash) return; // the spec was edited meanwhile: the rerun builds again
-  if (job.report.ok) await setState(project, "READY");
+  if (job.report.ok) {
+    await setState(project, "READY");
+    await rememberVerifiedProject(project, contract, REPO_ROOT);
+  }
   else await setState(project, "NEEDS_ATTENTION", failureLine(job.report).slice(0, 500));
 }
 

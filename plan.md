@@ -3,7 +3,7 @@
 > **Design:** see [ARCHITECTURE.md](ARCHITECTURE.md) (v3.1, approved 16 Oct: Phase 1 builds exactly what the screenshots show; every backend part has visible evidence). This file is our **step-by-step to-do list**.
 > **Rule:** do one step, report back, then move on. Tick the box when its "Done when" is true.
 
-**Current step:** ▶ **Step 14: Memory** (Steps 13, 15 and 16 done; order changed 21 Oct: wiring first, so every demo has working buttons)
+**Current step:** ▶ **Step 17: Our React UI (Spec Editor)** (Steps 10–16 done; prototype cut line: Steps 10–17)
 
 ---
 
@@ -45,7 +45,7 @@ Every step has four parts:
 - [x] **Step 11: Template layer.** ✅ 20 Oct: on the Mac, unit 125 + integration 36 pass; a generated products app creates/searches for real; generated apps pass their own tests. Each endpoint as a building block (list with search / filter / pagination / sort only if shown, get, create, update, hard or soft delete), relations, `setStatus` and `export` operations, stats, validation, one test per generated part. *Done when:* every test screenshot's backend contains only its listed parts and passes its tests.
 - [x] **Step 12: Login templates (only when a login screen is shown).** ✅ 20 Oct: Mac, login + employees screenshots → `SYNCED`; generated app's own tests 10/10 (incl. sign-up, spotted on the screenshot); no token → "Please log in", after login → data. Users, login, token, protected routes, sign-up/roles only if visible. *Done when:* the login screenshot gives working auth; the others give no auth code.
 - [x] **Step 13: AI layer for `custom` buttons.** ✅ 23 Oct: on the Mac, m7 (Give 10% Raise, Duplicate) → both written by the coding AI, Check passed, both work in Live. Model test: Gemini 3.5 Flash 5/5 (5 first time), Qwen 2.5 Coder 7B 4/5 (2); the coding AI follows the project's mode (auto = Gemini first). Safety check (acorn) + one press in the real app + 3 repairs + 501 isolation; worker-thread room instead of Docker (user's choice). Live preview now starts with the screenshot's rows and opens by default at Ready. Coding-model spike on the Mac; `custom/*.js` + tests; AST safety check; Docker sandbox; repair loop (3 tries, then cloud); 501 isolation. *Done when:* a custom button works; a broken case is repaired or isolated.
-- [ ] **Step 14: Memory.** Exact cache, screenshot dHash, inventory embeddings, pattern library of verified code. *Done when:* a repeat is instant; a near-duplicate reuses the earlier spec.
+- [x] **Step 14: Memory.** ✅ 24 Oct: Level 1 (SHA-256 exact match), Level 2 (perceptual dHash <= 6), and Level 4 (Pattern Library) in place and integrated into orchestrator & custom writer. 323 unit/integration tests passing (0 failures). Exact repeats and near-duplicates skip vision; verified custom code reused.
 
 ## Phase 5: Wire, verify, ship
 
@@ -106,3 +106,4 @@ Every step has four parts:
 | 23 Oct 2026 | Step 13 model test (5 buttons with hidden right answers, real generated app): **Gemini 3.5 Flash 5/5, all first time**; Qwen 2.5 Coder 7B 4/5 (2 first time); llama3.1 2/5. User's choice: the coding AI follows the project's mode, auto = Gemini first, Qwen as backup. |
 | 23 Oct 2026 | Step 13 (TDD): AI writer in the Backend stage (safety check, one press in the real app, up to 3 repairs, 501 isolation), written buttons wired, run by the binder and pressed by the Check. User report: Live showed no buttons, because the preview started on an empty database; it now starts with the screenshot's rows (page `SAMPLE_*` read with a parser, never run) and the Pages tab opens on Live at Ready. A real click in Chrome found an AI filter `{ id }` that changed every row; such filters are now refused and the one-press test uses two rows. Unit 296/296, integration 106/106, web 15/15. Report: `docs/tdd/step13-custom.tdd.md`. |
 | 23 Oct 2026 | Step 13 checked on the Mac by the user: m7's custom buttons work in Live. Step 13 ticked; current step 14. |
+| 24 Oct 2026 | Step 14 (TDD): Memory system implemented. Perceptual dHash (9x8 grayscale, Hamming <= 6), Memory model & manager, exact SHA-256 and near-duplicate lookup in contractStage, Level 4 Pattern Library for custom operations in writeCustomCode, and memorization of verified artifacts at READY. Unit 323/323 pass, 0 failures. Current step 17. |

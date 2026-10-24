@@ -13,7 +13,7 @@ import { contractHash } from "../../shared/hash.mjs";
 import { currentContract, resumeAll, startPipeline } from "./orchestrator.js";
 import { checkSpec } from "./spec/check.js";
 import { appArchive, listAppFiles, safeAppPath, slug } from "./package-app.js";
-import { REPO_ROOT, saveScreenshot, sha256, shrinkScreenshot } from "./storage.js";
+import { computeDHash, REPO_ROOT, saveScreenshot, sha256, shrinkScreenshot } from "./storage.js";
 import { databaseUri } from "./verify/index.js";
 import { previewOf, startPreview, stopPreview, touchPreview } from "./verify/preview.js";
 import { previewSeed } from "./verify/sample-rows.js";
@@ -88,20 +88,22 @@ app.post("/api/projects", upload.array("image", MAX_SCREENSHOTS), async (req, re
 
   // Check every file before writing any, so a bad file leaves nothing behind.
   const shrunk = [];
+  const dHashes = [];
   for (const file of files) {
     try {
       shrunk.push(await shrinkScreenshot(file.buffer));
+      dHashes.push(await computeDHash(file.buffer));
     } catch {
       return res.status(400).json({ error: `"${file.originalname}" is not a readable image` });
     }
   }
 
   const fallbackName = files[0].originalname.replace(/\.[^.]+$/, "") || "Untitled";
-  const project = new Project({ name: (req.body.name ?? "").trim() || fallbackName, imageHash: sha256(files[0].buffer), mode });
+  const project = new Project({ name: (req.body.name ?? "").trim() || fallbackName, imageHash: sha256(files[0].buffer), imageDHash: dHashes[0], mode });
   for (const [i, file] of files.entries()) {
-    project.screenshots.push({ ...(await saveScreenshot(project._id, i + 1, shrunk[i])), sha256: sha256(file.buffer) });
+    project.screenshots.push({ ...(await saveScreenshot(project._id, i + 1, shrunk[i])), sha256: sha256(file.buffer), dHash: dHashes[i] });
   }
-  Object.assign(project, { imagePath: project.screenshots[0].path, imageWidth: shrunk[0].width, imageHeight: shrunk[0].height });
+  Object.assign(project, { imagePath: project.screenshots[0].path, imageWidth: shrunk[0].width, imageHeight: shrunk[0].height, imageDHash: dHashes[0] });
   await project.save();
   startPipeline(project._id); // runs in the background; poll GET /api/projects/:id
   res.status(201).json(project);
