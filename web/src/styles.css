@@ -1220,6 +1220,54 @@ a {
 
 /* ---------- small screens ---------- */
 
+/* Wide screens: the app fills the window exactly. The sidebar never makes the page taller than the main
+   content: a long project list scrolls inside the sidebar (the Memory box stays in view below it), and the
+   main column scrolls on its own. Only the structure changes; the look stays the same. */
+@media (min-width: 901px) {
+  .app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  .topbar {
+    flex: none;
+  }
+
+  .layout {
+    flex: 1;
+    min-height: 0;
+  }
+
+  .sidebar {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  .sidebar > .btn-new,
+  .sidebar > .memory-box {
+    flex: none;
+  }
+
+  /* The padding keeps the current project's shadow and the focus outline from being cut off by the
+     scrolling; the negative margin keeps the list exactly where it was. */
+  .sidebar > .project-list {
+    flex: 0 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 4px 6px 6px 4px;
+    margin: -4px -6px -6px -4px;
+  }
+
+  .main-scroll {
+    min-height: 0;
+    overflow-y: auto;
+  }
+}
+
 @media (max-width: 900px) {
   .layout {
     grid-template-columns: 1fr;

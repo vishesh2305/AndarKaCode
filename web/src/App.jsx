@@ -83,60 +83,63 @@ export function App() {
       <Header health={health} />
       <div className="layout">
         <ProjectList projects={projects} selectedId={selectedId} onSelect={select} onNew={() => setCreating(true)} creating={showForm} />
-        <main className="main">
-          {showForm ? (
-            <NewProject onCreated={(id) => (api.projects().then(setProjects), select(id))} />
-          ) : !project ? (
-            <p className="empty">Loading…</p>
-          ) : (
-            <>
-              <div className="project-head">
-                <div>
-                  <h1>{project.name}</h1>
-                  <p className="muted">
-                    Started {ago(project.createdAt)} with {project.screenshots?.length || 1} screenshot
-                    {(project.screenshots?.length || 1) === 1 ? "" : "s"}, AI mode {project.mode}
-                  </p>
+        {/* Scrolls on its own on wide screens, so the sidebar never makes the page taller (styles.css). */}
+        <div className="main-scroll">
+          <main className="main">
+            {showForm ? (
+              <NewProject onCreated={(id) => (api.projects().then(setProjects), select(id))} />
+            ) : !project ? (
+              <p className="empty">Loading…</p>
+            ) : (
+              <>
+                <div className="project-head">
+                  <div>
+                    <h1>{project.name}</h1>
+                    <p className="muted">
+                      Started {ago(project.createdAt)} with {project.screenshots?.length || 1} screenshot
+                      {(project.screenshots?.length || 1) === 1 ? "" : "s"}, AI mode {project.mode}
+                    </p>
+                  </div>
+                  <div className="download">
+                    {project.state === "READY" ? (
+                      <a className="btn btn-download" href={api.downloadUrl(project.id)} download>
+                        Download app (.zip)
+                      </a>
+                    ) : (
+                      <span className="btn btn-download btn-disabled" aria-disabled="true" title="Available once every check passes">
+                        Download app (.zip)
+                      </span>
+                    )}
+                    {status.canDownloadAnyway && (
+                      <a className="download-anyway" href={api.downloadUrl(project.id, { anyway: true })} download>
+                        Download anyway, with the check report
+                      </a>
+                    )}
+                  </div>
                 </div>
-                <div className="download">
-                  {project.state === "READY" ? (
-                    <a className="btn btn-download" href={api.downloadUrl(project.id)} download>
-                      Download app (.zip)
-                    </a>
-                  ) : (
-                    <span className="btn btn-download btn-disabled" aria-disabled="true" title="Available once every check passes">
-                      Download app (.zip)
-                    </span>
-                  )}
-                  {status.canDownloadAnyway && (
-                    <a className="download-anyway" href={api.downloadUrl(project.id, { anyway: true })} download>
-                      Download anyway, with the check report
-                    </a>
-                  )}
+
+                <div className="metro-wrap">
+                  <MetroLine status={status} selected={shown} onSelect={setStation} />
                 </div>
-              </div>
+                <StationInfo id={shown} project={project} status={status} />
 
-              <div className="metro-wrap">
-                <MetroLine status={status} selected={shown} onSelect={setStation} />
-              </div>
-              <StationInfo id={shown} project={project} status={status} />
-
-              <div className="tabs" role="tablist" aria-label="Project views">
-                {TABS.map((t) => (
-                  <button key={t} role="tab" aria-selected={tab === t} className={`tab${tab === t ? " tab-on" : ""}`} onClick={() => setTab(t)}>
-                    {t}
-                  </button>
-                ))}
-              </div>
-              <div className="tab-panel" role="tabpanel" aria-label={tab}>
-                {tab === "Screenshots" && <Screenshots project={project} />}
-                {tab === "Plan" && <Plan project={project} />}
-                {tab === "Pages" && <Pages project={project} pages={status.stations.pages.pages} wired={status.stations.wire.status === "done"} />}
-                {tab === "Backend" && <Backend project={project} ready={status.stations.backend.status === "done"} />}
-              </div>
-            </>
-          )}
-        </main>
+                <div className="tabs" role="tablist" aria-label="Project views">
+                  {TABS.map((t) => (
+                    <button key={t} role="tab" aria-selected={tab === t} className={`tab${tab === t ? " tab-on" : ""}`} onClick={() => setTab(t)}>
+                      {t}
+                    </button>
+                  ))}
+                </div>
+                <div className="tab-panel" role="tabpanel" aria-label={tab}>
+                  {tab === "Screenshots" && <Screenshots project={project} />}
+                  {tab === "Plan" && <Plan project={project} />}
+                  {tab === "Pages" && <Pages project={project} pages={status.stations.pages.pages} wired={status.stations.wire.status === "done"} />}
+                  {tab === "Backend" && <Backend project={project} ready={status.stations.backend.status === "done"} />}
+                </div>
+              </>
+            )}
+          </main>
+        </div>
       </div>
     </div>
   );
