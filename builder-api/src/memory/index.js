@@ -20,11 +20,16 @@ export const recall = (kind, key) => Memory.findOne({ kind, key }).lean();
 /** What a reused piece says about where it came from (kept on the job). */
 export const origin = (memory) => ({ sourceProjectId: memory.sourceProjectId, sourceName: memory.sourceName, seconds: memory.seconds ?? null });
 
-// Keeps the first project's work: a later identical piece doesn't replace its source.
-const keep = (kind, key, { payload, provider, seconds, project, ...extra }) =>
+// Keeps the first project's work: a later identical piece doesn't replace its source. `lookup` fields
+// (a page's dHash and instructions hash) describe the work itself, so they are filled in every time:
+// pages remembered before they existed get them too.
+const keep = (kind, key, { payload, provider, seconds, project, lookup = {} }) =>
   Memory.updateOne(
     { kind, key },
-    { $setOnInsert: { kind, key, payload, provider: provider ?? null, seconds, sourceProjectId: project._id, sourceName: project.name, ...extra } },
+    {
+      $setOnInsert: { kind, key, payload, provider: provider ?? null, seconds, sourceProjectId: project._id, sourceName: project.name },
+      ...(Object.keys(lookup).length && { $set: lookup }),
+    },
     { upsert: true }
   );
 
@@ -63,8 +68,7 @@ export async function rememberProject(project, contract) {
       provider: job.provider,
       seconds: secondsOf(job),
       project,
-      dHash: shot.dHash ?? null,
-      instructionsHash: instructionsHash(instructions),
+      lookup: { ...(shot.dHash && { dHash: shot.dHash }), instructionsHash: instructionsHash(instructions) },
     });
   }
 
