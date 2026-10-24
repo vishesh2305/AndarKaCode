@@ -344,6 +344,7 @@ describe("pipeline: custom buttons get code from the coding AI (Step 13)", () =>
     const raise = other.jobs.find((j) => j.kind === "backend").custom.find((c) => c.operation === "giveRaiseEmployee");
     assert.equal(raise.ok, true);
     assert.deepEqual({ similar: raise.fromMemory?.similar, sourceName: raise.fromMemory?.sourceName }, { similar: true, sourceName: project.name });
+    assert.match(other.jobs.find((j) => j.kind === "backend").note, /custom buttons: 1 of 1 written \(1 from memory\)$/, "not 'by the coding AI'");
     assert.ok(!codeRequests.slice(asked).includes("Give Raise"));
   });
 

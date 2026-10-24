@@ -233,7 +233,8 @@ async function backendBranch(project, contract) {
       const tests = generateBackend(spec, { name: project.name, customWritten: written.map((c) => c.operation) })["tests/api.test.js"];
       await writeBackend(dir, { "tests/api.test.js": tests });
     }
-    job.note += `; custom buttons: ${written.length} of ${customOps.length} written by the coding AI`;
+    const reused = written.filter((c) => c.fromMemory).length;
+    job.note += `; custom buttons: ${written.length} of ${customOps.length} written ${reused ? `(${reused} from memory)` : "by the coding AI"}`;
     return job;
   });
 }

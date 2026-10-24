@@ -5,6 +5,33 @@ const short = (hash) => (hash ? hash.slice(0, 12) : "—");
 const secs = (s) => (s == null ? "—" : s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s`);
 const providerName = (p) => (p === "local" ? "local AI on the laptop" : p === "cloud" ? "Gemini (cloud backup)" : "—");
 
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+const quoted = (name) => `“${name}”`;
+
+/** What memory holds, in words (the memory box). */
+export function memoryWords(counts) {
+  const { inventory = 0, page = 0, custom = 0 } = counts ?? {};
+  if (!inventory && !page && !custom) return "nothing yet";
+  return [plural(inventory, "reading"), plural(page, "page"), plural(custom, "button")].join(", ");
+}
+
+// "Time saved" only when memory saved something on this station.
+const savedFact = (s) => (s.saved > 0 ? [["Time saved", secs(s.saved)]] : []);
+
+function pageWords(p) {
+  const done = { done: "built", running: "building now", failed: "failed", waiting: "waiting" }[p.status] ?? p.status;
+  if (!p.fromMemory) return done;
+  return p.fromMemory.similar
+    ? `from memory: a copy of a screenshot in ${quoted(p.fromMemory.sourceName)} (${p.fromMemory.distance} bits apart)`
+    : `from memory (${quoted(p.fromMemory.sourceName)})`;
+}
+
+function buttonWords(c) {
+  if (c.fromMemory?.similar) return `from the code library: verified in ${quoted(c.fromMemory.sourceName)} (another table)`;
+  if (c.fromMemory) return `from memory: verified in ${quoted(c.fromMemory.sourceName)}`;
+  return c.ok ? `written by ${providerName(c.provider)}, ${c.answers} answer${c.answers === 1 ? "" : "s"}` : `not written, says "not available yet": ${c.problem ?? "no answer"}`;
+}
+
 function specCounts(project) {
   const spec = project.contract?.body;
   if (!spec) return [];
@@ -37,7 +64,9 @@ export const STATIONS = {
     ],
     details: (project, s) => [
       ["Read by", providerName(s.provider)],
+      ...(s.fromMemory ? [["From memory", `${plural(s.fromMemory.count ?? 1, "screenshot")} read before in ${quoted(s.fromMemory.sourceName)}`]] : []),
       ["Time", secs(s.seconds)],
+      ...savedFact(s),
     ],
   },
   plan: {
@@ -57,9 +86,10 @@ export const STATIONS = {
       "Its instructions come from the spec: the exact field names, and markers on every button and table cell, so the page can be connected to the backend.",
     ],
     details: (project, s) => [
-      ...s.pages.map((p) => [`Page ${p.page}`, { done: "built", running: "building now", failed: "failed", waiting: "waiting" }[p.status] ?? p.status]),
+      ...s.pages.map((p) => [`Page ${p.page}`, pageWords(p)]),
       ["Built by", providerName(s.provider)],
       ["Time", secs(s.seconds)],
+      ...savedFact(s),
     ],
   },
   backend: {
@@ -71,11 +101,9 @@ export const STATIONS = {
     ],
     details: (project, s) => [
       ["Result", s.note ?? "—"],
-      ...s.custom.map((c) => [
-        c.button,
-        c.ok ? `written by ${providerName(c.provider)}, ${c.answers} answer${c.answers === 1 ? "" : "s"}` : `not written, says "not available yet": ${c.problem ?? "no answer"}`,
-      ]),
+      ...s.custom.map((c) => [c.button, buttonWords(c)]),
       ["Time", secs(s.seconds)],
+      ...savedFact(s),
     ],
   },
   sync: {

@@ -15,11 +15,12 @@ export const api = {
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? `HTTP ${res.status}`);
       return res.text();
     }),
-  create: (files, { name, mode }) => {
+  create: (files, { name, mode, fresh = false }) => {
     const form = new FormData();
     for (const file of files) form.append("image", file, file.name);
     if (name) form.append("name", name);
     form.append("mode", mode);
+    if (fresh) form.append("fresh", "true"); // "Start fresh": don't reuse earlier work from memory
     return fetch("/api/projects", { method: "POST", body: form }).then(json);
   },
   screenshotUrl: (id, n) => `/api/projects/${id}/screenshots/${n}`,
@@ -28,4 +29,7 @@ export const api = {
   // The live preview: { url (on its own local port), credentials (only for apps with a login screen) }.
   startPreview: (id) => fetch(`/api/projects/${id}/preview`, { method: "POST" }).then(json),
   stopPreview: (id) => fetch(`/api/projects/${id}/preview`, { method: "DELETE" }),
+  // Memory (Step 14): { inventory, page, custom } counts, and forgetting it all (projects stay).
+  memory: () => fetch("/api/memory").then(json),
+  clearMemory: () => fetch("/api/memory", { method: "DELETE" }).then(json),
 };

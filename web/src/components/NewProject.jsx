@@ -13,6 +13,7 @@ export function NewProject({ onCreated }) {
   const [files, setFiles] = useState([]); // [{ file, url }] in page order
   const [name, setName] = useState("");
   const [mode, setMode] = useState("local");
+  const [fresh, setFresh] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -35,7 +36,7 @@ export function NewProject({ onCreated }) {
     setBusy(true);
     setError(null);
     try {
-      const project = await api.create(files.map((f) => f.file), { name: name.trim(), mode });
+      const project = await api.create(files.map((f) => f.file), { name: name.trim(), mode, fresh });
       onCreated(project.id);
     } catch (err) {
       setError(err.message);
@@ -113,6 +114,14 @@ export function NewProject({ onCreated }) {
           ))}
         </fieldset>
       </div>
+
+      <label className={`fresh${fresh ? " fresh-on" : ""}`}>
+        <input type="checkbox" checked={fresh} onChange={(e) => setFresh(e.target.checked)} />
+        <span>
+          <strong>Start fresh</strong>
+          <small>Read, draw and write everything again, instead of reusing earlier work from memory.</small>
+        </span>
+      </label>
 
       {error && <p className="form-error">{error}</p>}
       <button className="btn btn-go" disabled={!files.length || busy} onClick={build}>
