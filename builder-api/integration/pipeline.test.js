@@ -327,6 +327,33 @@ describe("pipeline: custom buttons get code from the coding AI (Step 13)", () =>
     assert.equal(visionRequests.count, vision);
     assert.equal(submissions.length, sent);
   });
+
+  // Piece 3, the verified-code library: the same button on another table whose fields still fit the code.
+  // Each upload is an image made here (another file, so no remembered reading), with its own reading.
+  const libraryUpload = async (width, columns) => {
+    const fs = await import("node:fs/promises");
+    const bytes = await sharp(await fs.readFile(path.join(MOCKS, "m6-approve.png"))).resize(width).png().toBuffer();
+    const screen = listScreen("Staff list", { singular: "employee", plural: "employees" }, columns, ["Edit", "Give Raise"]);
+    return waitFor(await upload([{ name: `library-${width}.png`, bytes }], [screen], { fresh: false }), settled);
+  };
+
+  it("library: the same button on a table with an extra column reuses the verified code (no coding AI call)", async () => {
+    const asked = codeRequests.length;
+    const other = await libraryUpload(700, [["Full Name", ["Ann Lee"]], ["Department", ["HR", "Sales"]], ["Email", ["ann@example.com"]]]);
+    assert.equal(other.state, "READY", other.error);
+    const raise = other.jobs.find((j) => j.kind === "backend").custom.find((c) => c.operation === "giveRaiseEmployee");
+    assert.equal(raise.ok, true);
+    assert.deepEqual({ similar: raise.fromMemory?.similar, sourceName: raise.fromMemory?.sourceName }, { similar: true, sourceName: project.name });
+    assert.ok(!codeRequests.slice(asked).includes("Give Raise"));
+  });
+
+  it("library: a table without a field the code uses gets new code from the coding AI", async () => {
+    const asked = codeRequests.length;
+    const other = await libraryUpload(680, [["Name", ["Ann Lee"]], ["Department", ["HR", "Sales"]]]); // no "Full Name"
+    const raise = other.jobs.find((j) => j.kind === "backend").custom.find((c) => c.operation === "giveRaiseEmployee");
+    assert.equal(raise.fromMemory, undefined);
+    assert.ok(codeRequests.slice(asked).includes("Give Raise"));
+  });
 });
 
 // ---- endpoints for the UI: screenshots, generated files, download as zip ----
