@@ -43,9 +43,10 @@ The name is Hindi for "the code inside": the code that is hidden inside a screen
 | **AI-written code for buttons no template covers** ("Give 10% Raise", "Duplicate"): checked for safety, pressed once in the real app, repaired up to 3 times, or left out on its own | ✅ Step 13 |
 | **Check before download:** the app is started on a throwaway database and every page is used like a person would; the report names the part to blame (page, spec or backend); missing markers are repaired by rule | ✅ Step 16 |
 | **Live preview:** use the real app in the UI before downloading, on a test database that starts with the screenshot's rows; the Pages tab opens on it once the app is Ready | ✅ Steps 16, 13 |
-| Memory (instant repeats, similar screenshots), sandbox preview, push to GitHub | ⏳ Steps 14, 18, 19 |
+| **Memory:** instant repeats (SHA-256), near-duplicates (perceptual dHash <= 6), and pattern library for verified custom buttons | ✅ Step 14 |
+| Sandbox preview, push to GitHub | ⏳ Steps 18, 19 |
 
-Test counts today: **Builder API 296 unit + 106 integration**, **web UI 15**, vision evaluation **41/41** on the sample screenshots, coding-model test **5/5** (Gemini) and **4/5** (local Qwen). Every step was built test-first (red → green), with a report in [docs/tdd/](docs/tdd/).
+Test counts today: **Builder API 323 unit + 106 integration**, **web UI 15**, vision evaluation **41/41** on the sample screenshots, coding-model test **5/5** (Gemini) and **4/5** (local Qwen). Every step was built test-first (red → green), with a report in [docs/tdd/](docs/tdd/).
 
 ---
 
@@ -249,7 +250,7 @@ curl -s http://127.0.0.1:4000/api/health   # optional: "db":true and "reachable"
 ```bash
 # Builder API (Laptop A or B)
 cd builder-api
-npm test                         # unit tests (296): spec rules, generator, wirer, binder in jsdom, verifier, code safety, …
+npm test                         # unit tests (323): spec rules, generator, wirer, binder in jsdom, verifier, code safety, dHash, memory, …
 npm run test:coverage            # the same, with a coverage table
 TEST_MONGODB_URI=mongodb://127.0.0.1:27017/builder_test \
   node --test --test-concurrency=1 --test-reporter=tap "integration/**/*.test.js" | grep -E "^# (pass|fail)"
@@ -341,6 +342,6 @@ Each service reads its own `.env` (copy it from `.env.example`). `.env` files ar
 ## What comes next
 
 The order is in [plan.md](plan.md):
-- **Step 14:** memory, so repeats are instant and similar screenshots reuse earlier work.
-- **Steps 17–20:** editing the spec in the UI, sandbox preview, publishing to GitHub, demo rehearsal.
+- **Step 17:** editing the spec in the UI (Spec Editor).
+- **Steps 18–20:** sandbox preview, publishing to GitHub, demo rehearsal.
 - **Phase 2:** text requests and chat-style changes on top of the same spec, evidence and checks.
