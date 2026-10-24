@@ -9,6 +9,7 @@ import path from "node:path";
 import { after, before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import mongoose from "mongoose";
+import sharp from "sharp";
 import { fakePage } from "./helpers/fake-s2c.js";
 
 const API_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -149,13 +150,14 @@ after(() => {
 });
 
 // Every test starts fresh (memory not used), except the memory tests (Step 14), which pass { fresh: false }.
+// A file is a sample's name, or { name, bytes, type } for an image made in the test.
 async function upload(files, inventories, { fresh = true } = {}) {
   inventoryQueue.push(...inventories);
   const form = new FormData();
   form.append("fresh", String(fresh));
   for (const file of files) {
-    const bytes = await import("node:fs/promises").then((fs) => fs.readFile(path.join(MOCKS, file)));
-    form.append("image", new Blob([bytes], { type: "image/png" }), file);
+    const bytes = typeof file === "string" ? await import("node:fs/promises").then((fs) => fs.readFile(path.join(MOCKS, file))) : file.bytes;
+    form.append("image", new Blob([bytes], { type: file.type ?? "image/png" }), file.name ?? file);
   }
   const res = await fetch(`${base}/projects`, { method: "POST", body: form });
   assert.equal(res.status, 201, await res.clone().text());
@@ -612,5 +614,40 @@ describe("Memory (Step 14): work from a Ready project is reused", () => {
     const vision = visionRequests.count;
     await waitFor(await upload(["m5b-departments.png"], [departmentsScreen], { fresh: false }), settled);
     assert.equal(visionRequests.count, vision + 1);
+  });
+
+  // Piece 2: a copy of a remembered screenshot (resized, saved as JPEG) is another file but nearly the same
+  // picture. It is read again, and its page is reused when the page instructions are the same too.
+  const copyOf = async (file) => {
+    const fs = await import("node:fs/promises");
+    const bytes = await sharp(await fs.readFile(path.join(MOCKS, file))).resize(800).jpeg({ quality: 70 }).toBuffer();
+    return { name: "copy.jpg", bytes, type: "image/jpeg" };
+  };
+
+  it("a resized JPEG copy is read again, but its page comes from memory (near-duplicate)", async () => {
+    const [vision, sent] = [visionRequests.count, submissions.length];
+    const copy = await waitFor(await upload([await copyOf("m5b-departments.png")], [departmentsScreen], { fresh: false }), settled);
+    assert.equal(copy.state, "READY", copy.error);
+    assert.equal(visionRequests.count, vision + 1, "the copy is another file: it is read again");
+    assert.equal(submissions.length, sent, "no page sent to Laptop B");
+    const page = jobOf(copy, "frontend").fromMemory;
+    assert.equal(page?.similar, true);
+    assert.ok(page.distance <= 6, `distance ${page.distance}`);
+    assert.match(copy.screenshots[0].dHash, /^[0-9a-f]{16}$/);
+  });
+
+  it("a near-duplicate whose reading changed (a new column) is drawn again", async () => {
+    const changed = listScreen("Departments", { singular: "department", plural: "departments" }, [["Name", ["HR"]], ["Head", ["Ann Lee"]]], ["Delete"]);
+    const sent = submissions.length;
+    const copy = await waitFor(await upload([await copyOf("m5b-departments.png")], [changed], { fresh: false }), settled);
+    assert.equal(submissions.length, sent + 1);
+    assert.equal(jobOf(copy, "frontend").fromMemory, undefined);
+  });
+
+  it("a different screenshot with the same page instructions is drawn again", async () => {
+    const sent = submissions.length;
+    const other = await waitFor(await upload(["m1-edit-delete.png"], [departmentsScreen], { fresh: false }), settled);
+    assert.equal(submissions.length, sent + 1, "m1 is 11 bits away from m5b: not a copy");
+    assert.equal(jobOf(other, "frontend").fromMemory, undefined);
   });
 });
