@@ -625,6 +625,21 @@ describe("Memory (Step 14): work from a Ready project is reused", () => {
     return { name: "copy.jpg", bytes, type: "image/jpeg" };
   };
 
+  it("a page remembered before picture fingerprints existed gets one when its screenshot reaches READY again", async () => {
+    const conn = await mongoose.createConnection(MONGODB_URI).asPromise();
+    try {
+      const pages = conn.collection("memories");
+      await pages.updateMany({ kind: "page" }, { $unset: { dHash: "", instructionsHash: "" } });
+      await waitFor(await upload(["m5b-departments.png"], [], { fresh: false }), settled);
+      const page = await pages.findOne({ kind: "page" });
+      assert.match(page.dHash ?? "", /^[0-9a-f]{16}$/);
+      assert.match(page.instructionsHash ?? "", /^[0-9a-f]{64}$/);
+      assert.equal(page.sourceName, first.name, "the first project stays the source");
+    } finally {
+      await conn.close();
+    }
+  });
+
   it("a resized JPEG copy is read again, but its page comes from memory (near-duplicate)", async () => {
     const [vision, sent] = [visionRequests.count, submissions.length];
     const copy = await waitFor(await upload([await copyOf("m5b-departments.png", 800)], [departmentsScreen], { fresh: false }), settled);
