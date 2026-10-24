@@ -11,7 +11,7 @@ const jobSchema = new mongoose.Schema(
       required: true,
     },
     status: { type: String, enum: ["queued", "running", "done", "failed", "cancelled"], default: "queued" },
-    provider: { type: String, enum: ["local", "cloud", "memory", null], default: null },
+    provider: { type: String, enum: ["local", "cloud", null], default: null },
     contractHash: String, // which Contract version this job was built for
     page: Number, // frontend jobs: which screenshot (1-based) this page is built from
     remoteJobId: String, // the Gateway's jobId for frontend jobs
@@ -20,6 +20,8 @@ const jobSchema = new mongoose.Schema(
     report: mongoose.Schema.Types.Mixed, // verify jobs: the Verifier's report (src/verify/index.js)
     // backend jobs: one entry per custom button, { operation, button, ok, provider, answers, problem? } (Step 13)
     custom: { type: [mongoose.Schema.Types.Mixed], default: undefined },
+    // reused work (Step 14): { sourceProjectId, sourceName, seconds } (+ count for readings)
+    fromMemory: mongoose.Schema.Types.Mixed,
     error: String,
     startedAt: Date,
     finishedAt: Date,

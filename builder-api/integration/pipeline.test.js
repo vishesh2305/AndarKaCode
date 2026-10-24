@@ -9,6 +9,7 @@ import path from "node:path";
 import { after, before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import mongoose from "mongoose";
+import sharp from "sharp";
 import { fakePage } from "./helpers/fake-s2c.js";
 
 const API_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -18,6 +19,7 @@ if (!MONGODB_URI) throw new Error("Set TEST_MONGODB_URI (a throwaway database; i
 
 // ---- fake Ollama: answers /api/chat with the next prepared inventory ----
 const inventoryQueue = [];
+const visionRequests = { count: 0 }; // screenshots the fake vision AI was asked to read
 // ---- fake Gateway: finishes every job at once with a page built from the instructions (see helpers/fake-s2c.js);
 // a "Staff" page comes back without markers, so the Verifier has something to catch ----
 const gatewayJobs = new Map();
@@ -46,6 +48,7 @@ const fakeOllama = await jsonServer(async (req, body) => {
     const code = `export default async function ({ record, input, helpers }) {\n${fnBody ?? "  process.exit(1);"}\n}`;
     return { json: { message: { content: "```js\n" + code + "\n```" } } };
   }
+  visionRequests.count++;
   const inventory = inventoryQueue.shift();
   if (!inventory) return { status: 500, json: { error: "test prepared no inventory" } };
   return { json: { message: { content: JSON.stringify(inventory) } } };
@@ -146,12 +149,15 @@ after(() => {
   fakeGateway.close();
 });
 
-async function upload(files, inventories) {
+// Every test starts fresh (memory not used), except the memory tests (Step 14), which pass { fresh: false }.
+// A file is a sample's name, or { name, bytes, type } for an image made in the test.
+async function upload(files, inventories, { fresh = true } = {}) {
   inventoryQueue.push(...inventories);
   const form = new FormData();
+  form.append("fresh", String(fresh));
   for (const file of files) {
-    const bytes = await import("node:fs/promises").then((fs) => fs.readFile(path.join(MOCKS, file)));
-    form.append("image", new Blob([bytes], { type: "image/png" }), file);
+    const bytes = typeof file === "string" ? await import("node:fs/promises").then((fs) => fs.readFile(path.join(MOCKS, file))) : file.bytes;
+    form.append("image", new Blob([bytes], { type: file.type ?? "image/png" }), file.name ?? file);
   }
   const res = await fetch(`${base}/projects`, { method: "POST", body: form });
   assert.equal(res.status, 201, await res.clone().text());
@@ -265,7 +271,7 @@ describe("pipeline: custom buttons get code from the coding AI (Step 13)", () =>
     codeFor["Give Raise"] = '  return { message: "Raise noted for " + record.fullName };';
     codeFor["Sync Payroll"] = null; // every answer is unsafe: the button is isolated
     const screen = { ...employeesScreen, tables: [{ ...employeesScreen.tables[0], rowActions: ["Edit", "Delete", "Give Raise"] }], buttons: [{ label: "Sync Payroll" }] };
-    const id = await upload(["m1-edit-delete.png"], [screen]);
+    const id = await upload(["m7-custom-buttons.png"], [screen]);
     project = await waitFor(id, settled);
     backend = project.jobs.find((j) => j.kind === "backend" && j.contractHash === project.contract.hash);
     root = path.resolve(API_DIR, "..", backend.artifactPath);
@@ -305,6 +311,49 @@ describe("pipeline: custom buttons get code from the coding AI (Step 13)", () =>
     assert.equal(raise?.status, "pass", JSON.stringify(raise));
     assert.match(raise.detail, /Raise noted for/);
     assert.equal(report.checks.find((c) => c.id === "action:syncPayrollEmployee:p1")?.status, "note");
+  });
+
+  it("a repeat upload takes the verified code from memory (no coding AI call); the isolated button is asked again", async () => {
+    const [asked, vision, sent] = [codeRequests.length, visionRequests.count, submissions.length];
+    const again = await waitFor(await upload(["m7-custom-buttons.png"], [], { fresh: false }), settled);
+    assert.equal(again.state, "READY", again.error);
+    const job = again.jobs.find((j) => j.kind === "backend" && j.contractHash === again.contract.hash);
+    const raise = job.custom.find((c) => c.operation === "giveRaiseEmployee");
+    assert.equal(raise.ok, true);
+    assert.equal(raise.fromMemory?.sourceName, project.name);
+    const newAsks = codeRequests.slice(asked);
+    assert.ok(!newAsks.includes("Give Raise"), "the remembered code was used");
+    assert.equal(newAsks.filter((b) => b === "Sync Payroll").length, 4, "an isolated button is never remembered");
+    assert.equal(visionRequests.count, vision);
+    assert.equal(submissions.length, sent);
+  });
+
+  // Piece 3, the verified-code library: the same button on another table whose fields still fit the code.
+  // Each upload is an image made here (another file, so no remembered reading), with its own reading.
+  const libraryUpload = async (width, columns) => {
+    const fs = await import("node:fs/promises");
+    const bytes = await sharp(await fs.readFile(path.join(MOCKS, "m6-approve.png"))).resize(width).png().toBuffer();
+    const screen = listScreen("Staff list", { singular: "employee", plural: "employees" }, columns, ["Edit", "Give Raise"]);
+    return waitFor(await upload([{ name: `library-${width}.png`, bytes }], [screen], { fresh: false }), settled);
+  };
+
+  it("library: the same button on a table with an extra column reuses the verified code (no coding AI call)", async () => {
+    const asked = codeRequests.length;
+    const other = await libraryUpload(700, [["Full Name", ["Ann Lee"]], ["Department", ["HR", "Sales"]], ["Email", ["ann@example.com"]]]);
+    assert.equal(other.state, "READY", other.error);
+    const raise = other.jobs.find((j) => j.kind === "backend").custom.find((c) => c.operation === "giveRaiseEmployee");
+    assert.equal(raise.ok, true);
+    assert.deepEqual({ similar: raise.fromMemory?.similar, sourceName: raise.fromMemory?.sourceName }, { similar: true, sourceName: project.name });
+    assert.match(other.jobs.find((j) => j.kind === "backend").note, /custom buttons: 1 of 1 written \(1 from memory\)$/, "not 'by the coding AI'");
+    assert.ok(!codeRequests.slice(asked).includes("Give Raise"));
+  });
+
+  it("library: a table without a field the code uses gets new code from the coding AI", async () => {
+    const asked = codeRequests.length;
+    const other = await libraryUpload(680, [["Name", ["Ann Lee"]], ["Department", ["HR", "Sales"]]]); // no "Full Name"
+    const raise = other.jobs.find((j) => j.kind === "backend").custom.find((c) => c.operation === "giveRaiseEmployee");
+    assert.equal(raise.fromMemory, undefined);
+    assert.ok(codeRequests.slice(asked).includes("Give Raise"));
   });
 });
 
@@ -532,5 +581,117 @@ describe("Live preview: the wired app on its own test database, on its own local
     assert.equal((await fetch(`${origin()}/preview/${id}/health`)).status, 200);
     await new Promise((r) => setTimeout(r, 3500));
     assert.equal((await fetch(`${origin()}/preview/${id}/health`)).status, 404);
+  });
+});
+
+// ---- Step 14: memory. Work from a project that reached READY is reused: same screenshot -> same reading,
+// same screenshot + same page instructions -> same page, same button on the same kind of table -> same code ----
+describe("Memory (Step 14): work from a Ready project is reused", () => {
+  const jobOf = (project, kind) => project.jobs.find((j) => j.kind === kind && j.contractHash === project.contract.hash);
+  let first;
+  before(async () => {
+    assert.equal((await fetch(`${base}/memory`, { method: "DELETE" })).status, 200);
+    first = await waitFor(await upload(["m5b-departments.png"], [departmentsScreen], { fresh: false }), settled);
+    assert.equal(first.state, "READY", first.error);
+  });
+
+  it("remembers a Ready project's reading and page", async () => {
+    assert.deepEqual(await (await fetch(`${base}/memory`)).json(), { inventory: 1, page: 1, custom: 0 });
+  });
+
+  it("the same screenshot again reaches READY with no vision AI and no Laptop B call, and says where it came from", async () => {
+    const [vision, sent] = [visionRequests.count, submissions.length];
+    const again = await waitFor(await upload(["m5b-departments.png"], [], { fresh: false }), settled);
+    assert.equal(again.state, "READY", again.error);
+    assert.equal(visionRequests.count, vision, "no screenshot read");
+    assert.equal(submissions.length, sent, "no page sent to Laptop B");
+    assert.equal(again.contract.hash, first.contract.hash);
+    assert.deepEqual(again.screenshots[0].inventory, first.screenshots[0].inventory);
+    const read = jobOf(again, "contract").fromMemory;
+    assert.deepEqual({ count: read?.count, sourceName: read?.sourceName }, { count: 1, sourceName: first.name });
+    assert.equal(jobOf(again, "frontend").fromMemory?.sourceName, first.name);
+    assert.ok(jobOf(again, "frontend").fromMemory.seconds >= 0, "how long it took the first time");
+  });
+
+  it("Start fresh reads and draws again", async () => {
+    const [vision, sent] = [visionRequests.count, submissions.length];
+    const fresh = await waitFor(await upload(["m5b-departments.png"], [departmentsScreen], { fresh: true }), settled);
+    assert.equal(fresh.state, "READY", fresh.error);
+    assert.equal(fresh.useMemory, false);
+    assert.equal(visionRequests.count, vision + 1);
+    assert.equal(submissions.length, sent + 1);
+    assert.equal(jobOf(fresh, "frontend").fromMemory, undefined);
+  });
+
+  it("learns nothing from a project that needs attention", async () => {
+    const failed = await waitFor(await upload(["m2-add-search-page.png"], [staffScreen], { fresh: false }), settled);
+    assert.equal(failed.state, "NEEDS_ATTENTION");
+    const [vision, sent] = [visionRequests.count, submissions.length];
+    const again = await waitFor(await upload(["m2-add-search-page.png"], [staffScreen], { fresh: false }), settled);
+    assert.equal(visionRequests.count, vision + 1);
+    assert.equal(submissions.length, sent + 1);
+    assert.equal(jobOf(again, "contract").fromMemory, undefined);
+  });
+
+  it("Clear memory forgets everything, and the projects stay", async () => {
+    const res = await fetch(`${base}/memory`, { method: "DELETE" });
+    assert.equal(res.status, 200);
+    assert.ok((await res.json()).deleted >= 2);
+    assert.deepEqual(await (await fetch(`${base}/memory`)).json(), { inventory: 0, page: 0, custom: 0 });
+    assert.equal((await fetch(`${base}/projects/${first.id}`)).status, 200);
+    const vision = visionRequests.count;
+    await waitFor(await upload(["m5b-departments.png"], [departmentsScreen], { fresh: false }), settled);
+    assert.equal(visionRequests.count, vision + 1);
+  });
+
+  // Piece 2: a copy of a remembered screenshot (resized, saved as JPEG) is another file but nearly the same
+  // picture. It is read again, and its page is reused when the page instructions are the same too.
+  // Each copy gets its own width, so it is another file (an identical file would be an exact repeat).
+  const copyOf = async (file, width) => {
+    const fs = await import("node:fs/promises");
+    const bytes = await sharp(await fs.readFile(path.join(MOCKS, file))).resize(width).jpeg({ quality: 70 }).toBuffer();
+    return { name: "copy.jpg", bytes, type: "image/jpeg" };
+  };
+
+  it("a page remembered before picture fingerprints existed gets one when its screenshot reaches READY again", async () => {
+    const conn = await mongoose.createConnection(MONGODB_URI).asPromise();
+    try {
+      const pages = conn.collection("memories");
+      await pages.updateMany({ kind: "page" }, { $unset: { dHash: "", instructionsHash: "" } });
+      await waitFor(await upload(["m5b-departments.png"], [], { fresh: false }), settled);
+      const page = await pages.findOne({ kind: "page" });
+      assert.match(page.dHash ?? "", /^[0-9a-f]{16}$/);
+      assert.match(page.instructionsHash ?? "", /^[0-9a-f]{64}$/);
+      assert.equal(page.sourceName, first.name, "the first project stays the source");
+    } finally {
+      await conn.close();
+    }
+  });
+
+  it("a resized JPEG copy is read again, but its page comes from memory (near-duplicate)", async () => {
+    const [vision, sent] = [visionRequests.count, submissions.length];
+    const copy = await waitFor(await upload([await copyOf("m5b-departments.png", 800)], [departmentsScreen], { fresh: false }), settled);
+    assert.equal(copy.state, "READY", copy.error);
+    assert.equal(visionRequests.count, vision + 1, "the copy is another file: it is read again");
+    assert.equal(submissions.length, sent, "no page sent to Laptop B");
+    const page = jobOf(copy, "frontend").fromMemory;
+    assert.equal(page?.similar, true);
+    assert.ok(page.distance <= 6, `distance ${page.distance}`);
+    assert.match(copy.screenshots[0].dHash, /^[0-9a-f]{16}$/);
+  });
+
+  it("a near-duplicate whose reading changed (a new column) is drawn again", async () => {
+    const changed = listScreen("Departments", { singular: "department", plural: "departments" }, [["Name", ["HR"]], ["Head", ["Ann Lee"]]], ["Delete"]);
+    const sent = submissions.length;
+    const copy = await waitFor(await upload([await copyOf("m5b-departments.png", 760)], [changed], { fresh: false }), settled);
+    assert.equal(submissions.length, sent + 1);
+    assert.equal(jobOf(copy, "frontend").fromMemory, undefined);
+  });
+
+  it("a different screenshot with the same page instructions is drawn again", async () => {
+    const sent = submissions.length;
+    const other = await waitFor(await upload(["m1-edit-delete.png"], [departmentsScreen], { fresh: false }), settled);
+    assert.equal(submissions.length, sent + 1, "m1 is 11 bits away from m5b: not a copy");
+    assert.equal(jobOf(other, "frontend").fromMemory, undefined);
   });
 });

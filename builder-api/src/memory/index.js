@@ -1,155 +1,107 @@
-// Memory: Level 1 (exact SHA-256), Level 2 (perceptual dHash <= 6), and Level 4 (Pattern Library).
-// ARCHITECTURE.md §9 & §12. Only verified artifacts enter memory.
+// Step 14: memory. A project that reaches READY leaves its verified work behind (readings, pages, custom
+// code); a later project with the same screenshot, page instructions or button reuses it instead of asking
+// the vision AI, Laptop B or the coding AI again. Memory never adds anything: what is reused is exactly
+// what the same input produced before, and a reused page or code still goes through the Check.
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import mongoose from "mongoose";
+import { Job } from "../models/job.js";
 import { Memory } from "../models/memory.js";
-import { hammingDistance, REPO_ROOT } from "../storage.js";
+import { pageInstructions } from "../spec/instructions.js";
+import { REPO_ROOT } from "../storage.js";
+import { NEAR, hammingDistance } from "./dhash.js";
+import { buttonShape, customKey, instructionsHash, inventoryKey, pageKey } from "./keys.js";
+import { fitsTable } from "./library.js";
+
+const KINDS = ["inventory", "page", "custom"];
+const secondsOf = (job) => (job?.startedAt && job.finishedAt ? Math.round((job.finishedAt - job.startedAt) / 100) / 10 : null);
+
+/** The remembered work for this key, or null. */
+export const recall = (kind, key) => Memory.findOne({ kind, key }).lean();
+
+/** What a reused piece says about where it came from (kept on the job). */
+export const origin = (memory) => ({ sourceProjectId: memory.sourceProjectId, sourceName: memory.sourceName, seconds: memory.seconds ?? null });
+
+// Keeps the first project's work: a later identical piece doesn't replace its source. `lookup` fields
+// (a page's dHash and instructions hash) describe the work itself, so they are filled in every time:
+// pages remembered before they existed get them too.
+const keep = (kind, key, { payload, provider, seconds, project, lookup = {} }) =>
+  Memory.updateOne(
+    { kind, key },
+    {
+      $setOnInsert: { kind, key, payload, provider: provider ?? null, seconds, sourceProjectId: project._id, sourceName: project.name },
+      ...(Object.keys(lookup).length && { $set: lookup }),
+    },
+    { upsert: true }
+  );
 
 /**
- * Finds a verified screenshot inventory from memory:
- * Level 1: exact SHA-256 match.
- * Level 2: near-duplicate perceptual dHash match (minimal Hamming distance <= 6).
- * Returns null if no match found or database is not connected.
+ * A page drawn from a copy of this screenshot (dHash at most NEAR bits away) with the same instructions:
+ * { memory, distance } for the closest one, or null.
  */
-export async function findScreenshotMemory({ sha256, dHash } = {}) {
-  if (mongoose.connection.readyState !== 1) return null;
+export async function recallSimilarPage(dHash, instructions) {
+  if (!dHash) return null;
+  const pages = await Memory.find({ kind: "page", instructionsHash: instructionsHash(instructions), dHash: { $type: "string" } }).lean();
+  const closest = pages.map((memory) => ({ memory, distance: hammingDistance(dHash, memory.dHash) })).sort((a, b) => a.distance - b.distance)[0];
+  return closest && closest.distance <= NEAR ? closest : null;
+}
 
-  // Level 1: exact SHA-256 match
-  if (sha256) {
-    const exact = await Memory.findOne({ kind: "screenshot", key: sha256, verified: true });
-    if (exact) return exact;
+/**
+ * The verified-code library: remembered code for the same button (text, row or page) that may be tried on
+ * this table, newest first. The exact match (customKey) is looked up before this.
+ */
+export async function recallLibrary(spec, op) {
+  const entity = spec.entities.find((e) => e.name === op.entity);
+  const candidates = await Memory.find({ kind: "custom", ...buttonShape(op), fields: { $type: "array" } }).sort({ createdAt: -1 }).limit(5).lean();
+  return candidates.filter((memory) => fitsTable(memory.payload, memory.fields, entity.fields));
+}
+
+/** Called when a project reaches READY: its readings, pages and written custom code go into memory. */
+export async function rememberProject(project, contract) {
+  const spec = contract.body;
+  const jobs = await Job.find({ projectId: project._id, status: "done" });
+  const current = (kind) => jobs.filter((j) => j.kind === kind && j.contractHash === contract.hash);
+  const reading = jobs.filter((j) => j.kind === "contract").at(-1);
+
+  // The reading job reads every screenshot; each one's share of its time.
+  const total = secondsOf(reading);
+  const seconds = total === null ? null : Math.round((total / project.screenshots.length) * 10) / 10;
+  for (const shot of project.screenshots) {
+    if (shot.inventory) await keep("inventory", inventoryKey(shot.sha256), { payload: shot.inventory, provider: reading?.provider, seconds, project });
   }
 
-  // Level 2: near-duplicate perceptual dHash match (Hamming distance <= 6)
-  if (dHash) {
-    const candidates = await Memory.find({
-      kind: "screenshot",
-      dHash: { $exists: true, $ne: null },
-      verified: true,
+  for (const job of current("frontend")) {
+    const shot = project.screenshots[job.page - 1];
+    if (!shot || !job.artifactPath) continue;
+    const html = await readFile(path.join(REPO_ROOT, job.artifactPath), "utf8");
+    const instructions = pageInstructions(spec, job.page);
+    await keep("page", pageKey(shot.sha256, instructions), {
+      payload: html,
+      provider: job.provider,
+      seconds: secondsOf(job),
+      project,
+      lookup: { ...(shot.dHash && { dHash: shot.dHash }), instructionsHash: instructionsHash(instructions) },
     });
-    let best = null;
-    let minDistance = Infinity;
-    for (const cand of candidates) {
-      if (!cand.dHash) continue;
-      try {
-        const dist = hammingDistance(dHash, cand.dHash);
-        if (dist <= 6 && dist < minDistance) {
-          minDistance = dist;
-          best = cand;
-        }
-      } catch {
-        // Skip invalid dHash candidate
-      }
-    }
-    if (best) return best;
   }
 
-  return null;
+  const backend = current("backend").at(-1);
+  for (const c of backend?.custom ?? []) {
+    const op = spec.operations.find((o) => o.name === c.operation);
+    if (!c.ok || !op) continue;
+    const code = await readFile(path.join(REPO_ROOT, backend.artifactPath, "backend", "custom", `${op.name}.js`), "utf8").catch(() => null);
+    if (!code) continue;
+    const fields = spec.entities.find((e) => e.name === op.entity).fields.map(({ name, type, options, ref }) => ({ name, type, options, ref }));
+    await keep("custom", customKey(spec, op), { payload: code, provider: c.provider, seconds: c.seconds ?? null, project, lookup: { ...buttonShape(op), fields } });
+  }
 }
 
-/**
- * Finds a verified operation code from the Pattern Library.
- * Returns null if not found or database is not connected.
- */
-export async function findOperationMemory(entity, name) {
-  if (mongoose.connection.readyState !== 1) return null;
-  return Memory.findOne({
-    kind: "operation",
-    key: `${entity}:${name}`,
-    verified: true,
-  });
+/** How many pieces of each kind are remembered. */
+export async function memoryCounts() {
+  const counts = Object.fromEntries(KINDS.map((k) => [k, 0]));
+  for (const { _id, n } of await Memory.aggregate([{ $group: { _id: "$kind", n: { $sum: 1 } } }])) counts[_id] = n;
+  return counts;
 }
 
-/**
- * Finds a verified spec from memory by its contract hash.
- */
-export async function findSpecMemory(hash) {
-  if (mongoose.connection.readyState !== 1) return null;
-  return Memory.findOne({
-    kind: "spec",
-    key: hash,
-    verified: true,
-  });
-}
-
-/**
- * Saves all verified artifacts of a project that reached READY state into memory:
- * - Screenshots: kind 'screenshot', key: sha256, dHash, payload: { inventory }
- * - Spec: kind 'spec', key: contract.hash, payload: contract.body
- * - Custom operations: kind 'operation', key: `${op.entity}:${op.name}`, payload: { code, operation: op }
- */
-export async function rememberVerifiedProject(project, contract, rootDir = REPO_ROOT) {
-  if (mongoose.connection.readyState !== 1) return;
-
-  const projectId = project?._id ?? project?.id;
-
-  // 1. Remember verified screenshots
-  const screenshots = project?.screenshots ?? [];
-  for (const shot of screenshots) {
-    if (shot?.sha256 && shot?.inventory) {
-      await Memory.findOneAndUpdate(
-        { kind: "screenshot", key: shot.sha256 },
-        {
-          kind: "screenshot",
-          key: shot.sha256,
-          dHash: shot.dHash,
-          verified: true,
-          sourceProjectId: projectId,
-          payload: { inventory: shot.inventory },
-        },
-        { upsert: true, returnDocument: "after" }
-      );
-    }
-  }
-
-  // 2. Remember verified spec
-  if (contract?.hash && contract?.body) {
-    await Memory.findOneAndUpdate(
-      { kind: "spec", key: contract.hash },
-      {
-        kind: "spec",
-        key: contract.hash,
-        verified: true,
-        sourceProjectId: projectId,
-        payload: contract.body,
-      },
-      { upsert: true, returnDocument: "after" }
-    );
-  }
-
-  // 3. Remember verified custom operations from the backend artifact
-  const customOps = (contract?.body?.operations ?? []).filter((op) => op.kind === "custom");
-  for (const op of customOps) {
-    let code = op.code ?? null;
-    if (!code && rootDir) {
-      const candidates = [
-        path.join(rootDir, "backend", "custom", `${op.name}.js`),
-        path.join(rootDir, "runs", projectId.toString(), "app", `v${contract.version}`, "backend", "custom", `${op.name}.js`),
-        path.join(rootDir, projectId.toString(), "app", `v${contract.version}`, "backend", "custom", `${op.name}.js`),
-      ];
-      for (const p of candidates) {
-        try {
-          code = await readFile(p, "utf8");
-          if (code) break;
-        } catch {
-          // File not at this path, check next
-        }
-      }
-    }
-
-    if (code) {
-      await Memory.findOneAndUpdate(
-        { kind: "operation", key: `${op.entity}:${op.name}` },
-        {
-          kind: "operation",
-          key: `${op.entity}:${op.name}`,
-          verified: true,
-          sourceProjectId: projectId,
-          payload: { code, operation: op },
-        },
-        { upsert: true, returnDocument: "after" }
-      );
-    }
-  }
+/** Forgets everything remembered (projects are not touched). */
+export async function forgetAll() {
+  return (await Memory.deleteMany({})).deletedCount;
 }

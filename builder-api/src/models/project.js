@@ -21,7 +21,7 @@ const screenshotSchema = new mongoose.Schema(
   {
     path: { type: String, required: true }, // relative to the repo root, e.g. runs/<id>/screenshot-1.png
     sha256: { type: String, required: true }, // of the uploaded file
-    dHash: String, // 64-bit perceptual difference hash
+    dHash: String, // picture fingerprint: copies of the same screen stay close (Step 14)
     width: Number,
     height: Number,
     inventory: mongoose.Schema.Types.Mixed, // what the vision pass saw (shared/inventory.schema.json)
@@ -35,12 +35,12 @@ const projectSchema = new mongoose.Schema(
     screenshots: { type: [screenshotSchema], default: [] },
     // First screenshot, kept for listings and for projects created before multi-screenshot uploads.
     imageHash: { type: String, required: true, index: true },
-    imageDHash: String,
     imagePath: { type: String },
     imageWidth: Number,
     imageHeight: Number,
     state: { type: String, enum: PROJECT_STATES, default: "UPLOADED" },
     mode: { type: String, enum: ["local", "cloud", "auto"], default: "local" }, // which AI providers to use
+    useMemory: { type: Boolean, default: true }, // false = "Start fresh": build everything again (Step 14)
     currentContractVersion: { type: Number, default: 0 }, // 0 = no Contract yet
     error: String, // why the project is NEEDS_ATTENTION
   },

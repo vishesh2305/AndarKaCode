@@ -173,3 +173,58 @@ describe("custom buttons and the Pages tab", () => {
     for (const state of ["BUILDING", "SYNCED", "VERIFYING", "NEEDS_ATTENTION"]) assert.equal(startView({ state }), "built", state);
   });
 });
+
+// Step 14: memory on the stations, and the memory box's words.
+describe("memory on the stations", () => {
+  const from = (extra = {}) => ({ sourceProjectId: "p0", sourceName: "Staff v1", seconds: 120, ...extra });
+  const remembered = withSpec({
+    state: "READY",
+    jobs: [
+      job("contract", "done", { fromMemory: from({ count: 2, seconds: 30 }) }),
+      job("backend", "done", {
+        contractHash: HASH,
+        custom: [
+          { operation: "giveRaiseEmployee", button: "Give Raise", ok: true, provider: "cloud", answers: 0, fromMemory: from({ similar: true, seconds: 8 }) },
+          { operation: "duplicateEmployee", button: "Duplicate", ok: true, provider: "local", answers: 0, fromMemory: from({ seconds: 6 }) },
+        ],
+      }),
+      job("frontend", "done", { contractHash: HASH, page: 1, fromMemory: from() }),
+      job("frontend", "done", { contractHash: HASH, page: 2, fromMemory: from({ similar: true, distance: 4, seconds: 90 }) }),
+    ],
+  });
+  const s = () => pipelineStatus(remembered).stations;
+
+  it("says which stations reused earlier work", () => {
+    assert.deepEqual(["read", "plan", "pages", "backend", "verify"].map((id) => Boolean(s()[id].remembered)), [true, false, true, true, false]);
+    assert.equal(s().pages.pages[1].fromMemory.distance, 4);
+    assert.equal(s().read.fromMemory.count, 2);
+  });
+
+  it("adds up the time memory saved on each station", () => {
+    assert.equal(s().read.saved, 30);
+    assert.equal(s().pages.saved, 210);
+    assert.equal(s().backend.saved, 14);
+    const fresh = pipelineStatus(withSpec({ jobs: [job("contract", "done")] })).stations;
+    assert.equal(fresh.read.remembered, false);
+    assert.equal(fresh.read.saved, 0);
+  });
+
+  it("the station facts say what came from memory, from which project, and the time saved", async () => {
+    const { STATIONS } = await import("../src/stations.js");
+    const facts = (id) => Object.fromEntries(STATIONS[id].details(remembered, s()[id]));
+    assert.equal(facts("read")["From memory"], "2 screenshots read before in “Staff v1”");
+    assert.equal(facts("read")["Time saved"], "30 s");
+    assert.equal(facts("pages")["Page 1"], "from memory (“Staff v1”)");
+    assert.equal(facts("pages")["Page 2"], "from memory: a copy of a screenshot in “Staff v1” (4 bits apart)");
+    assert.equal(facts("pages")["Time saved"], "3 min 30 s");
+    assert.equal(facts("backend")["Give Raise"], "from the code library: verified in “Staff v1” (another table)");
+    assert.equal(facts("backend")["Duplicate"], "from memory: verified in “Staff v1”");
+  });
+
+  it("puts the memory box's counts into words", async () => {
+    const { memoryWords } = await import("../src/stations.js");
+    assert.equal(memoryWords({ inventory: 1, page: 1, custom: 2 }), "1 reading, 1 page, 2 buttons");
+    assert.equal(memoryWords({ inventory: 3, page: 0, custom: 1 }), "3 readings, 0 pages, 1 button");
+    assert.equal(memoryWords({ inventory: 0, page: 0, custom: 0 }), "nothing yet");
+  });
+});

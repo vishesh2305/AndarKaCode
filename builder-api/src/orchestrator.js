@@ -3,9 +3,12 @@
 import { readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { contractHash } from "../../shared/hash.mjs";
+import { checkCustomCode } from "./custom/safety.js";
 import { pressOnce } from "./custom/tester.js";
 import { writeCustomCode, writtenButtons } from "./custom/writer.js";
 import { generateBackend, writeBackend } from "./generator/index.js";
+import { origin, recall, recallLibrary, recallSimilarPage, rememberProject } from "./memory/index.js";
+import { customKey, inventoryKey, pageKey } from "./memory/keys.js";
 import { getFrontend, submitFrontend } from "./gateway-client.js";
 import { Contract } from "./models/contract.js";
 import { Job } from "./models/job.js";
@@ -14,8 +17,7 @@ import { checkSpec } from "./spec/check.js";
 import { deriveSpec } from "./spec/derive.js";
 import { pageInstructions } from "./spec/instructions.js";
 import { readInventory } from "./spec/inventory.js";
-import { findScreenshotMemory, rememberVerifiedProject } from "./memory/index.js";
-import { computeDHash, REPO_ROOT, RUNS_DIR, saveArtifact, sha256 } from "./storage.js";
+import { REPO_ROOT, RUNS_DIR, saveArtifact } from "./storage.js";
 import { databaseUri, verifyApp } from "./verify/index.js";
 import { failureLine } from "./verify/report.js";
 import { wireApp } from "./wirer/index.js";
@@ -65,32 +67,19 @@ const screenshotsOf = (project) => (project.screenshots?.length ? project.screen
 async function contractStage(project) {
   const { body, hash } = await runJob(project, "contract", async (job) => {
     const inventories = [];
-    let allFromMemory = true;
+    const reused = [];
     for (const shot of screenshotsOf(project)) {
-      let sha = shot.sha256;
-      let dHash = shot.dHash;
-      if (!sha || !dHash) {
-        try {
-          const raw = await readFile(path.join(REPO_ROOT, shot.path));
-          if (!sha) sha = sha256(raw);
-          if (!dHash) dHash = await computeDHash(raw);
-        } catch {
-          // unreadable
-        }
-      }
-      const mem = await findScreenshotMemory({ sha256: sha, dHash });
-      if (mem?.payload?.inventory) {
-        inventories.push(mem.payload.inventory);
-      } else {
-        allFromMemory = false;
-        const image = await readFile(path.join(REPO_ROOT, shot.path));
-        const { inventory, provider } = await readInventory(image.toString("base64"), { mode: project.mode });
-        inventories.push(inventory);
-        if (job.provider !== "cloud") job.provider = provider; // "cloud" if any screenshot needed the backup
-      }
+      // A screenshot read before, in a project that reached READY: its reading is reused (Step 14).
+      const memory = project.useMemory !== false && shot.sha256 ? await recall("inventory", inventoryKey(shot.sha256)) : null;
+      if (memory) reused.push(memory);
+      const { inventory, provider } = memory
+        ? { inventory: memory.payload, provider: memory.provider }
+        : await readInventory((await readFile(path.join(REPO_ROOT, shot.path))).toString("base64"), { mode: project.mode });
+      inventories.push(inventory);
+      if (job.provider !== "cloud") job.provider = provider; // "cloud" if any screenshot needed the backup
     }
-    if (allFromMemory && screenshotsOf(project).length > 0) {
-      job.provider = "memory";
+    if (reused.length) {
+      job.fromMemory = { ...origin(reused[0]), count: reused.length, seconds: reused.reduce((s, m) => s + (m.seconds ?? 0), 0) };
     }
     project.screenshots.forEach((shot, i) => (shot.inventory = inventories[i]));
     project.markModified("screenshots");
@@ -131,6 +120,23 @@ async function frontendBranch(project, contract, n) {
   const query = { projectId: project._id, kind: "frontend", contractHash: contract.hash, page: n };
   const existing = await Job.findOne({ ...query, status: { $in: ["done", "running"] } }).sort({ createdAt: -1 });
   if (existing?.status === "done") return existing;
+
+  // The same screenshot with the same instructions drew a page that passed the Check before (Step 14).
+  // Else a copy of that screenshot (resized, re-saved: nearly the same picture) with the same instructions.
+  const shot = screenshotsOf(project)[n - 1];
+  const instructions = pageInstructions(contract.body, n);
+  let reuse = null;
+  if (!existing && project.useMemory !== false && shot.sha256) {
+    const same = await recall("page", pageKey(shot.sha256, instructions));
+    const similar = same ? null : await recallSimilarPage(shot.dHash, instructions);
+    reuse = same ? { memory: same, fromMemory: origin(same) } : similar && { memory: similar.memory, fromMemory: { ...origin(similar.memory), similar: true, distance: similar.distance } };
+  }
+  if (reuse) {
+    const now = new Date();
+    const artifactPath = await saveArtifact(project._id, `frontend/v${contract.version}/page-${n}.html`, reuse.memory.payload);
+    return Job.create({ ...query, status: "done", provider: reuse.memory.provider, artifactPath, fromMemory: reuse.fromMemory, startedAt: now, finishedAt: now });
+  }
+
   const job = existing ?? (await Job.create({ ...query, status: "running", startedAt: new Date() }));
 
   try {
@@ -190,10 +196,36 @@ async function backendBranch(project, contract) {
     if (!customOps.length) return job;
     job.custom = [];
     for (const op of customOps) {
+      const started = Date.now();
       const mongoUri = databaseUri(MONGODB_URI, `custom_${project.id}`);
-      const result = await writeCustomCode({ spec, op, mode: project.mode, test: (code) => pressOnce({ spec, op, appDir: dir, mongoUri, code }) });
+      const test = (code) => pressOnce({ spec, op, appDir: dir, mongoUri, code });
+      // Verified code from memory is pressed in this app first (Step 14): the same button on the same kind of
+      // table, else the same button on a table whose fields still fit the code (the library). Only if none
+      // passes here does the coding AI write new code.
+      let result = null;
+      if (project.useMemory !== false) {
+        const exact = await recall("custom", customKey(spec, op));
+        const library = (await recallLibrary(spec, op)).filter((m) => m.key !== exact?.key);
+        const tries = [...(exact ? [{ memory: exact, similar: false }] : []), ...library.map((memory) => ({ memory, similar: true }))];
+        for (const { memory, similar } of tries) {
+          if (checkCustomCode(memory.payload).ok && !(await test(memory.payload))) {
+            result = { ok: true, provider: memory.provider, answers: 0, fromMemory: { ...origin(memory), ...(similar && { similar }) } };
+            break;
+          }
+        }
+      }
+      result ??= await writeCustomCode({ spec, op, mode: project.mode, test });
       if (!result.ok) await rm(path.join(dir, "backend", "custom", `${op.name}.js`), { force: true });
-      job.custom.push({ operation: op.name, button: op.button, ok: result.ok, provider: result.provider ?? null, answers: result.answers, ...(result.problem && { problem: result.problem.slice(0, 500) }) });
+      job.custom.push({
+        operation: op.name,
+        button: op.button,
+        ok: result.ok,
+        provider: result.provider ?? null,
+        answers: result.answers,
+        seconds: Math.round((Date.now() - started) / 100) / 10,
+        ...(result.fromMemory && { fromMemory: result.fromMemory }),
+        ...(result.problem && { problem: result.problem.slice(0, 500) }),
+      });
     }
     const written = job.custom.filter((c) => c.ok);
     if (written.length) {
@@ -201,7 +233,8 @@ async function backendBranch(project, contract) {
       const tests = generateBackend(spec, { name: project.name, customWritten: written.map((c) => c.operation) })["tests/api.test.js"];
       await writeBackend(dir, { "tests/api.test.js": tests });
     }
-    job.note += `; custom buttons: ${written.length} of ${customOps.length} written by the coding AI`;
+    const reused = written.filter((c) => c.fromMemory).length;
+    job.note += `; custom buttons: ${written.length} of ${customOps.length} written ${reused ? `(${reused} from memory)` : "by the coding AI"}`;
     return job;
   });
 }
@@ -270,8 +303,9 @@ async function verifyStage(projectId) {
   project = await Project.findById(projectId);
   if ((await currentContract(project)).hash !== contract.hash) return; // the spec was edited meanwhile: the rerun builds again
   if (job.report.ok) {
+    // Every check passed: this project's readings, pages and custom code may be reused (Step 14).
+    await rememberProject(project, contract).catch((err) => console.error(`[${project.id}] could not remember: ${err.message}`));
     await setState(project, "READY");
-    await rememberVerifiedProject(project, contract, REPO_ROOT);
   }
   else await setState(project, "NEEDS_ATTENTION", failureLine(job.report).slice(0, 500));
 }

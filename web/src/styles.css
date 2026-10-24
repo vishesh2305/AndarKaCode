@@ -281,6 +281,32 @@ a {
   font-size: 0.95rem;
 }
 
+/* Memory (Step 14): what is kept, and Clear memory */
+.memory-box {
+  margin-top: 1.4rem;
+  padding: 0.8rem 0.9rem 0.9rem;
+  border: var(--line);
+  border-radius: 14px;
+  background: var(--white);
+}
+
+.memory-box h2 {
+  margin: 0 0 0.15rem;
+  font-size: 1.05rem;
+}
+
+.memory-count {
+  margin: 0;
+  font-weight: 700;
+}
+
+.memory-hint {
+  margin: 0.25rem 0 0.7rem;
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+  line-height: 1.35;
+}
+
 .project-list {
   list-style: none;
   margin: 0;
@@ -511,6 +537,10 @@ a {
 
 .metro-badge-failed circle {
   fill: var(--sunny);
+}
+
+.metro-badge-memory circle {
+  fill: var(--lilac);
 }
 
 .metro-title {
@@ -1137,6 +1167,42 @@ a {
 
 .mode-on {
   background: var(--sunny);
+  box-shadow: var(--pop-small);
+}
+
+/* "Start fresh" (Step 14): skip memory for this project */
+.fresh {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  margin: 0.2rem 0 1.1rem;
+  padding: 0.55rem 0.8rem;
+  border: var(--line);
+  border-radius: 12px;
+  background: var(--white);
+  cursor: pointer;
+  max-width: 34rem;
+}
+
+.fresh input {
+  width: 1.15rem;
+  height: 1.15rem;
+  margin-top: 0.2rem;
+  accent-color: var(--ink);
+}
+
+.fresh span {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.fresh small {
+  color: var(--ink-soft);
+  line-height: 1.3;
+}
+
+.fresh-on {
+  background: var(--lilac);
   box-shadow: var(--pop-small);
 }
 

@@ -9,6 +9,9 @@ const RANK = { fail: 0, warn: 1, note: 2, skip: 3, pass: 4 }; // the report show
 const secondsOf = (job, now) =>
   job?.startedAt ? Math.round(((job.finishedAt ? Date.parse(job.finishedAt) : now) - Date.parse(job.startedAt)) / 1000) : null;
 
+// Step 14: the time reused work took when it was first done (what memory saved).
+const savedBy = (pieces) => pieces.reduce((sum, m) => sum + (m?.seconds ?? 0), 0);
+
 const fromJob = (job) => (job?.status === "done" ? "done" : job?.status === "failed" ? "failed" : "active");
 
 /** Which view the Pages tab opens on: the working app once it is Ready, otherwise Laptop B's drawing. */
@@ -31,6 +34,9 @@ export function pipelineStatus(project, now = Date.now()) {
     status: spec || specRejected || reading?.status === "done" ? "done" : reading?.status === "failed" ? "failed" : "active",
     seconds: secondsOf(reading, now),
     provider: reading?.provider ?? null,
+    fromMemory: reading?.fromMemory ?? null,
+    remembered: Boolean(reading?.fromMemory),
+    saved: savedBy([reading?.fromMemory]),
   };
 
   // Plan: fixed rules turn the inventory into an App Spec.
@@ -40,7 +46,7 @@ export function pipelineStatus(project, now = Date.now()) {
   const specPages = spec?.body?.pages ?? [];
   const pages = specPages.map(({ screenshot }) => {
     const job = latest("frontend", (j) => j.contractHash === hash && j.page === screenshot);
-    return { page: screenshot, status: job?.status ?? "waiting" };
+    return { page: screenshot, status: job?.status ?? "waiting", ...(job?.fromMemory && { fromMemory: job.fromMemory }) };
   });
   const pageJobs = jobs.filter((j) => j.kind === "frontend" && j.contractHash === hash);
   let pagesStatus = "waiting";
@@ -54,6 +60,8 @@ export function pipelineStatus(project, now = Date.now()) {
     pages,
     seconds: pageJobs.length ? Math.max(...pageJobs.map((j) => secondsOf(j, now) ?? 0)) : null,
     provider: pageJobs.at(-1)?.provider ?? null,
+    remembered: pages.some((p) => p.fromMemory),
+    saved: savedBy(pages.map((p) => p.fromMemory)),
   };
 
   // Backend: the template generator, then the coding AI for custom buttons, for the CURRENT spec only.
@@ -63,6 +71,8 @@ export function pipelineStatus(project, now = Date.now()) {
     seconds: secondsOf(backend, now),
     note: backend?.note ?? null,
     custom: backend?.custom ?? [],
+    remembered: (backend?.custom ?? []).some((c) => c.fromMemory),
+    saved: savedBy((backend?.custom ?? []).map((c) => c.fromMemory)),
   };
 
   // Check (Step 16): the Verifier's job for the CURRENT spec, with its report.

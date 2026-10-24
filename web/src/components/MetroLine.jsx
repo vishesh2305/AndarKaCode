@@ -112,7 +112,7 @@ export function MetroLine({ status, selected, onSelect }) {
             role="button"
             tabIndex={0}
             aria-pressed={selected === id}
-            aria-label={`${info.title}: ${STATUS_WORDS[s.status]}`}
+            aria-label={`${info.title}: ${STATUS_WORDS[s.status]}${s.remembered ? ", reused from memory" : ""}`}
             onClick={() => onSelect(id)}
             onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onSelect(id))}
           >
@@ -123,6 +123,13 @@ export function MetroLine({ status, selected, onSelect }) {
               <g transform="translate(17 -17)" className="metro-badge metro-badge-done">
                 <circle r="8" />
                 <path d="M-3.5 0 L-1 2.8 L3.8 -2.6" />
+              </g>
+            )}
+            {s.remembered && (
+              <g transform="translate(-17 -17)" className="metro-badge metro-badge-memory">
+                <title>Reused earlier work from memory</title>
+                <circle r="8" />
+                <path d="M3.4 -1.6 A3.8 3.8 0 1 0 3.6 1.6 M3.6 -4.4 V-1.4 H0.6" />
               </g>
             )}
             {s.status === "failed" && (

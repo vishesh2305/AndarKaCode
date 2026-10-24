@@ -43,10 +43,10 @@ The name is Hindi for "the code inside": the code that is hidden inside a screen
 | **AI-written code for buttons no template covers** ("Give 10% Raise", "Duplicate"): checked for safety, pressed once in the real app, repaired up to 3 times, or left out on its own | ✅ Step 13 |
 | **Check before download:** the app is started on a throwaway database and every page is used like a person would; the report names the part to blame (page, spec or backend); missing markers are repaired by rule | ✅ Step 16 |
 | **Live preview:** use the real app in the UI before downloading, on a test database that starts with the screenshot's rows; the Pages tab opens on it once the app is Ready | ✅ Steps 16, 13 |
-| **Memory:** instant repeats (SHA-256), near-duplicates (perceptual dHash <= 6), and pattern library for verified custom buttons | ✅ Step 14 |
+| **Memory:** work from Ready projects is reused: the same screenshot again is Ready in seconds; a resized or re-saved copy reuses its page; the same button on a compatible table reuses its verified code. **Start fresh** and **Clear memory** in the UI | ✅ Step 14 |
 | Sandbox preview, push to GitHub | ⏳ Steps 18, 19 |
 
-Test counts today: **Builder API 323 unit + 106 integration**, **web UI 15**, vision evaluation **41/41** on the sample screenshots, coding-model test **5/5** (Gemini) and **4/5** (local Qwen). Every step was built test-first (red → green), with a report in [docs/tdd/](docs/tdd/).
+Test counts today: **Builder API 314 unit + 118 integration**, **web UI 19**, vision evaluation **41/41** on the sample screenshots, coding-model test **5/5** (Gemini) and **4/5** (local Qwen). Every step was built test-first (red → green), with a report in [docs/tdd/](docs/tdd/).
 
 ---
 
@@ -59,7 +59,7 @@ flowchart LR
     U[You, in the browser] -->|screenshots| UI[Our web UI]
     subgraph A["Laptop A (Mac): orchestrator"]
         UI --> API[Builder API<br/>state machine + Sync check]
-        API --> DB[(MongoDB)]
+        API --> DB[(MongoDB<br/>+ memory)]
         API --> V[Vision AI<br/>Ollama, Gemini backup]
         API --> T[Backend templates]
         API --> C[Coding AI<br/>custom buttons only]
@@ -76,7 +76,7 @@ flowchart LR
 
 | # | Station | Where | What happens | Time (measured) |
 |---|---|---|---|---|
-| 1 | **Upload** | A | Each screenshot is fingerprinted (SHA-256), shrunk to at most 1280 px wide and stored | instant |
+| 1 | **Upload** | A | Each screenshot is fingerprinted (SHA-256 for the exact file, dHash for the picture), shrunk to at most 1280 px wide and stored | instant |
 | 2 | **Read** | A | A vision model lists what each screenshot shows: tables and columns, forms and inputs, buttons, search boxes, filters, page buttons, badges, stat cards, login forms. It describes *what is there*, not what to build | 10–20 s per screenshot |
 | 3 | **Plan** | A | A fixed rule table turns that list into the **App Spec**: entities, fields, endpoints, buttons, stat cards, login. Every item says which screenshot element needs it. A checker rejects an incomplete spec | milliseconds |
 | 4a | **Pages** | B | One job per screenshot: Screenshot-to-Code rebuilds the page with exact markers (`data-field`, `data-action`, `data-filter`, `data-stat`) taken from the spec | ~2–4 min per page locally, ~30 s with cloud |
@@ -85,6 +85,8 @@ flowchart LR
 | 6 | **Wire** | A | Each page gets the binder (see below) and the wired pages are written into the app folder, which is now the finished app | instant |
 | 7 | **Check** | A | The app is started on a throwaway database; in a browser without a screen, every page is used like a person would (add, reload, edit, search, filter, buttons, delete, sign in); then the app's own tests run. Each check says what happened and which part to blame: the **page**, the **spec** or the **backend** | ~5–15 s |
 | 8 | **Ready** | A | Every check passed: the Pages tab opens on **Live**, the working app with the screenshot's rows, then download the zip (backend, tests, wired pages, screenshots, a README that explains why each part exists, the spec and `verify-report.md`) | instant |
+
+With **memory** (Step 14), Read, Pages and Backend first look for the same work in an earlier Ready project. What they find is reused, and the station shows a ↻ badge, where the work came from, and the time saved (see below).
 
 **Wiring** (Step 15) works like this. Each page gets one extra line, `<script src="app.js"></script>`, and a small "phone book", `api-map.json`, that says which marker calls which backend address. The binder (`app.js`) then:
 - replaces the screenshot's sample rows with real records, as copies of the page's own sample row, so badge colours and price formats (`$2.50`) look the same;
@@ -103,6 +105,21 @@ In the downloaded app, each press runs in a separate worker thread, in a room wi
 
 **Which coding AI** follows the project's mode, like the screenshot reader: **Local** uses Qwen 2.5 Coder 7B on Ollama; **Cloud** uses Gemini; **Auto** uses Gemini first, because it was right the first time on 5 of 5 test buttons against Qwen's 2 of 5, with Qwen as the backup.
 
+**Memory** (Step 14). When a project reaches **Ready**, its verified work is kept in MongoDB under fingerprints, and later projects reuse it:
+
+| What is kept | Reused when | What is skipped |
+|---|---|---|
+| What the vision AI read | the same screenshot file comes again (SHA-256) | Read, 10–20 s per screenshot |
+| Each page Laptop B drew | the same screenshot with the same page instructions, **or a copy** of it (resized, re-saved: picture fingerprint at most 6 of 64 bits different) | Laptop B, 2–4 min per page |
+| Each custom button's verified code | the same button on the same kind of table, **or on another table** that has every field the code uses, with the same type (the verified-code library) | the coding AI, 5–30 s per button |
+
+- **What changes the result is part of the fingerprint,** so old memory stops matching by itself. That includes a page's instructions, the reading prompt and the button runtime.
+- **Reused code is checked like new code:** the safety check and a real press in the new app.
+- **A project that needs attention adds nothing** to memory.
+- **Copies and different screens are far apart.** On our samples, copies of a screenshot were 2–6 bits apart, and different screens 11 or more.
+- **Measured:** the same screenshot again was Ready in about 7 s instead of minutes, and a resized JPEG copy in 26 s.
+- **Start fresh** (New project) skips memory for one project. **Clear memory** (sidebar) forgets everything and keeps the projects.
+
 ---
 
 ## Why it is built this way
@@ -120,6 +137,8 @@ In the downloaded app, each press runs in a separate worker thread, in a room wi
 **6. Wiring without changing the page's look, then checking it like a person would.** The pages Laptop B builds are kept byte for byte; one script line is added. Before anyone downloads, the app is started and used page by page. *Why:* the user gets exactly the design from the screenshot, AI-drawn pages sometimes miss a marker or even contain a script error, and it is better to catch that (and say which part to fix) than to ship a button that does nothing.
 
 **7. Test first, for every step.** Each feature started as a failing test, then the code to pass it, with checkpoint commits and an evidence report. Real runs (real screenshots, real models, real browser) found bugs that hand-made tests did not, and each one became a new test. *Why:* a generator must be trustworthy, because a bug in it is a bug in every app it makes.
+
+**8. Remember only what was proven, under fingerprints that change when the input changes.** Memory keeps work only from projects that passed every check, and its keys include everything that could change the result. *Why:* reusing work is only safe if it can't bring back a broken page or out-of-date code. Fingerprints instead of "looks similar" guesses keep it predictable, and no extra AI model is needed.
 
 ---
 
@@ -177,13 +196,13 @@ The pages need an internet connection for their styling (they load Tailwind CSS 
 
 | Folder | Runs on | What it is |
 |---|---|---|
-| [`builder-api/`](builder-api/) | Laptop A | Orchestrator: upload, vision reading, spec deriver, pipeline state machine, Sync check, backend generator, Wirer, Verifier, live preview, zip download; serves the UI |
+| [`builder-api/`](builder-api/) | Laptop A | Orchestrator: upload, vision reading, spec deriver, pipeline state machine, Sync check, backend generator, custom-button AI, Wirer, Verifier, live preview, memory, zip download; serves the UI |
 | [`web/`](web/) | Laptop A | Our React UI (built into `web/dist`, served by the Builder API) |
 | [`templates/`](templates/) | Laptop A | Backend templates (`templates/backend/`) and the page binder (`templates/frontend/app.js`) |
 | [`shared/`](shared/) | Both | Spec / inventory JSON schemas and the spec fingerprint (hash) |
 | [`gateway/`](gateway/) | Laptop B | REST front door to Screenshot-to-Code: API key, one job at a time, local / cloud / auto mode, cache |
 | [`scripts/`](scripts/) | Laptop B | `start-laptop-b.ps1`: starts Ollama, Screenshot-to-Code and the Gateway |
-| [`samples/`](samples/) | Either | Test screenshots (`samples/mocks/m1…m7`; m7 has custom buttons) and example outputs |
+| [`samples/`](samples/) | Either | Test screenshots (`samples/mocks/m1…m8`; m7 has custom buttons, m8 the same raise button on another table) and example outputs |
 | [`spikes/`](spikes/) | Either | Early experiments from Phase 1 (kept for reference) |
 | [`docs/`](docs/) | – | Screenshot-to-Code patch, TDD evidence reports |
 | [`instructions/`](instructions/) | – | The instruction text used in the early page-building experiments |
@@ -236,8 +255,11 @@ curl -s http://127.0.0.1:4000/api/health   # optional: "db":true and "reachable"
 
 **3. Open http://127.0.0.1:4000** on Laptop A. The two lights in the top right (Mac, Windows GPU) should be green.
 - **New project** → drop screenshots → set their order → name → AI mode (**Local**: free, on your GPUs; **Cloud**: Gemini, faster, limited free requests; **Auto**: screenshots are read locally first, custom-button code is written by Gemini first, each with the other as backup) → start.
-- Watch the stations; click one to read how it works.
+- Watch the stations; click one to read how it works. A ↻ badge means that station reused earlier work from memory; tick **Start fresh** on New project to build everything again.
+- **After every `git pull`:** restart the Builder API, and run `cd web && npm run build` if the UI changed. Until then the old code keeps running.
 - After the Sync check come **Wire** and **Check**. At **Ready**, the Pages tab opens on **Live**: the working app on a test database, already holding the screenshot's rows, so every button can be tried (As built is only Laptop B's drawing). Then click **Download app (.zip)**. If a check fails, the Check station says which control failed, what the backend answered, and which part to blame; **Download anyway** gives you the zip with its report.
+
+**On Windows**, `run-visible.bat` (or `run-visible.ps1`) in the repository folder starts the Gateway and the Builder API, each in its own window (`gateway\start.bat` and `builder-api\start.bat` start one of them).
 
 **While changing the UI:** `cd web && npm run dev` serves it at http://127.0.0.1:5173 with live reload (the Builder API must be running).
 
@@ -250,12 +272,13 @@ curl -s http://127.0.0.1:4000/api/health   # optional: "db":true and "reachable"
 ```bash
 # Builder API (Laptop A or B)
 cd builder-api
-npm test                         # unit tests (323): spec rules, generator, wirer, binder in jsdom, verifier, code safety, dHash, memory, …
+npm test                         # unit tests (314): spec rules, generator, wirer, binder in jsdom, verifier, code safety, memory, …
 npm run test:coverage            # the same, with a coverage table
 TEST_MONGODB_URI=mongodb://127.0.0.1:27017/builder_test \
   node --test --test-concurrency=1 --test-reporter=tap "integration/**/*.test.js" | grep -E "^# (pass|fail)"
-                                 # integration tests (106): whole pipeline (Wire, Check, Ready) with a fake Gateway,
-                                 # generated apps on a real MongoDB, custom-button code, the Verifier, the live preview.
+                                 # integration tests (118): whole pipeline (Wire, Check, Ready) with a fake Gateway,
+                                 # generated apps on a real MongoDB, custom-button code, the Verifier, the live preview,
+                                 # memory (repeats make no AI or Gateway call).
                                  # Databases are dropped.
 npm run eval:inventory           # reads the sample screenshots with the real vision model (needs Ollama)
 TEST_MONGODB_URI=mongodb://127.0.0.1:27017/modeltest npm run eval:custom -- --provider local
@@ -266,7 +289,7 @@ npm run smoke:wire -- http://localhost:3000
 npm run smoke:wire -- http://localhost:3000 --email admin@example.com --password <its ADMIN_PASSWORD>   # apps with a login
 
 # Our web UI
-cd ../web && npm test            # pipeline view logic (15)
+cd ../web && npm test            # pipeline view logic (19)
 ```
 
 On Windows PowerShell, set the database for the integration tests with `$env:TEST_MONGODB_URI = "mongodb://127.0.0.1:27017/builder_test"` and run the same `node --test …` line.
@@ -319,6 +342,7 @@ Each service reads its own `.env` (copy it from `.env.example`). `.env` files ar
   - The live preview's starting rows are read from the page as data; the page's code is not run to get them.
 - **Checking and previews run the generated app safely:** in its own process, on `127.0.0.1` only, with its own throwaway database and no keys in its environment. It stops with the Builder API. The live preview has its own local port, so the browser treats it as another site than our UI, and a generated page can't reach the UI.
 - **Local first.** In Local mode, screenshots and code never leave the two laptops.
+- **Memory stays on the Mac,** in its own MongoDB. Only work from projects that passed every check is kept, and **Clear memory** removes it all.
 
 ---
 
@@ -335,6 +359,8 @@ Each service reads its own `.env` (copy it from `.env.example`). `.env` files ar
 | A downloaded page shows an alert about `npm start` | Open it through `npm start` and `http://localhost:3000`, not as a file |
 | "The live preview could not start" / port 4001 in use | Set `PREVIEW_PORT` to a free port in `builder-api/.env` and restart the Builder API |
 | A custom button says "not available yet" | Its code never passed. The Backend station shows the last problem. Try Cloud or Auto mode (Gemini was right more often), or check that `ollama list` shows `qwen2.5-coder:7b` |
+| After `git pull`, nothing new happens | Restart the Builder API (and `cd web && npm run build` for UI changes) |
+| A repeat upload is not reused from memory | Memory only holds projects that reached **Ready** after Step 14, and **Start fresh** skips it. A copy counts only if it's at most 6 bits from the original and its page instructions are the same |
 | The Check station failed | Read its report: each failed check names the control, the backend's answer and the part to fix (page, spec or backend) |
 
 ---
@@ -342,6 +368,5 @@ Each service reads its own `.env` (copy it from `.env.example`). `.env` files ar
 ## What comes next
 
 The order is in [plan.md](plan.md):
-- **Step 17:** editing the spec in the UI (Spec Editor).
-- **Steps 18–20:** sandbox preview, publishing to GitHub, demo rehearsal.
+- **Steps 17–20:** editing the spec in the UI, sandbox preview, publishing to GitHub, demo rehearsal.
 - **Phase 2:** text requests and chat-style changes on top of the same spec, evidence and checks.
