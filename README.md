@@ -39,14 +39,14 @@ The name is Hindi for "the code inside": the code that is hidden inside a screen
 | Generate the backend from tested templates: lists with search / filters / pages, add, edit, delete, status buttons ("Approve"), CSV export, stat cards, **login only if a login screen is shown** | ✅ |
 | Sync check: pages and backend must be built from the **same** spec version | ✅ |
 | **Wiring:** the page buttons really call the backend (add, edit, delete, search, filter, pages, stats, login) | ✅ |
-| Our web UI: upload, live pipeline view with "how it works" for each stage, plan with evidence, page previews, generated files, **Download app (.zip)** | ✅ |
+| Our web UI: upload, live pipeline view with "how it works" for each stage, interactive plan editing with evidence, page previews, generated files, **Download app (.zip)** | ✅ Step 17 |
 | **AI-written code for buttons no template covers** ("Give 10% Raise", "Duplicate"): checked for safety, pressed once in the real app, repaired up to 3 times, or left out on its own | ✅ Step 13 |
 | **Check before download:** the app is started on a throwaway database and every page is used like a person would; the report names the part to blame (page, spec or backend); missing markers are repaired by rule | ✅ Step 16 |
 | **Live preview:** use the real app in the UI before downloading, on a test database that starts with the screenshot's rows; the Pages tab opens on it once the app is Ready | ✅ Steps 16, 13 |
 | **Memory:** work from Ready projects is reused: the same screenshot again is Ready in seconds; a resized or re-saved copy reuses its page; the same button on a compatible table reuses its verified code. **Start fresh** and **Clear memory** in the UI | ✅ Step 14 |
 | Sandbox preview, push to GitHub | ⏳ Steps 18, 19 |
 
-Test counts today: **Builder API 314 unit + 118 integration**, **web UI 19**, vision evaluation **41/41** on the sample screenshots, coding-model test **5/5** (Gemini) and **4/5** (local Qwen). Every step was built test-first (red → green), with a report in [docs/tdd/](docs/tdd/).
+Test counts today: **Builder API 314 unit + 118 integration**, **web UI 33**, vision evaluation **41/41** on the sample screenshots, coding-model test **5/5** (Gemini) and **4/5** (local Qwen). Every step was built test-first (red → green), with a report in [docs/tdd/](docs/tdd/).
 
 ---
 

@@ -876,6 +876,280 @@ a {
   margin: 0.4rem 0 0;
 }
 
+/* plan editor toolbar and alerts */
+.plan-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  background: var(--white);
+  border: var(--line);
+  border-radius: 12px;
+  padding: 0.65rem 1rem;
+  box-shadow: var(--pop-small);
+}
+
+.spec-version-badge {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 1.15rem;
+  color: var(--ink);
+}
+
+.spec-editing-pill {
+  display: inline-block;
+  margin-left: 0.6rem;
+  padding: 0.15rem 0.6rem;
+  border: var(--line);
+  border-radius: 999px;
+  background: var(--sunny);
+  font: 700 0.8rem var(--body);
+}
+
+.plan-actions-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.plan-alert {
+  padding: 0.75rem 1rem;
+  border: var(--line);
+  border-radius: 12px;
+  box-shadow: var(--pop-small);
+}
+
+.plan-alert-error {
+  background: #ffe3ec;
+  border-color: var(--bubblegum);
+  color: #7a0c2e;
+}
+
+.plan-alert-error ul {
+  margin: 0.4rem 0 0;
+  padding-left: 1.2rem;
+}
+
+.plan-alert-success {
+  background: #e3faef;
+  border-color: var(--mint);
+  color: #0d5e38;
+  font-weight: 700;
+}
+
+.plan-edit-guide {
+  background: #fdfae7;
+  border: 1.5px dashed var(--sunny);
+  border-radius: 10px;
+  padding: 0.6rem 0.9rem;
+  font-size: 0.92rem;
+  color: var(--ink-soft);
+}
+
+.plan-input,
+.plan-select {
+  border: var(--line);
+  border-radius: 8px;
+  padding: 0.35rem 0.55rem;
+  font: 400 0.9rem var(--body);
+  background: var(--white);
+  color: var(--ink);
+  outline: none;
+}
+
+.plan-input:focus,
+.plan-select:focus {
+  border-color: var(--sky);
+  box-shadow: 0 0 0 2px var(--sky);
+}
+
+.plan-input-name {
+  font-family: var(--mono);
+  font-size: 0.88rem;
+  width: 100%;
+  max-width: 180px;
+}
+
+.plan-field-name-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.field-warn {
+  font-size: 0.75rem;
+  color: #c94000;
+  font-weight: 700;
+}
+
+.plan-options-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.muted-hint {
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+}
+
+.plan-checkbox-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.plan-checkbox-label input {
+  width: 1.1rem;
+  height: 1.1rem;
+  cursor: pointer;
+}
+
+.icon-btn-delete {
+  background: #fff0f3;
+  color: #c9184a;
+  border-color: var(--bubblegum);
+  font-size: 0.85rem;
+  transition: transform 100ms;
+}
+
+.icon-btn-delete:hover {
+  background: var(--bubblegum);
+  color: var(--white);
+  transform: scale(1.05);
+}
+
+.plan-add-field-wrap {
+  margin-top: 0.75rem;
+}
+
+.plan-add-field-form {
+  background: #f8fafc;
+  border: var(--line);
+  border-radius: 10px;
+  padding: 0.8rem 1rem;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.plan-add-field-form h4 {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 1rem;
+}
+
+.plan-add-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.6rem;
+  align-items: flex-end;
+}
+
+.plan-add-grid label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+  margin-bottom: 0.2rem;
+}
+
+.plan-add-grid .grid-full {
+  grid-column: 1 / -1;
+}
+
+.checkbox-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+  margin-bottom: 0.4rem;
+}
+
+.plan-add-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+}
+
+.btn-small {
+  padding: 0.35rem 0.8rem;
+  font-size: 0.88rem;
+  border-radius: 10px;
+}
+
+/* questions */
+.plan-questions-list {
+  display: grid;
+  gap: 0.8rem;
+  margin-top: 0.6rem;
+}
+
+.plan-question-card {
+  border: var(--line);
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  background: var(--white);
+  box-shadow: var(--pop-small);
+  display: grid;
+  gap: 0.5rem;
+}
+
+.plan-question-card.question-resolved {
+  background: #f4fbf7;
+  border-color: var(--mint);
+}
+
+.question-text {
+  font-size: 0.95rem;
+}
+
+.question-answered {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.answered-pill {
+  display: inline-block;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  background: #e3faef;
+  border: 1.5px solid var(--mint);
+  font: 700 0.82rem var(--body);
+  color: #0d5e38;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--sky);
+  text-decoration: underline;
+  cursor: pointer;
+  font: 600 0.85rem var(--body);
+  padding: 0;
+}
+
+.question-choices {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.choices-hint {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+
+.choice-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
 /* pages */
 .page-picker {
   display: flex;

@@ -9,6 +9,13 @@ export const api = {
   health: () => fetch("/api/health").then(json),
   projects: () => fetch("/api/projects").then(json),
   project: (id) => fetch(`/api/projects/${id}`).then(json),
+  contract: (id) => fetch(`/api/projects/${id}/contract`).then(json),
+  updateContract: (id, body) =>
+    fetch(`/api/projects/${id}/contract`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(json),
   files: (id) => fetch(`/api/projects/${id}/files`).then(json),
   fileContent: (id, path) =>
     fetch(`/api/projects/${id}/files/content?path=${encodeURIComponent(path)}`).then(async (res) => {

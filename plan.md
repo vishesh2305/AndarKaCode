@@ -3,7 +3,7 @@
 > **Design:** see [ARCHITECTURE.md](ARCHITECTURE.md) (v3.1, approved 16 Oct: Phase 1 builds exactly what the screenshots show; every backend part has visible evidence). This file is our **step-by-step to-do list**.
 > **Rule:** do one step, report back, then move on. Tick the box when its "Done when" is true.
 
-**Current step:** ▶ **Step 17: Our React UI** (finish: edit the spec in the UI). Steps 10–16 are done, so the prototype cut line is one step away.
+**Current step:** ▶ **Step 18: Sandbox preview.** Steps 10–17 are done; the working prototype cut line (Steps 10–17) is achieved.
 
 ---
 
@@ -51,7 +51,7 @@ Every step has four parts:
 
 - [x] **Step 15: Wirer.** ✅ 21 Oct: on Laptop B, checked in real Chrome on two real projects (Products 7/7, Staff + login 6/6); on the Mac, tests pass and a downloaded app adds, edits, searches and deletes on its own page. Runtime binder `app.js` + `api-map.json`; multiple pages; token only if login. *Done when:* every control on every page works against the backend.
 - [x] **Step 16: Verifier + repair loop.** ✅ 23 Oct: on the Mac, a real page with a broken script now passes the Check (rows built from the table header) and reaches Ready. On Laptop B, 22 Oct: Wire → Check → Ready stages, the Verifier (markers, health, person-like run, app tests, layer to blame), rule-based marker repair in the binder, Check report in the UI, Download at READY, live preview; real employees run READY 8/8, live preview 7/7 in Chrome. Gateway redraw repair left for later. Headless-browser marker check, "every control backed", "nothing unnecessary", tests, Playwright smoke; repair with Gateway `update` jobs.
-- [ ] **Step 17: Our React UI.** ◐ 20 Oct: **UI v1 for the presentation** done early (`web/`, served by the Builder API): upload, live metro-line pipeline with "how it works" per station, screenshots / plan with evidence / pages / backend files, download app as zip once SYNCED. Still to do: edit the spec in the UI. Upload screenshots, review the spec with its evidence, live status, download.
+- [x] **Step 17: Our React UI.** ✅ 25 Oct: interactive App Spec editing in the Plan tab (field types, enum options, adding/removing fields with camelCase checking, resolving open questions, client validation, Save & Rebuild via `PUT /api/projects/:id/contract`). Web tests 33/33, builder-api tests 314/314, Vite build passing. Report: `docs/tdd/step17-ui-spec-edit.tdd.md`.
 - [ ] **Step 18: Sandbox preview.** Docker, limits, no secrets, auto-stop.
 - [ ] **Step 19: GitHub login + Publish.** OAuth App, encrypted token, new repo, CI turns green.
 - [ ] **Step 20: Demo rehearsal.** Demo mode, warm cache, backup video, viva practice.

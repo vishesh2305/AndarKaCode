@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
 import { startView } from "../pipeline.js";
+export { Plan } from "./Plan.jsx";
 
 export function Screenshots({ project }) {
   const count = project.screenshots?.length || 1;
@@ -16,114 +17,6 @@ export function Screenshots({ project }) {
           </figcaption>
         </figure>
       ))}
-    </div>
-  );
-}
-
-const ENDPOINT_WORDS = { list: "Show the list", get: "Open one", create: "Add", update: "Edit", delete: "Delete" };
-const KIND_WORDS = { setStatus: "changes status", export: "downloads a CSV", custom: "not available yet" };
-
-function Evidence({ text }) {
-  return <span className="evidence">{text}</span>;
-}
-
-export function Plan({ project }) {
-  const spec = project.contract?.body;
-  if (!spec) return <Empty text="The plan appears once the screenshots have been read." />;
-  return (
-    <div className="plan">
-      {spec.entities.map((e) => (
-        <article key={e.name} className="plan-entity">
-          <h3>
-            {e.label} <code>/api/{e.plural}</code>
-          </h3>
-          <table className="plan-fields">
-            <thead>
-              <tr>
-                <th scope="col">Field</th>
-                <th scope="col">Type</th>
-                <th scope="col">Why it exists</th>
-              </tr>
-            </thead>
-            <tbody>
-              {e.fields.map((f) => (
-                <tr key={f.name}>
-                  <td>
-                    <code>{f.name}</code>
-                    {f.required && <span className="required">required</span>}
-                  </td>
-                  <td>{f.type === "enum" ? `one of ${f.options.join(", ")}` : f.type === "ref" ? `link to ${f.ref}` : f.type}</td>
-                  <td>
-                    <Evidence text={f.evidence} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <ul className="plan-actions">
-            {Object.entries(e.endpoints).map(([key, ep]) => (
-              <li key={key}>
-                <strong>{ENDPOINT_WORDS[key]}</strong>
-                {key === "list" && ep.search ? ", with search" : ""}
-                {key === "list" && ep.filters.length ? `, filter by ${ep.filters.join(", ")}` : ""}
-                {key === "list" && ep.pagination ? ", with pages" : ""}
-                {key === "delete" && ep.soft ? " (kept in an archive)" : ""} <Evidence text={ep.evidence} />
-              </li>
-            ))}
-            {spec.operations
-              .filter((o) => o.entity === e.name)
-              .map((o) => (
-                <li key={o.name}>
-                  <strong>“{o.button}”</strong> {KIND_WORDS[o.kind]} <Evidence text={o.evidence} />
-                </li>
-              ))}
-          </ul>
-        </article>
-      ))}
-      {spec.stats.length > 0 && (
-        <article className="plan-entity">
-          <h3>Number cards</h3>
-          <ul className="plan-actions">
-            {spec.stats.map((s) => (
-              <li key={s.label}>
-                <strong>{s.label}</strong> {s.metric === "custom" ? "(how to calculate it is an open question)" : `(${s.metric})`} <Evidence text={s.evidence} />
-              </li>
-            ))}
-          </ul>
-        </article>
-      )}
-      <article className="plan-entity">
-        <h3>Login</h3>
-        {spec.auth ? (
-          <ul className="plan-actions">
-            <li>
-              <strong>Log in</strong> <Evidence text={spec.auth.login.evidence} />
-            </li>
-            {spec.auth.signup && (
-              <li>
-                <strong>Sign up</strong> <Evidence text={spec.auth.signup.evidence} />
-              </li>
-            )}
-            {spec.auth.me && (
-              <li>
-                <strong>Current user and log out</strong> <Evidence text={spec.auth.me.evidence} />
-              </li>
-            )}
-          </ul>
-        ) : (
-          <p className="muted">No login screen in the screenshots, so the app has no login.</p>
-        )}
-      </article>
-      {spec.openQuestions.length > 0 && (
-        <article className="plan-entity plan-questions">
-          <h3>Open questions</h3>
-          <ul>
-            {spec.openQuestions.map((q, i) => (
-              <li key={i}>{q.question}</li>
-            ))}
-          </ul>
-        </article>
-      )}
     </div>
   );
 }

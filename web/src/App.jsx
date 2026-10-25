@@ -132,7 +132,14 @@ export function App() {
                 </div>
                 <div className="tab-panel" role="tabpanel" aria-label={tab}>
                   {tab === "Screenshots" && <Screenshots project={project} />}
-                  {tab === "Plan" && <Plan project={project} />}
+                  {tab === "Plan" && (
+                    <Plan
+                      project={project}
+                      onSaved={() => {
+                        api.project(project.id).then(setProject).catch(() => {});
+                      }}
+                    />
+                  )}
                   {tab === "Pages" && <Pages project={project} pages={status.stations.pages.pages} wired={status.stations.wire.status === "done"} />}
                   {tab === "Backend" && <Backend project={project} ready={status.stations.backend.status === "done"} />}
                 </div>
