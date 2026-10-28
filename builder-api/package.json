@@ -14,7 +14,8 @@
     "test:coverage": "node --test --experimental-test-coverage \"test/**/*.test.js\"",
     "eval:inventory": "node --env-file-if-exists=.env scripts/eval-inventory.mjs",
     "smoke:wire": "node scripts/wire-smoke.mjs",
-    "eval:custom": "node --env-file-if-exists=.env scripts/custom-model-test.mjs",
+    "eval:pages": "node --env-file-if-exists=.env scripts/eval-pages.mjs",
+    "eval:custom":"node --env-file-if-exists=.env scripts/custom-model-test.mjs",
     "test:integration": "node --test --test-concurrency=1 \"integration/**/*.test.js\""
   },
   "dependencies": {

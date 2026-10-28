@@ -98,8 +98,8 @@ export async function pageMarkers(html, { map, file = "page.html" } = {}) {
 
 const IGNORED_FIELDS = new Set(["actions", "id"]);
 
-/** Compares; { status: "pass"|"fail", layer, detail, warnings }. */
-export function markerCheck(expected, found) {
+/** Each marker the spec asks for that the page lacks, named the way a person sees it. */
+export function missingMarkers(expected, found) {
   const missing = [];
   for (const f of expected.fields) if (!found.fields.includes(f.name)) missing.push(`the field "${f.label}" (data-field="${f.name}")`);
   for (const a of expected.actions) {
@@ -108,6 +108,12 @@ export function markerCheck(expected, found) {
   }
   for (const name of expected.filters) if (!found.filters.includes(name)) missing.push(`the filter for ${name} (data-filter="${name}")`);
   for (const key of expected.stats) if (!found.stats.includes(key)) missing.push(`the number in the card ${key} (data-stat="${key}")`);
+  return missing;
+}
+
+/** Compares; { status: "pass"|"fail", layer, detail, warnings }. */
+export function markerCheck(expected, found) {
+  const missing = missingMarkers(expected, found);
 
   // "Uncaught [SyntaxError: missing ) after argument list]" -> "SyntaxError: missing ) after argument list"
   const scriptError = found.scriptErrors?.length ? found.scriptErrors[0].replace(/^Uncaught \[?/, "").replace(/\]$/, "") : null;
