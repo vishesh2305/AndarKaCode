@@ -3,7 +3,9 @@
 > **Design:** see [ARCHITECTURE.md](ARCHITECTURE.md) (v3.1, approved 16 Oct: Phase 1 builds exactly what the screenshots show; every backend part has visible evidence). This file is our **step-by-step to-do list**.
 > **Rule:** do one step, report back, then move on. Tick the box when its "Done when" is true.
 
-**Current step:** ▶ **Step 17: Our React UI** (finish: edit the spec in the UI). Steps 10–16 are done, so the prototype cut line is one step away.
+**Current step:** ▶ **Step 18: Page-generation spike** of the production plan ([docs/production-architecture.md](docs/production-architecture.md), Steps 18–51). Piece 18.1 (the page exam) is built; waiting for the Mac check.
+
+> **28 Oct 2026:** the production plan replaces the old Steps 18–20 below. The old Step 18 (Sandbox) is now Step 33, the old Step 19 (GitHub) is now Step 48, and the rest of Step 17 (editing the spec in the UI) is now Step 38. The demo rehearsal (old Step 20) can still be done at any time.
 
 ---
 
@@ -110,3 +112,5 @@ Every step has four parts:
 | 24 Oct 2026 | Step 14 (TDD): memory in MongoDB under fingerprints (reading: screenshot + prompt version; page: screenshot + page instructions; code: button + table fields + runtime); dHash near-duplicates (samples: copies 2–6 bits, different screens 11+; limit 6); verified-code library (used fields must exist with the same type). Real gap found: entries from piece 1 had no dHash/fields and memory never updated them, so lookup fields are now filled in at every Ready. Laptop B: m7 again 7 s, resized copy 26 s, m8 button from the library. Unit 314/314, integration 118/118, web 19/19. Report: `docs/tdd/step14-memory.tdd.md`. |
 | 24 Oct 2026 | Step 14 checked on the Mac by the user (all four pieces). Two surprises were not bugs: a project built before the update, and a Builder API not restarted after `git pull`. Step 14 ticked; current step 17. |
 | 24 Oct 2026 | Merge: `main` had a second, separate Step 14 from a teammate (reading reuse by SHA-256/dHash, code reuse by table + button name, no UI). User's choice: keep the Step 14 tested on the Mac; keep the teammate's Windows launchers (`run-visible.bat/.ps1`, `gateway/start.bat`, `builder-api/start.bat`). Reason against reusing readings for near-duplicates: a 9×8 dHash can't see a small change such as one extra column, so the new column would be lost. |
+| 28 Oct 2026 | Production plan approved and saved (`docs/production-architecture.md`): two servers instead of two laptops, users' own AI keys (frontend and backend slots) or paid credits, coverage ladder, cheap cache, Steps 18–51. It replaces the old Steps 18–20. |
+| 28 Oct 2026 | Step 18.1 (TDD) on Laptop B: `npm run eval:pages`, the page exam. Each mock's spec is read once and kept in `samples/mocks/specs/` so every method is tested on the same spec; each run asks the Gateway with its own hash (otherwise it returns the page it drew before); per page: seconds, markers raw and after the binder's repair, and a side-by-side review page to score by eye. Unit 330/330, web 19/19. Not yet run with a real page builder (Gateway was off). Report: `docs/tdd/step18-page-spike.tdd.md`. |
