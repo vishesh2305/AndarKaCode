@@ -244,7 +244,7 @@ cd ../web && npm install && npm run build                 # repeat the build aft
 powershell -ExecutionPolicy Bypass -File scripts\start-laptop-b.ps1
 # optional: -S2cBackend <path to screenshot-to-code\backend> if it is not in the default place
 ```
-It starts Ollama (port 11434), Screenshot-to-Code (port 7001) and the Gateway (port 8787), each in its own window. Leave them open. Running it twice is safe.
+It starts Ollama (port 11434), Screenshot-to-Code (the port in `S2C_WS_URL` in `gateway/.env`: 7002, because NoMachine takes S2C's default 7001) and the Gateway (port 8787), each in its own window. Leave them open. Running it twice is safe. If something else holds the Screenshot-to-Code port, the script names it instead of saying "already running". After changing `gateway/.env`, close the Gateway window and run the script again.
 
 **2. Laptop A**: Tailscale connected, Ollama running, then:
 ```bash
