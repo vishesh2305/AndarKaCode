@@ -48,8 +48,12 @@ describe("parseArgs: what to run", () => {
     });
   });
 
+  it("knows the single-call builder (Step 18.2)", () => {
+    assert.equal(parseArgs(["--method", "single"]).method, "single");
+  });
+
   it("refuses an unknown method, mode or case, and says what is allowed", () => {
-    assert.throws(() => parseArgs(["--method", "magic"]), /method.*s2c/);
+    assert.throws(() => parseArgs(["--method", "magic"]), /method.*s2c, single/);
     assert.throws(() => parseArgs(["--mode", "fast"]), /mode.*local, cloud, auto/);
     assert.throws(() => parseArgs(["m9-nothing"]), /case.*m1-edit-delete/);
   });
