@@ -6,8 +6,8 @@
 
 | Piece | What | Status |
 |---|---|---|
-| 18.1 | The page exam: `npm run eval:pages` | ✅ built (this report); waiting for the Mac check |
-| 18.2 | The single-call page builder (`--method single`) | to do |
+| 18.1 | The page exam: `npm run eval:pages` | ✅ built; works on the Mac (S2C built m1 through Laptop B) |
+| 18.2 | The single-call page builder (`--method single`) | ✅ built; first real page on Laptop B; waiting for the Mac check |
 | 18.3 | Both methods on all 8 mocks, scored by eye | to do |
 | 18.4 | The decision | to do |
 
@@ -73,3 +73,54 @@ GREEN (`662d3e8`): the same command gives `tests 30, pass 30, fail 0`. Full suit
 - "Looks the same" is scored **by eye** (1–5). A pixel comparison would need a real browser (Playwright), which is more than this spike needs.
 - The time includes waiting in the Gateway's queue (one job at a time on Laptop B). Run one exam at a time.
 - Coverage was not measured for this piece. The script's network glue (`scripts/eval-pages.mjs`) is checked by running it, like `eval:inventory`.
+
+### Found during the Mac check of 18.1
+
+- **NoMachine holds port 7001 on Laptop B** (`nxnode.bin`), which is Screenshot-to-Code's default port. The start script saw "something on 7001", said "already running", and never started S2C; the Gateway then answered "Cannot reach Screenshot-to-Code". Fixed in `e3cd14c`:
+  - S2C now runs on **7002**;
+  - the start script takes the port from `S2C_WS_URL` in `gateway/.env`;
+  - it checks that S2C's own home page answers there, and names whatever else holds the port;
+  - it starts S2C with `--max-port-attempts 1`, so S2C can no longer quietly move to a port the Gateway doesn't know.
+- "fetch failed" when reading means the computer running the exam can't reach its own Ollama (`OLLAMA_URL`). On the Mac, Ollama wasn't running. On Laptop B later, Ollama, S2C and the Gateway had all stopped (Tailscale too), probably while the laptop slept.
+
+## 18.2: The single-call page builder
+
+`src/ai/page.js`: one screenshot plus our page instructions, then **one** model call (Ollama for `local`, Gemini for `cloud`, local then cloud for `auto`), then one HTML page.
+- No agent steps, no Screenshot-to-Code, no Gateway: the computer running it calls the model directly. That's the shape the production ui-worker would have.
+- The prompt keeps S2C's goals (look exactly like the screenshot, its exact text, one HTML file with Tailwind) and adds our page instructions word for word, so the wirer's markers are asked for the same way.
+- The page is taken from a ```` ```html ```` block, or from `<!DOCTYPE`/`<html>` to `</html>`. An answer with no page, or one cut off before `</html>`, is an error, never a broken page.
+- `GEMINI_PAGE_MODEL` (optional) picks the cloud model for pages; otherwise it uses `GEMINI_MODEL`.
+
+### Tests
+
+RED (`eb282c6`): `node --test test/page-model.test.js test/eval-pages.test.js` → `Cannot find module '.../src/ai/page.js'`, and `--method single` refused (`not ok: knows the single-call builder`).
+GREEN: the same command gives `tests 30, pass 30, fail 0`. Full unit suite **345/345** (330 + 15 new).
+
+| # | What is guaranteed | Test (`test/page-model.test.js` unless named) | Result |
+|---|---|---|---|
+| 1 | The model is asked for one HTML file that looks exactly like the screenshot, with its exact text, using Tailwind | `pagePrompt: asks for one HTML file…` | PASS |
+| 2 | Our page instructions (the markers) are included word for word | `pagePrompt: includes our page instructions…` | PASS |
+| 3 | The model is asked for the HTML only | `pagePrompt: asks for the HTML only…` | PASS |
+| 4 | The page is taken out of a ```` ```html ```` block | `extractHtml: takes the page out of…` | PASS |
+| 5 | …or from `<!DOCTYPE`/`<html>` to `</html>`, in any letter case | `extractHtml: takes the page from <!DOCTYPE…` | PASS |
+| 6 | A page cut off before `</html>` is an error that says so | `extractHtml: says the page was cut off…` | PASS |
+| 7 | An answer without HTML is an error | `extractHtml: says there is no page…` | PASS |
+| 8 | Ollama gets the vision model, the prompt and the image, with no JSON format, thinking off, and a context long enough for a page | `local: sends the vision model…` | PASS |
+| 9 | Ollama's error message is passed on | `local: throws Ollama's error message` | PASS |
+| 10 | Gemini: key in a header (never in the URL), image inline, text answer (not JSON), answer parts joined | `cloud: sends the key in a header…` | PASS |
+| 11 | Gemini: a temporary 503 is retried, a quota error (429) is not | `cloud: retries a temporary 503…` | PASS |
+| 12 | `cloud` makes one call with the screenshot and the prompt | `buildPage: cloud: one call…` | PASS |
+| 13 | `auto` tries local first, then cloud if local fails or answers without a page | `buildPage: auto…` | PASS |
+| 14 | `local` has no cloud backup, and the error names the provider | `buildPage: local…` | PASS |
+| 15 | The exam accepts `--method single` | `eval-pages.test.js: knows the single-call builder` | PASS |
+
+### First real run (Laptop B, local model)
+
+```
+npm run eval:pages -- --method single --mode local --read local m1-edit-delete
+  page 1: 54.1 s, markers 5/5, Check after repair pass (local)
+```
+
+- The page has the "Employees" heading, 3 sample rows, and Edit/Delete on every row.
+- For comparison, S2C measured **104–194 s per page** on the same laptop (ARCHITECTURE.md §5). This is one page only; 18.3 compares both methods properly, on the same specs.
+- Laptop B's local model read only 3 columns of m1 here (the spec was read again on this laptop). That spec file was deleted, so the Mac's spec stays the one we compare on.
