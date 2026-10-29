@@ -124,3 +124,15 @@ npm run eval:pages -- --method single --mode local --read local m1-edit-delete
 - The page has the "Employees" heading, 3 sample rows, and Edit/Delete on every row.
 - For comparison, S2C measured **104–194 s per page** on the same laptop (ARCHITECTURE.md §5). This is one page only; 18.3 compares both methods properly, on the same specs.
 - Laptop B's local model read only 3 columns of m1 here (the spec was read again on this laptop). That spec file was deleted, so the Mac's spec stays the one we compare on.
+
+### First fair comparison: m1, the Mac's spec (`10ad80a`), Laptop B local model, back to back
+
+| Builder | Seconds | Markers | Check after repair | Look (Claude's score, 1–5) | Differences from the screenshot |
+|---|---|---|---|---|---|
+| S2C | 56.7 | 5/5 | pass | 3.5 | salaries lost their commas (`52000`); headers UPPERCASE; Edit/Delete as coloured text links |
+| Single call | 38.8 | 5/5 | pass | 4 | exact text kept (`52,000`); headers UPPERCASE; Edit/Delete filled blue/red instead of outlined grey |
+
+- The single call is about 1.5× faster on this page, and kept the exact text better.
+- The earlier "104–194 s" for S2C came from bigger pages, so the 54.1 s single-call run above isn't a fair comparison.
+- Neither builder copies button styles exactly. A stricter prompt about colours and styles is worth trying in 18.3.
+- One simple page only: no decision until 18.3 covers all 8 mocks. The user's score by eye still has to be added.
