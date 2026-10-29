@@ -1,0 +1,127 @@
+{
+  "readBy": [
+    "local"
+  ],
+  "readAt": "2026-10-29T07:04:00.234Z",
+  "inventories": [
+    {
+      "title": "Employees",
+      "kind": "list",
+      "tables": [
+        {
+          "columns": [
+            {
+              "label": "Full Name",
+              "values": [
+                "Ann Lee",
+                "Raj Patel",
+                "Mia Wong"
+              ],
+              "badge": false
+            },
+            {
+              "label": "Email",
+              "values": [
+                "ann@corp.com",
+                "raj@corp.com",
+                "mia@corp.com"
+              ],
+              "badge": false
+            },
+            {
+              "label": "Salary",
+              "values": [
+                "52,000",
+                "61,500",
+                "48,000"
+              ],
+              "badge": false
+            }
+          ],
+          "rowActions": [
+            "Edit",
+            "Delete"
+          ],
+          "entityHint": {
+            "singular": "employee",
+            "plural": "employees"
+          }
+        }
+      ],
+      "forms": [],
+      "buttons": [],
+      "search": false,
+      "filters": [],
+      "pagination": false,
+      "statCards": [],
+      "auth": {
+        "loginForm": false,
+        "signupLink": false,
+        "userMenu": false,
+        "roleIndicators": []
+      }
+    }
+  ],
+  "spec": {
+    "entities": [
+      {
+        "name": "employee",
+        "plural": "employees",
+        "label": "Employees",
+        "sampleConst": "SAMPLE_EMPLOYEES",
+        "fields": [
+          {
+            "name": "fullName",
+            "label": "Full Name",
+            "required": false,
+            "evidence": "s1: column 'Full Name'",
+            "type": "string"
+          },
+          {
+            "name": "email",
+            "label": "Email",
+            "required": false,
+            "evidence": "s1: column 'Email'",
+            "type": "email"
+          },
+          {
+            "name": "salary",
+            "label": "Salary",
+            "required": false,
+            "evidence": "s1: column 'Salary'",
+            "type": "number"
+          }
+        ],
+        "endpoints": {
+          "list": {
+            "search": false,
+            "filters": [],
+            "pagination": false,
+            "evidence": "s1: table 'Employees'"
+          },
+          "update": {
+            "evidence": "s1: row action 'Edit'"
+          },
+          "get": {
+            "evidence": "s1: row action 'Edit' (loads the record)"
+          },
+          "delete": {
+            "soft": false,
+            "evidence": "s1: row action 'Delete'"
+          }
+        }
+      }
+    ],
+    "operations": [],
+    "stats": [],
+    "auth": null,
+    "pages": [
+      {
+        "screenshot": 1,
+        "kind": "list",
+        "entity": "employee"
+      }
+    ],
+    "openQuestions": []
+  }
+}
