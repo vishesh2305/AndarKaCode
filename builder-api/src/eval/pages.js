@@ -18,7 +18,7 @@ export const PAGE_CASES = {
   "m8-staff-raise": ["m8-staff-raise"],
 };
 
-export const METHODS = ["s2c"]; // Step 18.2 adds the single-call builder
+export const METHODS = ["s2c", "single"]; // single: one model call per page (src/ai/page.js, Step 18.2)
 const MODES = ["local", "cloud", "auto"];
 
 /** [--method s2c] [--mode local|cloud|auto] [--read local|cloud|auto] [case] */

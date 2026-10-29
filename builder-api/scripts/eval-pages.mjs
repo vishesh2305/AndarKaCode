@@ -1,11 +1,12 @@
 // Step 18.1: the page exam with a REAL page builder (src/eval/pages.js has the tested parts).
-// Usage (builder-api/): npm run eval:pages -- [--method s2c] [--mode local|cloud|auto] [--read local|cloud|auto] [caseName]
+// Usage (builder-api/): npm run eval:pages -- [--method s2c|single] [--mode local|cloud|auto] [--read local|cloud|auto] [caseName]
 // Not part of `npm test`: model output varies and a page takes minutes.
 // Each case's spec is read once and kept in samples/mocks/specs/ (commit it), so every method and every
 // laptop is tested on the same spec. Results go to samples/mocks/results/pages/<run>/.
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { contractHash } from "../../shared/hash.mjs";
+import { buildPage } from "../src/ai/page.js";
 import { PAGE_CASES, parseArgs, resultsTable, reviewHtml, runHash, scorePage } from "../src/eval/pages.js";
 import { getFrontend, submitFrontend } from "../src/gateway-client.js";
 import { checkSpec } from "../src/spec/check.js";
@@ -64,6 +65,8 @@ const BUILDERS = {
     }
     throw new Error(`no page after ${MAX_WAIT_MS / 60_000} min`);
   },
+  // One model call from this computer: Ollama here for local, Gemini for cloud (no Gateway, no Laptop B).
+  single: ({ image, instructions }) => buildPage({ imageB64: image.toString("base64"), instructions, mode: options.mode }),
 };
 
 const rows = [];
