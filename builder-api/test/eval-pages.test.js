@@ -5,7 +5,8 @@ import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
-import { PAGE_CASES, parseArgs, resultsTable, reviewHtml, runHash, scorePage } from "../src/eval/pages.js";
+import { pathToFileURL } from "node:url";
+import { browserCandidates, PAGE_CASES, parseArgs, resultsTable, reviewHtml, runHash, scorePage, shotArgs } from "../src/eval/pages.js";
 import { REPO_ROOT } from "../src/storage.js";
 import { employeesSpec } from "./fixtures/page-specs.js";
 import { page } from "./helpers/page.js";
@@ -36,7 +37,7 @@ describe("PAGE_CASES: the exam questions", () => {
 
 describe("parseArgs: what to run", () => {
   it("defaults to every case, S2C, cloud models, specs read by whichever model is available", () => {
-    assert.deepEqual(parseArgs([]), { method: "s2c", mode: "cloud", read: "auto", only: null });
+    assert.deepEqual(parseArgs([]), { method: "s2c", mode: "cloud", read: "auto", prompt: "plain", specsOnly: false, only: null });
   });
 
   it("takes the method, the mode, the reading mode and one case", () => {
@@ -44,6 +45,8 @@ describe("parseArgs: what to run", () => {
       method: "s2c",
       mode: "local",
       read: "local",
+      prompt: "plain",
+      specsOnly: false,
       only: "m1-edit-delete",
     });
   });
@@ -52,10 +55,24 @@ describe("parseArgs: what to run", () => {
     assert.equal(parseArgs(["--method", "single"]).method, "single");
   });
 
+  it("takes the strict prompt for the single-call builder (Step 18.3)", () => {
+    assert.equal(parseArgs(["--method", "single", "--prompt", "strict"]).prompt, "strict");
+  });
+
+  it("refuses the strict prompt for S2C, which writes its own prompt", () => {
+    assert.throws(() => parseArgs(["--prompt", "strict"]), /strict prompt.*--method single/);
+  });
+
+  it("can read and keep the specs only, without building pages", () => {
+    assert.equal(parseArgs(["--specs-only", "m2-add-search-page"]).specsOnly, true);
+    assert.equal(parseArgs(["--specs-only", "m2-add-search-page"]).only, "m2-add-search-page");
+  });
+
   it("refuses an unknown method, mode or case, and says what is allowed", () => {
     assert.throws(() => parseArgs(["--method", "magic"]), /method.*s2c, single/);
     assert.throws(() => parseArgs(["--mode", "fast"]), /mode.*local, cloud, auto/);
     assert.throws(() => parseArgs(["m9-nothing"]), /case.*m1-edit-delete/);
+    assert.throws(() => parseArgs(["--method", "single", "--prompt", "loud"]), /prompt.*plain, strict/);
   });
 });
 
@@ -127,6 +144,13 @@ describe("reviewHtml: each screenshot next to the page built from it, to score b
     assert.match(html, /<iframe src="m4-login.s2c.html"/);
   });
 
+  it("shows the browser's picture of the page when there is one, with a link to the live page", () => {
+    const html = reviewHtml([{ ...ROWS[0], shot: "m1-edit-delete.s2c.png" }], { mocksDir: "../../.." });
+    assert.match(html, /<img src="m1-edit-delete.s2c.png"/);
+    assert.match(html, /<a href="m1-edit-delete.s2c.html"/);
+    assert.doesNotMatch(html, /<iframe/);
+  });
+
   it("names a page that was not built instead of showing an empty frame", () => {
     const html = reviewHtml(ROWS, { mocksDir: "../../.." });
     assert.doesNotMatch(html, /<iframe src="undefined"/);
@@ -137,5 +161,30 @@ describe("reviewHtml: each screenshot next to the page built from it, to score b
     const html = reviewHtml([{ ...ROWS[2], error: "<script>x</script>" }], { mocksDir: "." });
     assert.doesNotMatch(html, /<script>x/);
     assert.match(html, /&lt;script&gt;x/);
+  });
+});
+
+describe("shotArgs: a picture of each built page, the same size as the screenshots", () => {
+  it("asks a headless browser for a 1280x800 PNG of the page file, after Tailwind has loaded", () => {
+    const html = path.resolve("out/m1.single.html");
+    const args = shotArgs({ html, png: path.resolve("out/m1.single.png") });
+    assert.ok(args.includes("--headless=new"));
+    assert.ok(args.includes(`--screenshot=${path.resolve("out/m1.single.png")}`));
+    assert.ok(args.includes("--window-size=1280,800"));
+    assert.ok(args.some((a) => /^--virtual-time-budget=\d+$/.test(a)), "time for the Tailwind script to run");
+    assert.equal(args.at(-1), pathToFileURL(html).href, "the page last, as a file URL");
+  });
+});
+
+describe("browserCandidates: where to look for Chrome or Edge", () => {
+  it("tries SHOT_BROWSER first, when it is set", () => {
+    assert.equal(browserCandidates("win32", { SHOT_BROWSER: "C:\\b.exe" })[0], "C:\\b.exe");
+  });
+
+  it("knows Chrome and Edge on Windows, and Chrome on a Mac", () => {
+    const win = browserCandidates("win32", { ProgramFiles: "C:\\Program Files", "ProgramFiles(x86)": "C:\\Program Files (x86)" });
+    assert.ok(win.some((p) => /Google.Chrome.Application.chrome\.exe$/.test(p)));
+    assert.ok(win.some((p) => /Microsoft.Edge.Application.msedge\.exe$/.test(p)));
+    assert.ok(browserCandidates("darwin", {}).includes("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"));
   });
 });

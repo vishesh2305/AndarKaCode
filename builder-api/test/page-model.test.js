@@ -33,6 +33,27 @@ describe("pagePrompt: what the model is asked", () => {
   });
 });
 
+describe("pagePrompt strict (Step 18.3): copy the styles and the text exactly", () => {
+  const plain = pagePrompt("Fields: x");
+  const strict = pagePrompt("Fields: x", { strict: true });
+
+  it("adds rules for button styles: filled or outlined, colours, corners", () => {
+    assert.match(strict, /button/i);
+    assert.match(strict, /outlined/i);
+    assert.match(strict, /colou?r/i);
+  });
+
+  it("adds rules for keeping text letter for letter: number formats and letter case", () => {
+    assert.match(strict, /52,000/);
+    assert.match(strict, /upper.?case/i);
+  });
+
+  it("keeps everything the plain prompt asks, so the two differ only in these rules", () => {
+    for (const line of plain.split("\n").filter(Boolean)) assert.ok(strict.includes(line), line);
+    assert.ok(strict.length > plain.length);
+  });
+});
+
 describe("extractHtml: the page inside the model's answer", () => {
   it("takes the page out of a ```html block", () => {
     assert.equal(extractHtml(`Here it is:\n\`\`\`html\n${PAGE}\n\`\`\`\nDone.`), PAGE);
@@ -126,6 +147,12 @@ describe("buildPage: one call per page, by the project's mode", () => {
     assert.equal((await buildPage({ imageB64: "aW1n", instructions: "", mode: "auto", providers: failed.providers })).provider, "cloud");
     const noPage = fake({ local: "Sorry.", cloud: PAGE });
     assert.equal((await buildPage({ imageB64: "aW1n", instructions: "", mode: "auto", providers: noPage.providers })).provider, "cloud");
+  });
+
+  it("sends the strict prompt when asked for it", async () => {
+    const { providers, calls } = fake({ cloud: PAGE });
+    await buildPage({ imageB64: "aW1n", instructions: "Fields: x", mode: "cloud", strict: true, providers });
+    assert.equal(calls[0].prompt, pagePrompt("Fields: x", { strict: true }));
   });
 
   it("local: no cloud backup, and the error names the provider", async () => {
