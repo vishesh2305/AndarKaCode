@@ -208,3 +208,25 @@ GREEN: the same command gives `tests 41, pass 41, fail 0`. The full unit suite i
   - S2C on the same 9 pages (blocked: Tailscale on Laptop B is logged out, so the Gateway can't start);
   - the single call on cloud (Gemini);
   - the user's score by eye.
+
+### Run 2: S2C on the same 9 pages, Laptop B local model, same specs
+
+Laptop B's `builder-api` has no `.env`, so the run took the Gateway's address and key from `gateway/.env` on the command line. The first try without them built 0/9 pages (`GATEWAY_URL/GATEWAY_API_KEY not set`).
+
+| Screenshot | S2C seconds | S2C markers | S2C Check | Single (plain) seconds | Single markers | Single Check |
+|---|---|---|---|---|---|---|
+| m1-edit-delete | 70.7 | 5/5 | pass | 75.8 | 5/5 | pass |
+| m2-add-search-page | 132.6 | 10/11 (no "+ Add Product" marker) | pass | 92.0 | 11/11 | pass |
+| m3-dashboard | 122.5 | 7/7 | pass | 50.3 | 7/7 | pass |
+| m4-login | 98.4 | 3/4 (no "Sign up" marker) | **fail** | 23.3 | 4/4 | pass |
+| m5a-employees-dept | 50.3 | 4/4 | pass | 42.6 | 4/4 | pass |
+| m5b-departments | 62.3 | 3/3 | pass | 35.0 | 3/3 | pass |
+| m6-approve | 116.6 | 6/6 | pass | 66.3 | 6/6 | pass |
+| m7-custom-buttons | 146.7 | 6/6 | pass | 67.4 | 6/6 | pass |
+| m8-staff-raise | 68.3 | 5/5 | pass | 54.9 | 5/5 | pass |
+| **Total** | **868.4 s** | **49/51** | **8/9** | **507.6 s** | **51/51** | **9/9** |
+
+- **On the same specs and the same local model, the single call is 1.7× faster in total** (507.6 s against 868.4 s). It was faster on 8 of 9 pages, and 4× faster on m4.
+- **The single call drew every marker itself.** S2C missed 2. The binder repaired the "+ Add Product" one, but the Sign-up link on m4 stayed unmarked, so in production that page would fail the Verifier.
+- **The look is close on the pages compared so far.** The two m4 pages are nearly the same: both show the email placeholder as dark text, where the screenshot has it grey. The user's score by eye is still to come (S2C review: `samples/mocks/results/pages/s2c-local-2026-11-01T16-50-34-911Z/review.html`).
+- Still to run: the single call on cloud (Gemini) from the Mac.
