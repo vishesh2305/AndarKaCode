@@ -181,3 +181,30 @@ GREEN: the same command gives `tests 41, pass 41, fail 0`. The full unit suite i
 - `--specs-only m1-edit-delete` → `spec ready: 1 page(s), entities employee`, and no results folder.
 - `--prompt strict` with S2C → `The strict prompt is for --method single (Screenshot-to-Code writes its own prompt)`.
 - The picture of the earlier m1 single-call page: Chrome found at `C:\Program Files\Google\Chrome\Application\chrome.exe`. The PNG took 1.1 s, and Tailwind styles were applied.
+
+### Run 1: the single call on all 9 pages, Laptop B local model (`qwen3-vl:8b-instruct`), Mac specs (`db69cfe`)
+
+| Screenshot | Plain prompt: seconds | Strict prompt: seconds | Markers (both) | Check after repair (both) |
+|---|---|---|---|---|
+| m1-edit-delete | 75.8 | 46.4 | 5/5 | pass |
+| m2-add-search-page | 92.0 | 111.6 | 11/11 | pass |
+| m3-dashboard | 50.3 | 49.4 | 7/7 | pass |
+| m4-login | 23.3 | 22.2 | 4/4 | pass |
+| m5a-employees-dept | 42.6 | 37.0 | 4/4 | pass |
+| m5b-departments | 35.0 | 33.3 | 3/3 | pass |
+| m6-approve | 66.3 | 58.2 | 6/6 | pass |
+| m7-custom-buttons | 67.4 | 66.4 | 6/6 | pass |
+| m8-staff-raise | 54.9 | 54.6 | 5/5 | pass |
+| **Total** | **507.6 s** | **479.1 s** | **51/51** | **9/9** |
+
+- **Every page was built, every marker was drawn by the model itself, and every Check passes.** No repair was needed on any page.
+- **The strict prompt barely changes the look on the local model.**
+  - m3: the strict page is almost identical to the plain one. Its headers are still UPPERCASE, despite the rule.
+  - m1: both kept `52,000` and the header case this time, but the strict page still filled Edit/Delete blue and red; the screenshot has outlined grey buttons.
+  - The small 8B model mostly ignores the extra rules. Whether a cloud model follows them is still to measure.
+- Both prompts made the same layout change on m3: the stat cards stretched to the full width, while the screenshot has 3 narrow cards.
+- Results (git-ignored): `samples/mocks/results/pages/single-local-2026-11-01T07-17-22-113Z/` and `single-strict-local-2026-11-01T07-26-04-476Z/`. Each has `review.html` with the pictures.
+- **Still to run:**
+  - S2C on the same 9 pages (blocked: Tailscale on Laptop B is logged out, so the Gateway can't start);
+  - the single call on cloud (Gemini);
+  - the user's score by eye.
