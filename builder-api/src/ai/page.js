@@ -6,7 +6,7 @@ const OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? "qwen3-vl:8b-instruct";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || null;
 export const pageModelName = {
   local: OLLAMA_MODEL,
-  cloud: process.env.GEMINI_PAGE_MODEL ?? process.env.GEMINI_MODEL ?? "gemini-3-flash-preview",
+  cloud: process.env.GEMINI_PAGE_MODEL ?? process.env.GEMINI_MODEL ?? "gemini-3.5-flash",
 };
 const TIMEOUT_MS = 600_000; // a whole page from a local 8B model can take several minutes
 

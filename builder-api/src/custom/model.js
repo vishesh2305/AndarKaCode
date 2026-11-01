@@ -4,7 +4,7 @@ const OLLAMA_URL = process.env.OLLAMA_URL ?? "http://localhost:11434";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || null;
 export const codeModelName = {
   local: process.env.OLLAMA_CODE_MODEL ?? "qwen2.5-coder:7b",
-  cloud: process.env.GEMINI_CODE_MODEL ?? process.env.GEMINI_MODEL ?? "gemini-3-flash-preview",
+  cloud: process.env.GEMINI_CODE_MODEL ?? process.env.GEMINI_MODEL ?? "gemini-3.5-flash",
 };
 const TIMEOUT_MS = 180_000;
 
