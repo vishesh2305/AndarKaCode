@@ -8,7 +8,7 @@
 // laptop is tested on the same spec. Results go to samples/mocks/results/pages/<run>/.
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { contractHash } from "../../shared/hash.mjs";
 import { buildPage } from "../src/ai/page.js";
@@ -90,7 +90,8 @@ const rows = [];
 async function save() {
   await writeFile(path.join(outDir, "results.json"), JSON.stringify(rows, null, 2) + "\n");
   await writeFile(path.join(outDir, "results.md"), `# Page exam: ${runId}\n\n${resultsTable(rows)}`);
-  await writeFile(path.join(outDir, "review.html"), reviewHtml(rows, { mocksDir: "../../.." }));
+  // The screenshots sit next to review.html: Safari won't show a local file from a parent folder.
+  await writeFile(path.join(outDir, "review.html"), reviewHtml(rows, { mocksDir: "." }));
 }
 
 console.log(`Page exam ${runId}`);
@@ -113,6 +114,7 @@ for (const [name, screens] of Object.entries(PAGE_CASES)) {
   for (const { screenshot: n } of spec.pages) {
     const screen = screens[n - 1];
     const row = { case: name, screen, page: n, method, mode: options.mode };
+    await copyFile(path.join(MOCKS, `${screen}.png`), path.join(outDir, `${screen}.png`));
     const started = Date.now();
     try {
       const { html, provider } = await BUILDERS[options.method]({ image: await shrunk(screen), instructions: pageInstructions(spec, n), hash });
