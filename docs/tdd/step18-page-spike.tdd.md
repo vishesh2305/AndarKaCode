@@ -230,3 +230,29 @@ Laptop B's `builder-api` has no `.env`, so the run took the Gateway's address an
 - **The single call drew every marker itself.** S2C missed 2. The binder repaired the "+ Add Product" one, but the Sign-up link on m4 stayed unmarked, so in production that page would fail the Verifier.
 - **The look is close on the pages compared so far.** The two m4 pages are nearly the same: both show the email placeholder as dark text, where the screenshot has it grey. The user's score by eye is still to come (S2C review: `samples/mocks/results/pages/s2c-local-2026-11-01T16-50-34-911Z/review.html`).
 - Still to run: the single call on cloud (Gemini) from the Mac.
+
+### Run 3: the single call on Gemini (`gemini-3.5-flash`, served as `gemini-3.6-flash`), from the Mac, same specs
+
+| Screenshot | Plain: seconds | Plain: markers / Check | Strict: seconds | Strict: markers / Check |
+|---|---|---|---|---|
+| m1-edit-delete | 32.7 | 5/5 pass | 37.0 | 5/5 pass |
+| m2-add-search-page | 60.1 | 11/11 pass | 94.4 | 11/11 pass |
+| m3-dashboard | 48.0 | 7/7 pass | 38.9 | 7/7 pass |
+| m4-login | 27.5 | **not built: "The model's answer has no HTML page"** | 18.6 | **1/4, fail** |
+| m5a-employees-dept | 27.8 | 4/4 pass | 46.8 | 4/4 pass |
+| m5b-departments | 15.1 | 3/3 pass | 17.4 | 3/3 pass |
+| m6-approve | 37.8 | 6/6 pass | 26.6 | 6/6 pass |
+| m7-custom-buttons | 50.2 | 6/6 pass | 37.1 | 6/6 pass |
+| m8-staff-raise | 25.9 | 5/5 pass | 23.5 | 5/5 pass |
+| **Total** | **325.1 s** (8/9 built) | **47/47, 8/8** | **340.3 s** | **48/51, 8/9** |
+
+- **Gemini is faster than Laptop B's local model:** about 37 s a page, against 56 s for the single call and 96 s for S2C. But it's not the "a few seconds" hoped for. Gemini 3.x thinks before answering by default, which adds time; a low thinking budget is worth measuring.
+- **The login page (m4) failed with both prompts on Gemini.** Every other page passed. The cause isn't known yet: I couldn't ask Gemini again, see the next point.
+- **The free tier allows 20 requests a day per key for this model** (`generate_content_free_tier_requests, limit: 20, model: gemini-3.6-flash`). These two runs used 18, and the third of my checks was refused with 429. For production that means:
+  - one free key builds only about 2 apps a day;
+  - managed models need a paid key;
+  - BYOK users on a free key will hit 429, so the product must say so clearly.
+- Model check on 1 Nov 2026:
+  - `gemini-2.5-flash` returns 404 for new users;
+  - `gemini-3.8-flash` gave no answer in 90 s;
+  - `gemini-3.5-flash` answered in 2.1 s and is now the default (`a0ede95` RED, `ea4ec8a` GREEN, unit 357/357).
