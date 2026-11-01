@@ -1,13 +1,18 @@
 // Step 18.1: the page exam with a REAL page builder (src/eval/pages.js has the tested parts).
-// Usage (builder-api/): npm run eval:pages -- [--method s2c|single] [--mode local|cloud|auto] [--read local|cloud|auto] [caseName]
+// Usage (builder-api/): npm run eval:pages -- [--method s2c|single] [--mode local|cloud|auto] [--read local|cloud|auto]
+//                        [--prompt plain|strict] [--specs-only] [caseName]
+// --specs-only reads and keeps the specs, and builds no pages. Each built page also gets a picture from
+// headless Chrome/Edge (SHOT_BROWSER to choose one), shown in review.html next to the screenshot.
 // Not part of `npm test`: model output varies and a page takes minutes.
 // Each case's spec is read once and kept in samples/mocks/specs/ (commit it), so every method and every
 // laptop is tested on the same spec. Results go to samples/mocks/results/pages/<run>/.
+import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { contractHash } from "../../shared/hash.mjs";
 import { buildPage } from "../src/ai/page.js";
-import { PAGE_CASES, parseArgs, resultsTable, reviewHtml, runHash, scorePage } from "../src/eval/pages.js";
+import { browserCandidates, PAGE_CASES, parseArgs, resultsTable, reviewHtml, runHash, scorePage, shotArgs } from "../src/eval/pages.js";
 import { getFrontend, submitFrontend } from "../src/gateway-client.js";
 import { checkSpec } from "../src/spec/check.js";
 import { deriveSpec } from "../src/spec/derive.js";
@@ -21,9 +26,10 @@ const POLL_MS = 2000;
 const MAX_WAIT_MS = 15 * 60_000; // a local page can take 5 min; anything past 15 min counts as failed
 
 const options = parseArgs(process.argv.slice(2));
-const runId = `${options.method}-${options.mode}-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+const method = options.prompt === "strict" ? `${options.method}-strict` : options.method;
+const runId = `${method}-${options.mode}-${new Date().toISOString().replace(/[:.]/g, "-")}`;
 const outDir = path.join(MOCKS, "results/pages", runId);
-await mkdir(outDir, { recursive: true });
+if (!options.specsOnly) await mkdir(outDir, { recursive: true });
 
 const shrunk = async (screen) => (await shrinkScreenshot(await readFile(path.join(MOCKS, `${screen}.png`)))).data;
 
@@ -66,8 +72,19 @@ const BUILDERS = {
     throw new Error(`no page after ${MAX_WAIT_MS / 60_000} min`);
   },
   // One model call from this computer: Ollama here for local, Gemini for cloud (no Gateway, no Laptop B).
-  single: ({ image, instructions }) => buildPage({ imageB64: image.toString("base64"), instructions, mode: options.mode }),
+  single: ({ image, instructions }) => buildPage({ imageB64: image.toString("base64"), instructions, mode: options.mode, strict: options.prompt === "strict" }),
 };
+
+const browser = browserCandidates(process.platform, process.env).find((p) => existsSync(p));
+
+/** A 1280x800 picture of the built page, or null (no browser, or it failed: the review shows the live page). */
+async function shoot(file) {
+  if (!browser) return null;
+  const png = file.replace(/\.html$/, ".png");
+  const args = shotArgs({ html: path.join(outDir, file), png: path.join(outDir, png) });
+  const ok = await new Promise((resolve) => execFile(browser, args, { timeout: 60_000 }, (err) => resolve(!err)));
+  return ok && existsSync(path.join(outDir, png)) ? png : null;
+}
 
 const rows = [];
 async function save() {
@@ -77,6 +94,7 @@ async function save() {
 }
 
 console.log(`Page exam ${runId}`);
+if (!options.specsOnly && !browser) console.log("No Chrome or Edge found (set SHOT_BROWSER): the review shows live pages, no pictures.");
 for (const [name, screens] of Object.entries(PAGE_CASES)) {
   if (options.only && name !== options.only) continue;
   console.log(`\n${name}`);
@@ -87,18 +105,23 @@ for (const [name, screens] of Object.entries(PAGE_CASES)) {
     console.log(`  FAILED to get a spec: ${err.message.slice(0, 300)}`);
     continue;
   }
+  if (options.specsOnly) {
+    console.log(`  spec ready: ${spec.pages.length} page(s), entities ${spec.entities.map((e) => e.name).join(", ")}`);
+    continue;
+  }
   const hash = runHash(contractHash(spec), runId);
   for (const { screenshot: n } of spec.pages) {
     const screen = screens[n - 1];
-    const row = { case: name, screen, page: n, method: options.method, mode: options.mode };
+    const row = { case: name, screen, page: n, method, mode: options.mode };
     const started = Date.now();
     try {
       const { html, provider } = await BUILDERS[options.method]({ image: await shrunk(screen), instructions: pageInstructions(spec, n), hash });
       row.seconds = (Date.now() - started) / 1000;
       row.provider = provider;
-      row.file = `${screen}.${options.method}.html`;
+      row.file = `${screen}.${method}.html`;
       await writeFile(path.join(outDir, row.file), html);
       Object.assign(row, await scorePage({ spec, n, html }));
+      row.shot = await shoot(row.file);
       console.log(`  page ${n}: ${row.seconds.toFixed(1)} s, markers ${row.present}/${row.total}, Check after repair ${row.check} (${provider})`);
     } catch (err) {
       row.seconds = (Date.now() - started) / 1000;
@@ -110,4 +133,5 @@ for (const [name, screens] of Object.entries(PAGE_CASES)) {
   }
 }
 
+if (options.specsOnly) process.exit(0);
 console.log(`\n${rows.filter((r) => !r.error).length}/${rows.length} pages built. Open to score by eye:\n  ${path.join(outDir, "review.html")}`);

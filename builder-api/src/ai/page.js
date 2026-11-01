@@ -10,15 +10,19 @@ export const pageModelName = {
 };
 const TIMEOUT_MS = 600_000; // a whole page from a local 8B model can take several minutes
 
+// Step 18.3: what both builders got wrong on m1 (buttons restyled, "52,000" -> "52000", headers in UPPERCASE).
+const STRICT_RULES = `- Copy every button's style as it is: filled or outlined, its exact background, border and text colours, and its corners. Never make an outlined grey button a filled coloured one.
+- Keep the text letter for letter: numbers keep their format (52,000 stays 52,000, never 52000) and words keep their letter case (never turn headers into UPPERCASE unless the screenshot shows them that way).`;
+
 /** The request: the same goals Screenshot-to-Code gives its model, plus our page instructions (markers). */
-export function pagePrompt(instructions) {
+export function pagePrompt(instructions, { strict = false } = {}) {
   return `Build a web page that looks exactly like the screenshot.
 
 - Use the exact text from the screenshot: headings, labels, column names, button text and sample rows.
 - Match the layout, spacing, colours and font sizes as closely as you can.
 - Write one single HTML file. Use Tailwind with this script: <script src="https://cdn.tailwindcss.com"></script>
 - For images and icons, use simple inline SVG or a plain coloured box; never embed the screenshot itself.
-
+${strict ? STRICT_RULES + "\n" : ""}
 ${instructions}
 
 Answer with only the complete HTML, from <!DOCTYPE html> to </html>, in one \`\`\`html block.`;
@@ -79,8 +83,8 @@ async function cloud({ prompt, imageB64 }) {
 export const pageProviders = { local, cloud };
 
 /** One page: { html, provider }. auto = local first, then cloud if local fails or gives no page. */
-export async function buildPage({ imageB64, instructions, mode, providers = pageProviders }) {
-  const prompt = pagePrompt(instructions);
+export async function buildPage({ imageB64, instructions, mode, strict = false, providers = pageProviders }) {
+  const prompt = pagePrompt(instructions, { strict });
   let lastError;
   for (const provider of mode === "auto" ? ["local", "cloud"] : [mode]) {
     try {

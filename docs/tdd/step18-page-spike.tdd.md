@@ -8,7 +8,7 @@
 |---|---|---|
 | 18.1 | The page exam: `npm run eval:pages` | ✅ built; works on the Mac (S2C built m1 through Laptop B) |
 | 18.2 | The single-call page builder (`--method single`) | ✅ built; first real page on Laptop B; waiting for the Mac check |
-| 18.3 | Both methods on all 8 mocks, scored by eye | to do |
+| 18.3 | Both methods on all 8 mocks, scored by eye | exam tools built (strict prompt, `--specs-only`, page pictures); waiting for the specs from the Mac |
 | 18.4 | The decision | to do |
 
 ## 18.1: The page exam
@@ -136,3 +136,48 @@ npm run eval:pages -- --method single --mode local --read local m1-edit-delete
 - The earlier "104–194 s" for S2C came from bigger pages, so the 54.1 s single-call run above isn't a fair comparison.
 - Neither builder copies button styles exactly. A stricter prompt about colours and styles is worth trying in 18.3.
 - One simple page only: no decision until 18.3 covers all 8 mocks. The user's score by eye still has to be added.
+
+## 18.3: Both builders on all 8 mocks
+
+### What was added to the exam first
+
+```
+npm run eval:pages -- [--method s2c|single] [--mode ...] [--read ...] [--prompt plain|strict] [--specs-only] [caseName]
+```
+
+- **`--specs-only`**: reads and keeps each case's spec, builds no pages and writes no results folder. That's how the Mac reads the specs for m2–m8, so every run compares on the same specs.
+- **`--prompt strict`** (single call only): two more rules in the prompt.
+  - Copy every button's style as it is: filled or outlined, colours, corners.
+  - Keep the text letter for letter: `52,000` stays `52,000`, and no UPPERCASE headers unless the screenshot has them.
+
+  Everything else in the prompt is the same, so a strict run against a plain run measures only these rules. The run is named `single-strict-...`. With `--method s2c` it's refused, because S2C writes its own prompt.
+- **A picture of every built page**: headless Chrome or Edge (`SHOT_BROWSER` to choose one) saves a 1280×800 PNG next to the page. `review.html` shows that picture beside the screenshot, and clicking it opens the live page. With no browser, the review shows the live page as before.
+
+### Tests
+
+RED (`aa08381`): `node --test test/eval-pages.test.js test/page-model.test.js` gives:
+- `does not provide an export named 'browserCandidates'`;
+- the 3 strict-prompt tests failing.
+
+GREEN: the same command gives `tests 41, pass 41, fail 0`. The full unit suite is **356/356**.
+
+| # | What is guaranteed | Test | Result |
+|---|---|---|---|
+| 1 | Defaults now include `prompt: "plain"` and `specsOnly: false` | `parseArgs: defaults…`, `takes the method…` | PASS |
+| 2 | `--prompt strict` is accepted for the single call | `parseArgs: takes the strict prompt…` | PASS |
+| 3 | The strict prompt is refused for S2C, and the error says why | `parseArgs: refuses the strict prompt for S2C…` | PASS |
+| 4 | `--specs-only` can be combined with one case | `parseArgs: can read and keep the specs only…` | PASS |
+| 5 | An unknown prompt is refused, and the error names the allowed ones | `parseArgs: refuses an unknown…` | PASS |
+| 6 | The review shows the page's picture, linked to the live page (no frame) | `reviewHtml: shows the browser's picture…` | PASS |
+| 7 | The picture is 1280×800, headless, after a time budget for Tailwind, with the page given as a file URL | `shotArgs: …` | PASS |
+| 8 | `SHOT_BROWSER` is tried first; Chrome/Edge on Windows and Chrome on a Mac are known | `browserCandidates: …` | PASS |
+| 9 | The strict prompt has the button-style rules | `pagePrompt strict: adds rules for button styles…` | PASS |
+| 10 | The strict prompt has the exact-text rules (number format, letter case) | `pagePrompt strict: adds rules for keeping text…` | PASS |
+| 11 | The strict prompt keeps every line of the plain one | `pagePrompt strict: keeps everything…` | PASS |
+| 12 | `buildPage({ strict: true })` sends the strict prompt | `buildPage: sends the strict prompt…` | PASS |
+
+### Checked on Laptop B
+
+- `--specs-only m1-edit-delete` → `spec ready: 1 page(s), entities employee`, and no results folder.
+- `--prompt strict` with S2C → `The strict prompt is for --method single (Screenshot-to-Code writes its own prompt)`.
+- The picture of the earlier m1 single-call page: Chrome found at `C:\Program Files\Google\Chrome\Application\chrome.exe`. The PNG took 1.1 s, and Tailwind styles were applied.
