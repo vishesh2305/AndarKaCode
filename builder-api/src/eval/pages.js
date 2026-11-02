@@ -23,16 +23,24 @@ export const PAGE_CASES = {
 export const METHODS = ["s2c", "single"]; // single: one model call per page (src/ai/page.js, Step 18.2)
 const MODES = ["local", "cloud", "auto"];
 const PROMPTS = ["plain", "strict"]; // strict: extra rules for button styles and exact text (Step 18.3)
+const THINKING = ["default", "low"]; // low: Gemini thinks less before answering (Step 18.4)
+const MAX_PARALLEL = 20;
 
-/** [--method s2c|single] [--mode ...] [--read ...] [--prompt plain|strict] [--specs-only] [case] */
+/** [--method s2c|single] [--mode ...] [--read ...] [--prompt plain|strict] [--thinking default|low] [--parallel N] [--specs-only] [case] */
 export function parseArgs(argv) {
-  const options = { method: "s2c", mode: "cloud", read: "auto", prompt: "plain", specsOnly: false, only: null };
+  const options = { method: "s2c", mode: "cloud", read: "auto", prompt: "plain", thinking: "default", parallel: 1, specsOnly: false, only: null };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    if (arg === "--method" || arg === "--mode" || arg === "--read" || arg === "--prompt") options[arg.slice(2)] = argv[++i];
+    if (["--method", "--mode", "--read", "--prompt", "--thinking"].includes(arg)) options[arg.slice(2)] = argv[++i];
+    else if (arg === "--parallel") options.parallel = Number(argv[++i]);
     else if (arg === "--specs-only") options.specsOnly = true;
     else options.only = arg;
   }
+  if (!Number.isInteger(options.parallel) || options.parallel < 1 || options.parallel > MAX_PARALLEL) {
+    throw new Error(`--parallel must be a whole number from 1 to ${MAX_PARALLEL}`);
+  }
+  if (!THINKING.includes(options.thinking)) throw new Error(`Unknown thinking "${options.thinking}": use ${THINKING.join(", ")}`);
+  if (options.thinking !== "default" && options.method !== "single") throw new Error("--thinking is for --method single (Screenshot-to-Code sets its own model options)");
   if (!METHODS.includes(options.method)) throw new Error(`Unknown method "${options.method}": use ${METHODS.join(", ")}`);
   for (const key of ["mode", "read"]) {
     if (!MODES.includes(options[key])) throw new Error(`Unknown ${key} "${options[key]}": use ${MODES.join(", ")}`);
@@ -67,6 +75,20 @@ export function browserCandidates(platform, env) {
     list.push("/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser");
   }
   return list;
+}
+
+/** worker(item, index) for every item, at most `limit` at a time; the results keep the items' order. */
+export async function runPool(items, limit, worker) {
+  const results = new Array(items.length);
+  let next = 0;
+  const lane = async () => {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await worker(items[i], i);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, lane));
+  return results;
 }
 
 /** The Gateway hands back a page it already drew for the same (image, hash): each run asks with its own hash. */

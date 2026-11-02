@@ -60,35 +60,53 @@ async function local({ prompt, imageB64 }) {
 // Gemini often answers 503 "high demand" for a few seconds; retry those, fail fast on anything else.
 const RETRY_DELAYS_MS = [2000, 5000, 10000];
 const TRANSIENT = new Set([500, 502, 503, 504]);
+// A 429 that asks for a short wait is the per-minute limit (pages built at the same time): wait, then retry.
+// A long wait is the daily limit (free tier: 20 requests a day): say so at once.
+const MAX_QUOTA_WAIT_S = 60;
 
-async function cloud({ prompt, imageB64 }) {
+/** The seconds a 429 asks us to wait (Gemini's RetryInfo.retryDelay, e.g. "37s"), or null. */
+export function quotaWait(data) {
+  const info = data?.error?.details?.find((d) => d["@type"]?.endsWith("RetryInfo"));
+  const seconds = parseFloat(info?.retryDelay);
+  return Number.isFinite(seconds) ? seconds : null;
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const hours = (s) => (s >= 3600 ? `${Math.round(s / 3600)} h` : `${Math.ceil(s / 60)} min`);
+
+async function cloud({ prompt, imageB64, thinking }) {
   if (!GEMINI_API_KEY) throw new Error("Cloud mode needs GEMINI_API_KEY in builder-api/.env");
+  const generationConfig = { temperature: 0.2, ...(thinking === "low" && { thinkingConfig: { thinkingLevel: "low" } }) };
   for (const delay of [...RETRY_DELAYS_MS, null]) {
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${pageModelName.cloud}:generateContent`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": GEMINI_API_KEY },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: "image/png", data: imageB64 } }] }],
-        generationConfig: { temperature: 0.2 },
+        generationConfig,
       }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     const data = await res.json();
     if (res.ok) return data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
-    if (delay === null || !TRANSIENT.has(res.status)) throw new Error(`Gemini ${res.status}: ${data.error?.message ?? JSON.stringify(data)}`);
-    await new Promise((r) => setTimeout(r, delay));
+    const wait = res.status === 429 ? quotaWait(data) : null;
+    if (wait !== null && wait > MAX_QUOTA_WAIT_S) {
+      throw new Error(`Gemini daily limit reached for this key: try again in about ${hours(wait)}, or use a paid key`);
+    }
+    if (delay === null || (wait === null && !TRANSIENT.has(res.status))) throw new Error(`Gemini ${res.status}: ${data.error?.message ?? JSON.stringify(data)}`);
+    await sleep(wait !== null ? wait * 1000 : delay);
   }
 }
 
 export const pageProviders = { local, cloud };
 
 /** One page: { html, provider }. auto = local first, then cloud if local fails or gives no page. */
-export async function buildPage({ imageB64, instructions, mode, strict = false, providers = pageProviders }) {
+export async function buildPage({ imageB64, instructions, mode, strict = false, thinking = "default", providers = pageProviders }) {
   const prompt = pagePrompt(instructions, { strict });
   let lastError;
   for (const provider of mode === "auto" ? ["local", "cloud"] : [mode]) {
     try {
-      return { html: extractHtml(await providers[provider]({ prompt, imageB64 })), provider };
+      return { html: extractHtml(await providers[provider]({ prompt, imageB64, thinking })), provider };
     } catch (err) {
       lastError = new Error(`${provider}: ${err.message}`);
     }

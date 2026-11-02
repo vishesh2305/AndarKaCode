@@ -1,6 +1,8 @@
 // Step 18.1: the page exam with a REAL page builder (src/eval/pages.js has the tested parts).
 // Usage (builder-api/): npm run eval:pages -- [--method s2c|single] [--mode local|cloud|auto] [--read local|cloud|auto]
-//                        [--prompt plain|strict] [--specs-only] [caseName]
+//                        [--prompt plain|strict] [--thinking default|low] [--parallel N] [--specs-only] [caseName]
+// --parallel N builds N pages at the same time (Step 18.4); the run prints its wall-clock time, which is
+// what a user waits for. --thinking low asks Gemini to think less before answering.
 // --specs-only reads and keeps the specs, and builds no pages. Each built page also gets a picture from
 // headless Chrome/Edge (SHOT_BROWSER to choose one), shown in review.html next to the screenshot.
 // Not part of `npm test`: model output varies and a page takes minutes.
@@ -12,7 +14,7 @@ import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { contractHash } from "../../shared/hash.mjs";
 import { buildPage } from "../src/ai/page.js";
-import { browserCandidates, PAGE_CASES, parseArgs, resultsTable, reviewHtml, runHash, scorePage, shotArgs } from "../src/eval/pages.js";
+import { browserCandidates, PAGE_CASES, parseArgs, resultsTable, reviewHtml, runHash, runPool, scorePage, shotArgs } from "../src/eval/pages.js";
 import { getFrontend, submitFrontend } from "../src/gateway-client.js";
 import { checkSpec } from "../src/spec/check.js";
 import { deriveSpec } from "../src/spec/derive.js";
@@ -26,8 +28,8 @@ const POLL_MS = 2000;
 const MAX_WAIT_MS = 15 * 60_000; // a local page can take 5 min; anything past 15 min counts as failed
 
 const options = parseArgs(process.argv.slice(2));
-const method = options.prompt === "strict" ? `${options.method}-strict` : options.method;
-const runId = `${method}-${options.mode}-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+const method = [options.method, options.prompt === "strict" && "strict", options.thinking === "low" && "low"].filter(Boolean).join("-");
+const runId = `${method}-${options.mode}${options.parallel > 1 ? `-p${options.parallel}` : ""}-${new Date().toISOString().replace(/[:.]/g, "-")}`;
 const outDir = path.join(MOCKS, "results/pages", runId);
 if (!options.specsOnly) await mkdir(outDir, { recursive: true });
 
@@ -72,7 +74,8 @@ const BUILDERS = {
     throw new Error(`no page after ${MAX_WAIT_MS / 60_000} min`);
   },
   // One model call from this computer: Ollama here for local, Gemini for cloud (no Gateway, no Laptop B).
-  single: ({ image, instructions }) => buildPage({ imageB64: image.toString("base64"), instructions, mode: options.mode, strict: options.prompt === "strict" }),
+  single: ({ image, instructions }) =>
+    buildPage({ imageB64: image.toString("base64"), instructions, mode: options.mode, strict: options.prompt === "strict", thinking: options.thinking }),
 };
 
 const browser = browserCandidates(process.platform, process.env).find((p) => existsSync(p));
@@ -87,53 +90,67 @@ async function shoot(file) {
 }
 
 const rows = [];
-async function save() {
-  await writeFile(path.join(outDir, "results.json"), JSON.stringify(rows, null, 2) + "\n");
-  await writeFile(path.join(outDir, "results.md"), `# Page exam: ${runId}\n\n${resultsTable(rows)}`);
-  // The screenshots sit next to review.html: Safari won't show a local file from a parent folder.
-  await writeFile(path.join(outDir, "review.html"), reviewHtml(rows, { mocksDir: "." }));
+let saving = Promise.resolve();
+// Pages finish in any order when built at the same time: one save at a time, rows in the exam's order.
+function save() {
+  saving = saving.then(async () => {
+    const done = rows.filter(Boolean);
+    await writeFile(path.join(outDir, "results.json"), JSON.stringify(done, null, 2) + "\n");
+    await writeFile(path.join(outDir, "results.md"), `# Page exam: ${runId}\n\n${resultsTable(done)}`);
+    // The screenshots sit next to review.html: Safari won't show a local file from a parent folder.
+    await writeFile(path.join(outDir, "review.html"), reviewHtml(done, { mocksDir: "." }));
+  });
+  return saving;
 }
 
-console.log(`Page exam ${runId}`);
+console.log(`Page exam ${runId}${options.parallel > 1 ? ` (${options.parallel} pages at a time)` : ""}`);
 if (!options.specsOnly && !browser) console.log("No Chrome or Edge found (set SHOT_BROWSER): the review shows live pages, no pictures.");
+
+// First every case's spec (fixed, or read once), then every page as one list of jobs.
+const jobs = [];
 for (const [name, screens] of Object.entries(PAGE_CASES)) {
   if (options.only && name !== options.only) continue;
-  console.log(`\n${name}`);
   let spec;
   try {
     spec = await fixedSpec(name, screens);
   } catch (err) {
-    console.log(`  FAILED to get a spec: ${err.message.slice(0, 300)}`);
+    console.log(`${name}: FAILED to get a spec: ${err.message.slice(0, 300)}`);
     continue;
   }
   if (options.specsOnly) {
-    console.log(`  spec ready: ${spec.pages.length} page(s), entities ${spec.entities.map((e) => e.name).join(", ")}`);
+    console.log(`${name}: spec ready: ${spec.pages.length} page(s), entities ${spec.entities.map((e) => e.name).join(", ")}`);
     continue;
   }
   const hash = runHash(contractHash(spec), runId);
-  for (const { screenshot: n } of spec.pages) {
-    const screen = screens[n - 1];
-    const row = { case: name, screen, page: n, method, mode: options.mode };
-    await copyFile(path.join(MOCKS, `${screen}.png`), path.join(outDir, `${screen}.png`));
-    const started = Date.now();
-    try {
-      const { html, provider } = await BUILDERS[options.method]({ image: await shrunk(screen), instructions: pageInstructions(spec, n), hash });
-      row.seconds = (Date.now() - started) / 1000;
-      row.provider = provider;
-      row.file = `${screen}.${method}.html`;
-      await writeFile(path.join(outDir, row.file), html);
-      Object.assign(row, await scorePage({ spec, n, html }));
-      row.shot = await shoot(row.file);
-      console.log(`  page ${n}: ${row.seconds.toFixed(1)} s, markers ${row.present}/${row.total}, Check after repair ${row.check} (${provider})`);
-    } catch (err) {
-      row.seconds = (Date.now() - started) / 1000;
-      row.error = err.message.slice(0, 300);
-      console.log(`  page ${n}: FAILED after ${row.seconds.toFixed(1)} s: ${row.error}`);
-    }
-    rows.push(row);
-    await save(); // after every page, so a stopped run keeps what it measured
-  }
+  for (const { screenshot: n } of spec.pages) jobs.push({ name, screen: screens[n - 1], n, spec, hash });
 }
-
 if (options.specsOnly) process.exit(0);
-console.log(`\n${rows.filter((r) => !r.error).length}/${rows.length} pages built. Open to score by eye:\n  ${path.join(outDir, "review.html")}`);
+
+const runStarted = Date.now();
+await runPool(jobs, options.parallel, async ({ name, screen, n, spec, hash }, i) => {
+  const row = { case: name, screen, page: n, method, mode: options.mode };
+  await copyFile(path.join(MOCKS, `${screen}.png`), path.join(outDir, `${screen}.png`));
+  const started = Date.now();
+  try {
+    const { html, provider } = await BUILDERS[options.method]({ image: await shrunk(screen), instructions: pageInstructions(spec, n), hash });
+    row.seconds = (Date.now() - started) / 1000;
+    row.provider = provider;
+    row.file = `${screen}.${method}.html`;
+    await writeFile(path.join(outDir, row.file), html);
+    Object.assign(row, await scorePage({ spec, n, html }));
+    row.shot = await shoot(row.file);
+    console.log(`${name} page ${n}: ${row.seconds.toFixed(1)} s, markers ${row.present}/${row.total}, Check after repair ${row.check} (${provider})`);
+  } catch (err) {
+    row.seconds = (Date.now() - started) / 1000;
+    row.error = err.message.slice(0, 300);
+    console.log(`${name} page ${n}: FAILED after ${row.seconds.toFixed(1)} s: ${row.error}`);
+  }
+  rows[i] = row;
+  await save(); // after every page, so a stopped run keeps what it measured
+});
+
+const wall = (Date.now() - runStarted) / 1000;
+const pageSum = rows.reduce((sum, r) => sum + r.seconds, 0);
+await writeFile(path.join(outDir, "results.md"), `# Page exam: ${runId}\n\nWall clock: ${wall.toFixed(1)} s for ${rows.length} pages, ${options.parallel} at a time (pages added up: ${pageSum.toFixed(1)} s)\n\n${resultsTable(rows)}`);
+console.log(`\n${rows.filter((r) => !r.error).length}/${rows.length} pages built in ${wall.toFixed(1)} s wall clock, ${options.parallel} at a time (pages added up: ${pageSum.toFixed(1)} s).`);
+console.log(`Open to score by eye:\n  ${path.join(outDir, "review.html")}`);
