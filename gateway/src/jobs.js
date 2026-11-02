@@ -1,26 +1,42 @@
 import { createHash, randomUUID } from "node:crypto";
-import { generateHtml, providerParams } from "./s2c-client.js";
 
 const sha256 = (text) => createHash("sha256").update(text).digest("hex");
 
-// Jobs live in memory: Laptop A owns the real state and resubmits if the Gateway restarts.
-export function createJobQueue({ wsUrl, ollamaUrl, geminiApiKey }) {
-  const jobs = new Map(); // jobId -> job
-  const jobIdByKey = new Map(); // same (image, contractHash, type) -> same job
-  const waiting = []; // jobIds, oldest first
-  let running = null; // jobId on the GPU right now
+/**
+ * The models a page is tried on, in order (Step 18.6): the job's model, once more, then the other model.
+ * auto = local first, then cloud (or local again when no cloud key is set).
+ */
+export function attemptPlan(mode, { hasCloud }) {
+  if (mode === "auto") return hasCloud ? ["local", "cloud"] : ["local", "local"];
+  if (mode === "cloud") return ["cloud", "cloud", "local"];
+  return hasCloud ? ["local", "local", "cloud"] : ["local", "local"];
+}
 
-  function submit({ image, instructions, contractHash, mode }) {
-    const key = sha256(`${sha256(image)}|${contractHash}|create`);
+/**
+ * Jobs live in memory: Laptop A owns the real state and resubmits if the Gateway restarts.
+ * builders: { single, s2c }, each ({ provider, image, instructions, onProgress }) -> { html, early }.
+ * limits: how many pages at once per lane. The local GPU draws one page at a time; the cloud model
+ * draws several (Step 23b). A job's lane is the model it starts on.
+ */
+export function createJobQueue({ builders, defaultBuilder = "single", limits = { local: 1, cloud: 4 }, hasCloud = false }) {
+  const jobs = new Map(); // jobId -> job
+  const jobIdByKey = new Map(); // same (image, contractHash, builder) -> same job
+  const waiting = []; // jobIds, oldest first
+  const running = { local: 0, cloud: 0 };
+  const laneOf = (job) => (job.mode === "cloud" ? "cloud" : "local");
+
+  function submit({ image, instructions, contractHash, mode, builder = defaultBuilder }) {
+    const key = sha256(`${sha256(image)}|${contractHash}|create|${builder}`);
     const existing = jobs.get(jobIdByKey.get(key));
     if (existing && existing.status !== "failed") return { job: existing, created: false };
 
     const job = {
       id: randomUUID(),
       status: "queued",
-      progress: "Waiting for the GPU",
+      progress: "Waiting for a free model",
       chars: 0,
       mode,
+      builder,
       provider: null,
       contractHash,
       html: null,
@@ -38,24 +54,35 @@ export function createJobQueue({ wsUrl, ollamaUrl, geminiApiKey }) {
     return { job, created: true };
   }
 
-  async function runNext() {
-    if (running || waiting.length === 0) return;
-    const job = jobs.get(waiting.shift());
-    running = job.id;
-    job.status = "running";
-    job.progress = "Starting Screenshot-to-Code";
-    job.startedAt = Date.now();
+  // Starts every waiting job whose lane has room, oldest first.
+  function runNext() {
+    for (let i = 0; i < waiting.length; ) {
+      const job = jobs.get(waiting[i]);
+      const lane = laneOf(job);
+      if (running[lane] >= (limits[lane] ?? 1)) {
+        i++;
+        continue;
+      }
+      waiting.splice(i, 1);
+      running[lane]++;
+      run(job).finally(() => {
+        running[lane]--;
+        runNext();
+      });
+    }
+  }
 
-    // auto = local first, then one cloud retry if a cloud key is configured.
-    const providers = job.mode === "auto" ? ["local", ...(geminiApiKey ? ["cloud"] : [])] : [job.mode];
-    for (const provider of providers) {
+  async function run(job) {
+    job.status = "running";
+    job.progress = job.builder === "s2c" ? "Starting Screenshot-to-Code" : "Drawing the page";
+    job.startedAt = Date.now();
+    for (const provider of attemptPlan(job.mode, { hasCloud })) {
       job.provider = provider;
       try {
-        const { html, early } = await generateHtml({
-          wsUrl,
-          imageDataUrl: job.input.image,
+        const { html, early = false } = await builders[job.builder]({
+          provider,
+          image: job.input.image,
           instructions: job.input.instructions,
-          provider: providerParams(provider, { ollamaUrl, geminiApiKey }),
           onProgress: ({ status, chars }) => {
             job.progress = status;
             job.chars = chars;
@@ -70,13 +97,10 @@ export function createJobQueue({ wsUrl, ollamaUrl, geminiApiKey }) {
         console.error(`Job ${job.id} ${job.error}`);
       }
     }
-
     job.status = job.html ? "done" : "failed";
     job.progress = job.html ? "Done" : "Failed";
     job.finishedAt = Date.now();
     delete job.input;
-    running = null;
-    runNext();
   }
 
   // What callers may see: never the input image, and the HTML only once it is done.
@@ -90,6 +114,7 @@ export function createJobQueue({ wsUrl, ollamaUrl, geminiApiKey }) {
       queuePosition: job.status === "queued" ? waiting.indexOf(job.id) + 1 : 0,
       seconds: job.startedAt ? Math.round((end - job.startedAt) / 1000) : 0,
       mode: job.mode,
+      builder: job.builder,
       provider: job.provider,
       contractHash: job.contractHash,
       ...(job.status === "done" && { finishedEarly: job.finishedEarly, html: job.html }),
@@ -101,6 +126,6 @@ export function createJobQueue({ wsUrl, ollamaUrl, geminiApiKey }) {
     submit,
     get: (id) => jobs.get(id),
     view,
-    queueLength: () => waiting.length + (running ? 1 : 0),
+    queueLength: () => waiting.length + running.local + running.cloud,
   };
 }
