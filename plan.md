@@ -3,7 +3,7 @@
 > **Design:** see [ARCHITECTURE.md](ARCHITECTURE.md) (v3.1, approved 16 Oct: Phase 1 builds exactly what the screenshots show; every backend part has visible evidence). This file is our **step-by-step to-do list**.
 > **Rule:** do one step, report back, then move on. Tick the box when its "Done when" is true.
 
-**Current step:** ▶ **Step 18: Page-generation spike** of the production plan ([docs/production-architecture.md](docs/production-architecture.md), Steps 18–51). Piece 18.1 (the page exam) is built; waiting for the Mac check.
+**Current step:** Stage 1b (speed now), Step 23: read screenshots at the same time. See [docs/production-architecture.md](docs/production-architecture.md) §7.
 
 > **28 Oct 2026:** the production plan replaces the old Steps 18–20 below. The old Step 18 (Sandbox) is now Step 33, the old Step 19 (GitHub) is now Step 48, and the rest of Step 17 (editing the spec in the UI) is now Step 38. The demo rehearsal (old Step 20) can still be done at any time.
 
@@ -118,3 +118,4 @@ Every step has four parts:
 | 29 Oct 2026 | Step 18.2 (TDD): single-call page builder `src/ai/page.js` (screenshot + our page instructions → one Ollama/Gemini call → one HTML page; cut-off answers are errors). First real page, Laptop B local: m1 in 54.1 s, markers 5/5, Check pass (S2C took 104–194 s per page earlier). Unit 345/345. |
 | 1 Nov 2026 | Step 18.3: single call vs S2C on all 9 pages (Laptop B local, Mac specs): single 507.6 s, markers 51/51, Check 9/9; S2C 868.4 s, 49/51, 8/9 (m4 Sign up missing). The strict prompt barely changes the look on the 8B model. Gemini: `gemini-2.5-flash` now 404 for new users and `gemini-3.8-flash` gave no answer in 90 s, so the default is now **`gemini-3.5-flash`** (answered in 2.1 s) for vision, pages and custom buttons. Unit 357/357. |
 | 2 Nov 2026 | Plan updated for speed first ([docs/production-architecture.md](docs/production-architecture.md) §7): Step 18 gets 18.4 (`--parallel`, `--thinking`), 18.5 (real runs) and 18.6 (decision: page-builder slot, `single` default, `s2c` kept). New **Stage 1b, speed now**: 23 screenshots read at once, 23b single call in the app with page concurrency, 23c custom buttons at once, 23d stage timer. Two servers in the same region, with a placement check in Step 28. Rule: every green piece is merged into `main`. |
+| 2 Nov 2026 | **Step 18 decided (18.6):** the single call is the default page builder, with S2C kept as an option; plain prompt; one retry, then the other model; pages at once per key. Step 19 is folded into 23d (stage timer) and 25 (metering). Working rules: Mac check once per stage; Claude merges into `main` when all suites pass on Laptop B (MongoDB installed there). **Current step: Stage 1b, Step 23.** |
