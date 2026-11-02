@@ -117,6 +117,10 @@ PRODUCTION (two servers, cloud models)
 ```
 
 - **Two free servers:** Oracle Cloud Always Free. The ARM allowance is split into 2 VMs (2 cores / 12 GB each), and they talk over Oracle's free private network. Check the current free-tier terms when signing up.
+- **Placement, for speed:** both servers in the **same region**, close to the users and to the model provider (for example Mumbai and Gemini's Asia endpoint), with Atlas and R2 in that region too.
+  - The servers talk only over the private network.
+  - Pages and blobs travel through the queue and R2, never as big uploads between the two servers.
+  - The distance costs milliseconds while a page costs tens of seconds, so running pages at the same time (Stage 1b) matters far more. Placement only has to avoid adding delay.
 - **The services are separate in the code, but grouped onto two machines.** Each service has its own folder, API and permissions. When there is revenue, each pool moves to its own machine, and later to managed Kubernetes, without rewriting anything.
 - **Queue:** jobs live in MongoDB. Workers claim a job with an atomic `findOneAndUpdate` (`queued → running`) plus a `leaseUntil` time; expired leases are picked up again. The existing `Job` model already has nearly every field this needs. The Sync Barrier stays as "all jobs for this contract hash are done".
 - **Repo layout after Stage 3:** `services/{api,orchestrator,ai-router,ui-worker,backend-worker,verifier}`, plus `shared/` (models, config, auth, schemas), `templates/`, `web/`, `gateway/` (dev only), `deploy/` (compose, CI).
@@ -256,7 +260,28 @@ Our templates are **building blocks**, not whole apps: model, list, search, filt
 | Step | What | Done when |
 |---|---|---|
 | **18** | **Page-generation spike:** a single model call per page vs S2C, on cloud models, across the 8 sample mocks | A table of time, markers present and how close it looks, with a decision |
-| **19** | **Cost and speed measurement:** tokens, seconds and cost per stage and per build; rate limits per key; blob sizes | `docs/economics.md` gives the cost per build, a draft of credit prices, and the speed target |
+| 18.1–18.3 | The page exam, the single-call builder, both builders on all 9 pages ([docs/tdd/step18-page-spike.tdd.md](tdd/step18-page-spike.tdd.md)) | ✅ Same specs, local: single 507.6 s, Check 9/9; S2C 868.4 s, Check 8/9. Gemini: ~37 s a page, m4 failed |
+| **18.4** | `--parallel N` and `--thinking low\|default` in the page exam; a 429 waits and tries again | Tests green; the exam can build N pages at once |
+| **18.5** | Real runs (paid key or after the daily reset): 9 pages one at a time vs all at once; default vs low thinking; why m4 fails on Gemini | A table with the time for 9 pages both ways |
+| **18.6** | **Decision:** the frontend lane has a page-builder slot, `single` (default) or `s2c` (kept as an option); a failed page gets one retry, then the other model; page concurrency per key | Written here, with the numbers |
+| **19** | **Cost and speed measurement:** tokens, seconds and cost per stage and per build; rate limits per key (requests per minute and per day, which cap pages at once); blob sizes | `docs/economics.md` gives the cost per build, a draft of credit prices, and the speed target |
+
+### Stage 1b: Speed now, in today's app (≈1 week). Added 2 Nov 2026
+Today the two lanes already start together (`Promise.all` in `orchestrator.js`), but three places inside them still work one at a time:
+- screenshots are read in a loop;
+- Laptop B's Gateway runs one page job at a time;
+- custom buttons are written in a loop.
+
+Fixing these is the biggest speed win, bigger than any server move, so it comes before the microservices.
+
+| Step | What | Done when |
+|---|---|---|
+| **23** | **Screenshots read at the same time** (moved here from Stage 2), keeping memory reuse and the "cloud if any screenshot needed it" rule; a version in every cache key | Reading 3 screenshots takes about as long as reading 1 |
+| **23b** | **The single call in the real app:** a page-builder setting (`single`/`s2c`). The Gateway gets a `single` job type and a concurrency setting: local GPU 1–2 at a time, cloud N at a time, halved on a 429 | A 3-page cloud build runs its pages at the same time |
+| **23c** | **Custom buttons written at the same time,** with a limit, each on its own test database | 3 custom buttons take about as long as 1 |
+| **23d** | **A timer per stage on each project** (read, spec, each page, backend, barrier, wire, check), and "built in N s" in the UI | Every READY project shows its stage times and names the slower lane |
+
+Stage 1b is done when a 3-page cloud build on the two laptops meets the Step 19 speed target, and the stage times prove that both lanes overlap.
 
 ### Stage 2: Foundation, still one process (≈1.5 weeks)
 | Step | What | Done when |
@@ -264,7 +289,6 @@ Our templates are **building blocks**, not whole apps: model, list, search, filt
 | **20** | Config module (fails fast on missing settings), `/healthz` and `/readyz`, JSON logs | All suites green; a missing setting gives a clear error at start |
 | **21** | Storage interface (`local` or `r2`) for screenshots and artifacts; **memory payloads become compressed blobs named by their hash, and MongoDB keeps only index rows** (M1) | READY with each storage setting; each memory row under 1 KB |
 | **22** | Job queue plus project leases in MongoDB, replacing the in-memory `active`/`rerun` sets | Killing a build mid-way and restarting finishes it once, never twice |
-| **23** | **Screenshots read in parallel**; a version in every cache key | Reading 3 screenshots takes about as long as reading 1 |
 
 ### Stage 3: Microservices, two servers simulated on the Mac (≈2 weeks)
 | Step | What | Done when |
@@ -273,7 +297,7 @@ Our templates are **building blocks**, not whole apps: model, list, search, filt
 | **25** | `ai-router` service: adapters (Gemini, Ollama, then OpenAI, Anthropic, Groq, OpenRouter), slots, token metering | Every AI call goes through it, with tokens and seconds recorded on the Job |
 | **26** | `ui-worker` (the method chosen in Step 18), with Laptop B as the `local-gpu` dev provider | 3 pages are built at the same time |
 | **27** | `backend-worker` and `verifier` services | The backend is built at the same time as the pages; the Barrier still waits for both |
-| **28** | Compose profiles `server-1` and `server-2`; a test that kills a worker mid-build; **fingerprint bands for near-duplicate search** (M3) | Builds survive a killed worker; a test with 100,000 entries still finds the near-duplicate fast |
+| **28** | Compose profiles `server-1` and `server-2`; a test that kills a worker mid-build; **fingerprint bands for near-duplicate search** (M3); **a placement check:** the delay between the two servers must stay under about 5 ms | Builds survive a killed worker; a test with 100,000 entries still finds the near-duplicate fast; the servers can't be split across regions by accident |
 
 ### Stage 4: Users and keys (≈2 weeks)
 | Step | What | Done when |
@@ -369,7 +393,9 @@ Plus a check on the Mac after every step.
 
 | Risk | Level | What we do about it |
 |---|---|---|
-| Single-call pages worse than S2C | High | Step 18 decides before any rewrite; S2C could also run on the Frontend server calling cloud models |
+| Single-call pages worse than S2C | Low now | Step 18.3 measured it: the single call was faster, with more markers, on the same specs; S2C stays as an option in the page-builder slot |
+| Gemini free tier: 20 requests a day per key, few per minute | Certain | Paid key for measurements and managed builds; BYOK users see a clear "daily limit reached" message; adaptive concurrency per key (Steps 23b, 32) |
+| Laptop B's 8 GB GPU can't draw many pages at once | High | Local concurrency 1–2; Laptop B is for development and demos only |
 | Free AI quotas / BYOK model quality | High | BYOK, several providers, verified-models list, Check report |
 | AI code escapes the sandbox | High | Stage 5 before any outside user |
 | Data leaking between users (including the cache) | High | Isolation tests (Step 30); content-hash dedupe never implies reuse |
