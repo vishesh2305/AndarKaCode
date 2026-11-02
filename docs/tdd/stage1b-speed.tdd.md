@@ -15,7 +15,7 @@
 | 23 | Screenshots read at the same time | ✅ |
 | 23b | The single call in the real app, with pages at the same time | ✅ |
 | 23c | Custom buttons written at the same time | ✅ |
-| 23d | A timer per stage, and "built in N s" | to do |
+| 23d | A timer per stage, and "built in N s" | ✅ |
 
 ## Step 23: Screenshots read at the same time
 
@@ -128,3 +128,33 @@ GREEN, on Laptop B: `custom-all` 6/6, unit **381/381**, integration **118/118**.
 | 5 | Each button gets its index; the results keep the buttons' order | `writeButtons: gives each button its index…` | PASS |
 | 6 | One button that can't be written does not stop the others | `writeButtons: one button that can't be written…` | PASS |
 | 7 | In the real pipeline, a written button and a refused one in one project still end as before; memory and library reuse unchanged | `integration/pipeline.test.js` (custom buttons, memory, library) | PASS |
+
+## Step 23d: Build time and the slower lane
+
+Each station already showed its own time (from its job's `startedAt`/`finishedAt`). `pipelineStatus` in `web/src/pipeline.js` now adds to the Ready station:
+- **`builtIn`:** the seconds from the upload (`project.createdAt`) to the end of the Check;
+- **`lanes`:** each lane's time from the moment the lanes start, and `slower`, the lane the app waited for.
+
+The Ready station lists them as "Built in", "Pages lane", "Backend lane" and "Waited for".
+
+### Tests
+
+RED (`69e2a32`): `web node --test test/pipeline.test.js` gives 5 failing tests.
+
+GREEN: web **29/29**, and the build works.
+
+| # | What is guaranteed | Test (`web/test/pipeline.test.js`) | Result |
+|---|---|---|---|
+| 1 | Build time = from the upload to the end of the Check | `says how long the build took…` | PASS |
+| 2 | The pages lane is named when the app waited for its pages | `names the pages lane…` | PASS |
+| 3 | The backend lane is named when custom buttons took longer | `names the backend lane…` | PASS |
+| 4 | No total and no lanes before Ready | `has no total and no lanes before the app is Ready` | PASS |
+| 5 | The Ready station lists the build time, both lanes and the slower one | `the Ready station lists the build time…` | PASS |
+
+**On the real m5 build (3 Nov, Laptop B, local):** `builtIn: 108`, `lanes: { pages: 75, backend: 0, slower: "pages" }`, shown as "Built in 108 s · Pages lane 75 s · Backend lane 0 s · Waited for: the pages (Laptop B)".
+
+## Stage 1b: where it stands
+
+- **Built:** 23, 23b, 23c and 23d, each test-first and merged into `main`.
+- **Measured on Laptop B (local model, one GPU):** m5 (2 screenshots) was READY in **108 s**, and the app waited for the pages lane.
+- **Not measured yet:** "a 3-page cloud build is READY in under 2 minutes". The Gemini free key was at its daily limit. It needs the Mac (its own key) or a paid key; the Ready station now shows the number by itself.

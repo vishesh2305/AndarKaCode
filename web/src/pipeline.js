@@ -109,8 +109,24 @@ export function pipelineStatus(project, now = Date.now()) {
     checks: report ? [...report.checks].sort((a, b) => RANK[a.status] - RANK[b.status]) : [],
   };
 
-  // Ready: every check passed; the app can be downloaded.
-  stations.ready = { status: state === "READY" ? "done" : "waiting" };
+  // Ready: every check passed; the app can be downloaded. Step 23d: how long it took from the upload,
+  // and which lane the app waited for (both lanes start together; the later one decides).
+  const isReady = state === "READY";
+  const endOf = (list) => Math.max(...list.map((j) => Date.parse(j.finishedAt)));
+  const laneStart = backend && pageJobs.length ? Math.min(...[backend, ...pageJobs].map((j) => Date.parse(j.startedAt))) : null;
+  const lanes =
+    isReady && laneStart !== null
+      ? {
+          pages: Math.round((endOf(pageJobs) - laneStart) / 1000),
+          backend: Math.round((endOf([backend]) - laneStart) / 1000),
+        }
+      : null;
+  if (lanes) lanes.slower = lanes.pages >= lanes.backend ? "pages" : "backend";
+  stations.ready = {
+    status: isReady ? "done" : "waiting",
+    builtIn: isReady && project.createdAt && verify?.finishedAt ? Math.round((Date.parse(verify.finishedAt) - Date.parse(project.createdAt)) / 1000) : null,
+    lanes,
+  };
 
   const order = ["read", "plan", "pages", "backend", "sync", "wire", "verify"];
   const current =
