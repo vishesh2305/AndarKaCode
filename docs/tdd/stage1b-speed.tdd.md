@@ -14,7 +14,7 @@
 |---|---|---|
 | 23 | Screenshots read at the same time | ✅ |
 | 23b | The single call in the real app, with pages at the same time | ✅ |
-| 23c | Custom buttons written at the same time | to do |
+| 23c | Custom buttons written at the same time | ✅ |
 | 23d | A timer per stage, and "built in N s" | to do |
 
 ## Step 23: Screenshots read at the same time
@@ -105,3 +105,26 @@ The whole chain ran on Laptop B: Builder API, MongoDB, the new Gateway (`pageBui
 - **READY 109 s after the upload.**
 - Both pages were sent at once. The local lane drew them one after the other, as designed (one GPU). On cloud they would overlap.
 - For the same two pages, S2C took 112.6 s on 1 Nov (18.3), against about 75 s here.
+
+## Step 23c: Custom buttons written at the same time
+
+`backendBranch` in `orchestrator.js` now writes every custom button at the same time, through `writeButtons` in `src/custom/all.js`, at most `CUSTOM_PARALLEL` at once (default 3).
+- **Separate test databases.** A button's test press empties its database first, so two buttons can't share one. Each button now gets its own database, `custom_<project>_<n>` (`buttonDatabase`); before this, all buttons used `custom_<project>`.
+- **No clash in the app folder.** Each button writes only its own `backend/custom/<name>.js`, and the generated app reads a button's code only when that button is pressed (`custom-runtime.js` reads the file, then runs it in a worker), so one button's broken attempt can't break another's test. Each test app picks its own port.
+- The results keep the buttons' order, so the job's `custom` list, the regenerated `tests/api.test.js` and the UI see them as before.
+
+### Tests
+
+RED (`c74182f`): `node --test test/custom-all.test.js` gives `Cannot find module '.../src/custom/all.js'`.
+
+GREEN, on Laptop B: `custom-all` 6/6, unit **381/381**, integration **118/118**.
+
+| # | What is guaranteed | Test | Result |
+|---|---|---|---|
+| 1 | Every button of a project gets its own database, different across projects too | `buttonDatabase: is different…` | PASS |
+| 2 | The name fits MongoDB's 63-character limit | `buttonDatabase: fits MongoDB's name limit…` | PASS |
+| 3 | Every button starts before the first one is done | `writeButtons: starts writing every button…` | PASS |
+| 4 | Never more than `limit` at once | `writeButtons: never writes more than limit…` | PASS |
+| 5 | Each button gets its index; the results keep the buttons' order | `writeButtons: gives each button its index…` | PASS |
+| 6 | One button that can't be written does not stop the others | `writeButtons: one button that can't be written…` | PASS |
+| 7 | In the real pipeline, a written button and a refused one in one project still end as before; memory and library reuse unchanged | `integration/pipeline.test.js` (custom buttons, memory, library) | PASS |

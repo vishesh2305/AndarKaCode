@@ -5,6 +5,7 @@ import path from "node:path";
 import { contractHash } from "../../shared/hash.mjs";
 import { checkCustomCode } from "./custom/safety.js";
 import { pressOnce } from "./custom/tester.js";
+import { buttonDatabase, writeButtons } from "./custom/all.js";
 import { writeCustomCode, writtenButtons } from "./custom/writer.js";
 import { generateBackend, writeBackend } from "./generator/index.js";
 import { origin, recall, recallLibrary, recallSimilarPage, rememberProject } from "./memory/index.js";
@@ -174,7 +175,8 @@ async function frontendBranch(project, contract, n) {
 }
 
 // Backend branch: the template generator (no AI, deterministic). Writes runs/<id>/app/v<N>/.
-// Then each custom button gets its code from the coding AI (Step 13), one at a time, tried in that app.
+// Then every custom button gets its code from the coding AI (Step 13), all at the same time (Step 23c),
+// each tried in that app on its own throwaway database.
 // A button whose code never passes is left out: it answers "not available yet" and the rest still works.
 async function backendBranch(project, contract) {
   const existing = await Job.findOne({ projectId: project._id, kind: "backend", contractHash: contract.hash, status: "done" });
@@ -190,10 +192,10 @@ async function backendBranch(project, contract) {
 
     const customOps = spec.operations.filter((op) => op.kind === "custom");
     if (!customOps.length) return job;
-    job.custom = [];
-    for (const op of customOps) {
+    // Every button at the same time (Step 23c), each pressed on its own throwaway database.
+    job.custom = await writeButtons(customOps, { writeOne: async (op, i) => {
       const started = Date.now();
-      const mongoUri = databaseUri(MONGODB_URI, `custom_${project.id}`);
+      const mongoUri = databaseUri(MONGODB_URI, buttonDatabase(project.id, i));
       const test = (code) => pressOnce({ spec, op, appDir: dir, mongoUri, code });
       // Verified code from memory is pressed in this app first (Step 14): the same button on the same kind of
       // table, else the same button on a table whose fields still fit the code (the library). Only if none
@@ -212,7 +214,7 @@ async function backendBranch(project, contract) {
       }
       result ??= await writeCustomCode({ spec, op, mode: project.mode, test });
       if (!result.ok) await rm(path.join(dir, "backend", "custom", `${op.name}.js`), { force: true });
-      job.custom.push({
+      return {
         operation: op.name,
         button: op.button,
         ok: result.ok,
@@ -221,8 +223,8 @@ async function backendBranch(project, contract) {
         seconds: Math.round((Date.now() - started) / 100) / 10,
         ...(result.fromMemory && { fromMemory: result.fromMemory }),
         ...(result.problem && { problem: result.problem.slice(0, 500) }),
-      });
-    }
+      };
+    } });
     const written = job.custom.filter((c) => c.ok);
     if (written.length) {
       job.provider = written.some((c) => c.provider === "cloud") ? "cloud" : "local";
