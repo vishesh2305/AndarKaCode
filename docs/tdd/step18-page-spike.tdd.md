@@ -256,3 +256,52 @@ Laptop B's `builder-api` has no `.env`, so the run took the Gateway's address an
   - `gemini-2.5-flash` returns 404 for new users;
   - `gemini-3.8-flash` gave no answer in 90 s;
   - `gemini-3.5-flash` answered in 2.1 s and is now the default (`a0ede95` RED, `ea4ec8a` GREEN, unit 357/357).
+
+## 18.4: Pages at the same time, low thinking, and the per-minute limit
+
+```
+npm run eval:pages -- --method single [--mode ...] [--parallel N] [--thinking default|low] [caseName]
+```
+
+- **`--parallel N`** builds N pages at the same time (1–20). All cases' specs are fetched first; then every page goes into one list of jobs, which `runPool` works through N at a time.
+  - Results keep the exam's order, whichever page finishes first.
+  - Saves happen one at a time.
+  - The run prints and saves the **wall-clock time** (what a user waits for) next to the pages' times added up.
+  - The run is named `...-pN-...`.
+- **`--thinking low`** (single call only) asks Gemini for `thinkingConfig: { thinkingLevel: "low" }`. The run is named `single-low-...`.
+- **Gemini's 429:**
+  - With a retry delay of 60 s or less (the per-minute limit, hit when pages run at the same time), it waits that long and tries again.
+  - With a longer delay (the daily limit), it fails at once: `Gemini daily limit reached for this key: try again in about 14 h, or use a paid key`.
+  - With no delay given, the error stays as before (`Gemini 429: …`).
+
+### Tests
+
+RED (`cef34ea`): `node --test test/eval-pages.test.js test/page-model.test.js` gives:
+- `does not provide an export named 'runPool'`;
+- 6 failing tests in `page-model.test.js` (thinking not sent, 429 not waited on, `quotaWait` missing).
+
+GREEN: the same command gives `tests 53, pass 53, fail 0`. The full unit suite is **369/369**.
+
+| # | What is guaranteed | Test | Result |
+|---|---|---|---|
+| 1 | Defaults now include `thinking: "default"` and `parallel: 1`, so one page at a time, as before | `parseArgs: defaults…` | PASS |
+| 2 | `--parallel 9` is taken; 0, -2, 1.5, "many" and 21 are refused with the allowed range | `parseArgs: builds N pages…`, `refuses --parallel…` | PASS |
+| 3 | `--thinking low` is taken for the single call, refused for S2C, and an unknown value is refused | `parseArgs: takes --thinking low…` | PASS |
+| 4 | Never more than N pages at once, and the next starts as soon as one ends | `runPool: never runs more than N…` | PASS |
+| 5 | Results keep the items' order, whatever order they finish in | `runPool: keeps the results in the order…` | PASS |
+| 6 | N = 1 runs pages one after another, as before | `runPool: with N = 1…` | PASS |
+| 7 | Low thinking sends `thinkingConfig.thinkingLevel = "low"`; the default sends no thinking setting | `cloud: asks for low thinking…` | PASS |
+| 8 | A 429 with a short retry delay is waited on and retried | `cloud: waits and tries again on a per-minute limit` | PASS |
+| 9 | A 429 with a long delay fails at once, saying "daily limit" and the hours left | `cloud: fails at once on the daily limit…` | PASS |
+| 10 | `quotaWait` reads `retryDelay` ("37s" → 37, "0.5s" → 0.5); with none it gives null | `quotaWait: …` | PASS |
+| 11 | `buildPage` passes the thinking setting on to the model call | `buildPage: passes low thinking…` | PASS |
+
+### Checked on Laptop B (local model)
+
+- `--parallel 2 m5-relation`: both pages built and passed the Check (4/4 and 3/3).
+  - Page 2 finished first (42.5 s), page 1 after (79.7 s), and the review still lists page 1 first.
+  - **Wall clock 81.0 s, pages added up 122.3 s.** On Laptop B's single GPU the two pages share the GPU, so each one gets slower: one at a time they took 77.6 s in total on 1 Nov.
+  - This confirms the plan: **locally, 1–2 pages at a time; the real gain from running pages at once comes from cloud models** (to be measured in 18.5).
+  - The unit suite was running during this run, so these times are a little high.
+- `--parallel 0` gives `--parallel must be a whole number from 1 to 20`.
+- `--thinking low` with S2C gives `--thinking is for --method single (Screenshot-to-Code sets its own model options)`.
