@@ -77,19 +77,7 @@ export function browserCandidates(platform, env) {
   return list;
 }
 
-/** worker(item, index) for every item, at most `limit` at a time; the results keep the items' order. */
-export async function runPool(items, limit, worker) {
-  const results = new Array(items.length);
-  let next = 0;
-  const lane = async () => {
-    while (next < items.length) {
-      const i = next++;
-      results[i] = await worker(items[i], i);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, lane));
-  return results;
-}
+export { runPool } from "../pool.js";
 
 /** The Gateway hands back a page it already drew for the same (image, hash): each run asks with its own hash. */
 export const runHash = (contractHash, runId) => createHash("sha256").update(`${contractHash}|${runId}`).digest("hex");

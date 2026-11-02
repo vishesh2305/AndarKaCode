@@ -17,6 +17,7 @@ import { checkSpec } from "./spec/check.js";
 import { deriveSpec } from "./spec/derive.js";
 import { pageInstructions } from "./spec/instructions.js";
 import { readInventory } from "./spec/inventory.js";
+import { readScreenshots } from "./spec/read-all.js";
 import { REPO_ROOT, RUNS_DIR, saveArtifact } from "./storage.js";
 import { databaseUri, verifyApp } from "./verify/index.js";
 import { failureLine } from "./verify/report.js";
@@ -66,18 +67,13 @@ const screenshotsOf = (project) => (project.screenshots?.length ? project.screen
 // UPLOADED -> CONTRACT_DRAFT: each screenshot -> UI inventory; all inventories -> App Spec v1 (checked).
 async function contractStage(project) {
   const { body, hash } = await runJob(project, "contract", async (job) => {
-    const inventories = [];
-    const reused = [];
-    for (const shot of screenshotsOf(project)) {
-      // A screenshot read before, in a project that reached READY: its reading is reused (Step 14).
-      const memory = project.useMemory !== false && shot.sha256 ? await recall("inventory", inventoryKey(shot.sha256)) : null;
-      if (memory) reused.push(memory);
-      const { inventory, provider } = memory
-        ? { inventory: memory.payload, provider: memory.provider }
-        : await readInventory((await readFile(path.join(REPO_ROOT, shot.path))).toString("base64"), { mode: project.mode });
-      inventories.push(inventory);
-      if (job.provider !== "cloud") job.provider = provider; // "cloud" if any screenshot needed the backup
-    }
+    // All screenshots at the same time (Step 23). A screenshot read before, in a project that reached
+    // READY, takes its reading from memory (Step 14).
+    const { inventories, provider, reused } = await readScreenshots(screenshotsOf(project), {
+      recall: (shot) => (project.useMemory !== false && shot.sha256 ? recall("inventory", inventoryKey(shot.sha256)) : null),
+      read: async (shot) => readInventory((await readFile(path.join(REPO_ROOT, shot.path))).toString("base64"), { mode: project.mode }),
+    });
+    job.provider = provider; // "cloud" if any screenshot needed the backup
     if (reused.length) {
       job.fromMemory = { ...origin(reused[0]), count: reused.length, seconds: reused.reduce((s, m) => s + (m.seconds ?? 0), 0) };
     }
