@@ -1,3 +1,5 @@
+import { gatewayLight } from "../gateway-light.js";
+
 // Logo + one light per laptop, so you can see at a glance whether both are ready.
 function Light({ label, ok, detail }) {
   return (
@@ -10,13 +12,7 @@ function Light({ label, ok, detail }) {
 }
 
 export function Header({ health }) {
-  const gw = health?.gateway;
-  const gpuReady = gw ? gw.reachable && gw.s2cUp && gw.ollamaUp : null;
-  const gpuDetail = !gw
-    ? "checking…"
-    : !gw.reachable
-      ? `Not reachable: ${gw.error ?? "is the Gateway running?"}`
-      : `Screenshot-to-Code ${gw.s2cUp ? "up" : "down"}, GPU model ${gw.ollamaUp ? "up" : "down"}, ${gw.queueLength ?? 0} job(s) waiting`;
+  const { ok: gpuReady, detail: gpuDetail } = gatewayLight(health?.gateway);
 
   return (
     <header className="topbar">

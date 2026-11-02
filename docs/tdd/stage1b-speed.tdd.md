@@ -13,7 +13,7 @@
 | Step | What | Status |
 |---|---|---|
 | 23 | Screenshots read at the same time | ✅ |
-| 23b | The single call in the real app, with pages at the same time | to do |
+| 23b | The single call in the real app, with pages at the same time | ✅ |
 | 23c | Custom buttons written at the same time | to do |
 | 23d | A timer per stage, and "built in N s" | to do |
 
@@ -52,3 +52,56 @@ GREEN, all on Laptop B:
 ### Not measured yet
 
 The real time for "3 screenshots take about as long as 1" needs the cloud model. The Gemini free key was at its daily limit on 3 Nov (`429 … limit: 20`). Laptop B's local Ollama answers one request at a time, so it shows no gain there. The stage timer (23d) will measure it in every real build.
+
+## Step 23b: The single call in the real app, with pages at the same time
+
+- **`shared/page.mjs`:** the single-call builder moved here from `builder-api/src/ai/page.js`, which now only re-exports it. The page exam and the Gateway run the same code.
+- **`gateway/src/jobs.js`:**
+  - **Page builders:** `single` (the default, `PAGE_BUILDER` in `gateway/.env`) or `s2c`; a request may also name one.
+  - **Lanes:** the local GPU draws `LOCAL_PARALLEL` pages at once (default 1), the cloud model `CLOUD_PARALLEL` (default 4), and a cloud page never waits behind a local one.
+  - **Retries (`attemptPlan`, decision 18.6):** the job's model, once more, then the other model.
+  - **Dedup:** the same (image, spec, builder) gives the same job.
+- **`gateway/src/server.js`:** wires in the real builders. `/v1/health` now reports `pageBuilder` and `parallel`.
+- **`web/src/gateway-light.js`:** Laptop B's light is green with the single call even when Screenshot-to-Code isn't running. S2C is needed only when it is the page builder, or for an older Gateway with no `pageBuilder`.
+- The Gateway had no tests before this step; it now has `npm test` (14 tests).
+
+### Tests
+
+RED:
+- `68452e5`: `gateway npm test` gives `does not provide an export named 'attemptPlan'`;
+- `d21fcab`: `web node --test test/gateway-light.test.js` gives `Cannot find module '.../src/gateway-light.js'`.
+
+GREEN, all on Laptop B: Builder API unit **375/375**, integration **118/118**, web **24/24**, Gateway **14/14**.
+
+| # | What is guaranteed | Test | Result |
+|---|---|---|---|
+| 1 | Retry order: local → local, local, then cloud (with a key); cloud → cloud, cloud, local; auto → local, then cloud | `gateway/test/jobs.test.js: attemptPlan…` | PASS |
+| 2 | The single call is the default builder, and the job says so | `draws with the single call by default…` | PASS |
+| 3 | S2C draws the page when the request asks for it | `uses Screenshot-to-Code when the request asks…` | PASS |
+| 4 | The input image is never shown | `never shows the input image` | PASS |
+| 5 | Cloud pages run several at once, up to the limit | `runs cloud pages several at once…` | PASS |
+| 6 | Local pages run one at a time | `runs local pages one at a time` | PASS |
+| 7 | A cloud page doesn't wait behind a local one | `does not make a cloud page wait behind a local one` | PASS |
+| 8 | The queue length counts waiting plus running | `counts the queue…` | PASS |
+| 9 | A failed page is tried once more | `is tried once more…` | PASS |
+| 10 | After the retry the other model draws it, and the job names that model | `goes to the other model after the retry…` | PASS |
+| 11 | When every try fails, the job fails with the last error and can be asked for again | `fails with the last error…` | PASS |
+| 12 | The same request gets the same job; another builder gets its own | `hands back the same job…` | PASS |
+| 13 | Laptop B's light: grey while checking; green with the single call without S2C; S2C required for `s2c` and for an older Gateway; red without the GPU model or the Gateway | `web/test/gateway-light.test.js` (5 tests) | PASS |
+| 14 | The page exam and the page model tests still pass on the moved builder | `builder-api: page-model, gemini-default, eval-pages` | PASS |
+
+### Real build on Laptop B, 3 Nov 2026
+
+The whole chain ran on Laptop B: Builder API, MongoDB, the new Gateway (`pageBuilder: single`, local 1, cloud 4, S2C **not running**) and Ollama. m5 (2 screenshots), local model, fresh (no memory):
+
+| Stage | From → to | Took |
+|---|---|---|
+| Read 2 screenshots | 0 → 30.5 s | 30.5 s |
+| Backend (templates) | 30.5 → 30.5 s | instant |
+| Page 1 | 30.5 → 74.9 s | 44.4 s |
+| Page 2 (sent at the same time; waited for the GPU) | 30.5 → 105.0 s | 74.5 s |
+| Check | 105.1 → 107.7 s | 2.7 s |
+
+- **READY 109 s after the upload.**
+- Both pages were sent at once. The local lane drew them one after the other, as designed (one GPU). On cloud they would overlap.
+- For the same two pages, S2C took 112.6 s on 1 Nov (18.3), against about 75 s here.

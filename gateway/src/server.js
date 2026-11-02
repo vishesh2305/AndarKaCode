@@ -1,6 +1,8 @@
 import express from "express";
 import { requireApiKey } from "./auth.js";
+import { buildPage } from "../../shared/page.mjs";
 import { createJobQueue } from "./jobs.js";
+import { generateHtml, providerParams } from "./s2c-client.js";
 
 const PORT = Number(process.env.PORT ?? 8787);
 const HOST = process.env.HOST ?? "127.0.0.1";
@@ -8,6 +10,14 @@ const API_KEY = process.env.GATEWAY_API_KEY ?? "";
 const S2C_WS_URL = process.env.S2C_WS_URL ?? "ws://127.0.0.1:7001/generate-code";
 const OLLAMA_URL = process.env.OLLAMA_URL ?? "http://127.0.0.1:11434";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || null;
+// Step 23b: pages are drawn by one model call unless PAGE_BUILDER=s2c; several cloud pages at once.
+const BUILDERS = ["single", "s2c"];
+const PAGE_BUILDER = process.env.PAGE_BUILDER ?? "single";
+const LIMITS = { local: Number(process.env.LOCAL_PARALLEL ?? 1), cloud: Number(process.env.CLOUD_PARALLEL ?? 4) };
+if (!BUILDERS.includes(PAGE_BUILDER)) {
+  console.error(`PAGE_BUILDER in gateway/.env must be one of: ${BUILDERS.join(", ")}`);
+  process.exit(1);
+}
 
 if (API_KEY.length < 16) {
   console.error("GATEWAY_API_KEY in gateway/.env must be at least 16 characters.");
@@ -41,11 +51,20 @@ async function loadedModels() {
   }
 }
 
-const queue = createJobQueue({ wsUrl: S2C_WS_URL, ollamaUrl: OLLAMA_URL, geminiApiKey: GEMINI_API_KEY });
+const builders = {
+  // One model call per page (shared/page.mjs): Ollama here for local, Gemini for cloud.
+  single: async ({ provider, image, instructions }) => {
+    const { html } = await buildPage({ imageB64: image.replace(/^data:image\/[a-z]+;base64,/, ""), instructions, mode: provider });
+    return { html };
+  },
+  s2c: ({ provider, image, instructions, onProgress }) =>
+    generateHtml({ wsUrl: S2C_WS_URL, imageDataUrl: image, instructions, provider: providerParams(provider, { ollamaUrl: OLLAMA_URL, geminiApiKey: GEMINI_API_KEY }), onProgress }),
+};
+const queue = createJobQueue({ builders, defaultBuilder: PAGE_BUILDER, limits: LIMITS, hasCloud: GEMINI_API_KEY !== null });
 
 // Returns an error message, or null when the request body is usable.
 function checkGenerationRequest(body) {
-  const { image, instructions = "", contractHash, type = "create", mode = "auto" } = body ?? {};
+  const { image, instructions = "", contractHash, type = "create", mode = "auto", builder = PAGE_BUILDER } = body ?? {};
   if (typeof image !== "string" || !/^data:image\/(png|jpeg|webp);base64,/.test(image))
     return "image must be a data URL: data:image/png;base64,...";
   if (typeof instructions !== "string") return "instructions must be a string";
@@ -53,6 +72,7 @@ function checkGenerationRequest(body) {
     return "contractHash must be a 64-character sha256 hex string";
   if (type !== "create") return 'only type "create" is supported for now';
   if (!["auto", "local", "cloud"].includes(mode)) return 'mode must be "auto", "local" or "cloud"';
+  if (!BUILDERS.includes(builder)) return `builder must be one of: ${BUILDERS.join(", ")}`;
   if (mode === "cloud" && !GEMINI_API_KEY) return "cloud mode needs GEMINI_API_KEY in gateway/.env";
   return null;
 }
@@ -68,6 +88,8 @@ app.get("/v1/health", async (_req, res) => {
     ollamaUp: models !== null,
     models: models ?? [],
     queueLength: queue.queueLength(),
+    pageBuilder: PAGE_BUILDER,
+    parallel: LIMITS,
     cloudAvailable: GEMINI_API_KEY !== null,
   });
 });
@@ -76,8 +98,8 @@ app.post("/v1/generations", (req, res) => {
   const problem = checkGenerationRequest(req.body);
   if (problem) return res.status(400).json({ error: problem });
 
-  const { image, instructions = "", contractHash, mode = "auto" } = req.body;
-  const { job, created } = queue.submit({ image, instructions, contractHash, mode });
+  const { image, instructions = "", contractHash, mode = "auto", builder = PAGE_BUILDER } = req.body;
+  const { job, created } = queue.submit({ image, instructions, contractHash, mode, builder });
   // 202 = accepted, still working; 200 = this exact request was already submitted.
   res.status(created ? 202 : 200).json(queue.view(job));
 });
