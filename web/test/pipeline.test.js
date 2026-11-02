@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { pipelineStatus } from "../src/pipeline.js";
+import { STATIONS } from "../src/stations.js";
 
 const HASH = "a".repeat(64);
 const OLD = "b".repeat(64);
@@ -226,5 +227,43 @@ describe("memory on the stations", () => {
     assert.equal(memoryWords({ inventory: 1, page: 1, custom: 2 }), "1 reading, 1 page, 2 buttons");
     assert.equal(memoryWords({ inventory: 3, page: 0, custom: 1 }), "3 readings, 0 pages, 1 button");
     assert.equal(memoryWords({ inventory: 0, page: 0, custom: 0 }), "nothing yet");
+  });
+});
+
+// Step 23d: how long the whole build took, and which lane the app waited for.
+describe("pipelineStatus: build time (Step 23d)", () => {
+  const at = (kind, start, end, extra = {}) => job(kind, "done", { startedAt: t(start), finishedAt: t(end), contractHash: HASH, ...extra });
+  const built = (jobs, overrides = {}) =>
+    withSpec({ state: "READY", createdAt: t(0), jobs: [at("contract", 0, 30), ...jobs, at("verify", 105, 108, { report: { ok: true, checks: [] } })], ...overrides });
+
+  it("says how long the build took, from the upload to the end of the Check", () => {
+    const p = built([at("backend", 30, 31), at("frontend", 30, 75, { page: 1 }), at("frontend", 30, 105, { page: 2 })]);
+    assert.equal(pipelineStatus(p).stations.ready.builtIn, 108);
+  });
+
+  it("names the pages lane as the slower one when the app waited for its pages", () => {
+    const p = built([at("backend", 30, 31), at("frontend", 30, 75, { page: 1 }), at("frontend", 30, 105, { page: 2 })]);
+    assert.deepEqual(pipelineStatus(p).stations.ready.lanes, { pages: 75, backend: 1, slower: "pages" });
+  });
+
+  it("names the backend lane when custom buttons took longer than the pages", () => {
+    const p = built([at("backend", 30, 100), at("frontend", 30, 60, { page: 1 }), at("frontend", 30, 70, { page: 2 })]);
+    assert.equal(pipelineStatus(p).stations.ready.lanes.slower, "backend");
+  });
+
+  it("has no total and no lanes before the app is Ready", () => {
+    const p = withSpec({ state: "BUILDING", createdAt: t(0), jobs: [at("contract", 0, 30), at("backend", 30, 31), job("frontend", "running", { page: 1, contractHash: HASH, startedAt: t(30) })] });
+    const { ready } = pipelineStatus(p, Date.parse(t(50))).stations;
+    assert.equal(ready.builtIn, null);
+    assert.equal(ready.lanes, null);
+  });
+
+  it("the Ready station lists the build time and the slower lane for the user", () => {
+    const p = built([at("backend", 30, 31), at("frontend", 30, 75, { page: 1 }), at("frontend", 30, 105, { page: 2 })]);
+    const facts = Object.fromEntries(STATIONS.ready.details(p, pipelineStatus(p).stations.ready));
+    assert.equal(facts["Built in"], "108 s");
+    assert.equal(facts["Pages lane"], "75 s");
+    assert.equal(facts["Backend lane"], "1 s");
+    assert.match(facts["Waited for"], /pages/);
   });
 });
