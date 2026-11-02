@@ -8,7 +8,7 @@ process.env.OLLAMA_MODEL = "test-vision";
 process.env.GEMINI_API_KEY = "test-key";
 process.env.GEMINI_MODEL = "test-gemini";
 delete process.env.GEMINI_PAGE_MODEL;
-const { buildPage, extractHtml, pageModelName, pagePrompt, pageProviders } = await import("../src/ai/page.js");
+const { buildPage, extractHtml, pageModelName, pagePrompt, pageProviders, quotaWait } = await import("../src/ai/page.js");
 
 const PAGE = '<!DOCTYPE html>\n<html><head><script src="https://cdn.tailwindcss.com"></script></head><body><h1>Employees</h1></body></html>';
 const request = { prompt: "Build it", imageB64: "aW1n" };
@@ -122,6 +122,46 @@ describe("pageProviders.cloud (Gemini)", () => {
     fetch.mock.mockImplementation(async () => reply(429, { error: { message: "quota" } }));
     await assert.rejects(pageProviders.cloud(request), /Gemini 429: quota/);
   });
+
+  it("asks for low thinking when told to (faster answers), and leaves the model's default otherwise (Step 18.4)", async (t) => {
+    const fetch = t.mock.method(globalThis, "fetch", async () => ok);
+    await pageProviders.cloud({ ...request, thinking: "low" });
+    assert.deepEqual(JSON.parse(fetch.mock.calls[0].arguments[1].body).generationConfig.thinkingConfig, { thinkingLevel: "low" });
+    await pageProviders.cloud(request);
+    assert.equal(JSON.parse(fetch.mock.calls[1].arguments[1].body).generationConfig.thinkingConfig, undefined);
+  });
+
+  it("waits and tries again on a per-minute limit (429 with a short retry delay)", async (t) => {
+    const replies = [reply(429, perMinute("0.05s")), ok];
+    const fetch = t.mock.method(globalThis, "fetch", async () => replies.shift());
+    assert.equal(await pageProviders.cloud(request), "<!DOCTYPE html><html></html>");
+    assert.equal(fetch.mock.callCount(), 2);
+  });
+
+  it("fails at once on the daily limit, and says so in plain words", async (t) => {
+    t.mock.method(globalThis, "fetch", async () => reply(429, perMinute("50400s")));
+    await assert.rejects(pageProviders.cloud(request), /daily limit.*14 h/i);
+  });
+});
+
+const perMinute = (retryDelay) => ({
+  error: {
+    code: 429,
+    message: "You exceeded your current quota",
+    details: [{ "@type": "type.googleapis.com/google.rpc.RetryInfo", retryDelay }],
+  },
+});
+
+describe("quotaWait: how long a 429 asks us to wait", () => {
+  it("reads Gemini's retryDelay in seconds", () => {
+    assert.equal(quotaWait(perMinute("37s")), 37);
+    assert.equal(quotaWait(perMinute("0.5s")), 0.5);
+  });
+
+  it("is null when the answer gives no delay", () => {
+    assert.equal(quotaWait({ error: { message: "quota" } }), null);
+    assert.equal(quotaWait({}), null);
+  });
 });
 
 describe("buildPage: one call per page, by the project's mode", () => {
@@ -147,6 +187,12 @@ describe("buildPage: one call per page, by the project's mode", () => {
     assert.equal((await buildPage({ imageB64: "aW1n", instructions: "", mode: "auto", providers: failed.providers })).provider, "cloud");
     const noPage = fake({ local: "Sorry.", cloud: PAGE });
     assert.equal((await buildPage({ imageB64: "aW1n", instructions: "", mode: "auto", providers: noPage.providers })).provider, "cloud");
+  });
+
+  it("passes low thinking on to the model call", async () => {
+    const { providers, calls } = fake({ cloud: PAGE });
+    await buildPage({ imageB64: "aW1n", instructions: "", mode: "cloud", thinking: "low", providers });
+    assert.equal(calls[0].thinking, "low");
   });
 
   it("sends the strict prompt when asked for it", async () => {

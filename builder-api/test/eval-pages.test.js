@@ -6,7 +6,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { pathToFileURL } from "node:url";
-import { browserCandidates, PAGE_CASES, parseArgs, resultsTable, reviewHtml, runHash, scorePage, shotArgs } from "../src/eval/pages.js";
+import { browserCandidates, PAGE_CASES, parseArgs, resultsTable, reviewHtml, runHash, runPool, scorePage, shotArgs } from "../src/eval/pages.js";
 import { REPO_ROOT } from "../src/storage.js";
 import { employeesSpec } from "./fixtures/page-specs.js";
 import { page } from "./helpers/page.js";
@@ -37,7 +37,7 @@ describe("PAGE_CASES: the exam questions", () => {
 
 describe("parseArgs: what to run", () => {
   it("defaults to every case, S2C, cloud models, specs read by whichever model is available", () => {
-    assert.deepEqual(parseArgs([]), { method: "s2c", mode: "cloud", read: "auto", prompt: "plain", specsOnly: false, only: null });
+    assert.deepEqual(parseArgs([]), { method: "s2c", mode: "cloud", read: "auto", prompt: "plain", thinking: "default", parallel: 1, specsOnly: false, only: null });
   });
 
   it("takes the method, the mode, the reading mode and one case", () => {
@@ -46,6 +46,8 @@ describe("parseArgs: what to run", () => {
       mode: "local",
       read: "local",
       prompt: "plain",
+      thinking: "default",
+      parallel: 1,
       specsOnly: false,
       only: "m1-edit-delete",
     });
@@ -61,6 +63,20 @@ describe("parseArgs: what to run", () => {
 
   it("refuses the strict prompt for S2C, which writes its own prompt", () => {
     assert.throws(() => parseArgs(["--prompt", "strict"]), /strict prompt.*--method single/);
+  });
+
+  it("builds N pages at the same time with --parallel N (Step 18.4)", () => {
+    assert.equal(parseArgs(["--method", "single", "--parallel", "9"]).parallel, 9);
+  });
+
+  it("refuses --parallel that is not a whole number from 1 to 20", () => {
+    for (const bad of ["0", "-2", "1.5", "many", "21"]) assert.throws(() => parseArgs(["--parallel", bad]), /parallel.*1 to 20/, bad);
+  });
+
+  it("takes --thinking low for the single call on Gemini, and refuses it for S2C", () => {
+    assert.equal(parseArgs(["--method", "single", "--thinking", "low"]).thinking, "low");
+    assert.throws(() => parseArgs(["--thinking", "low"]), /--thinking.*--method single/);
+    assert.throws(() => parseArgs(["--method", "single", "--thinking", "none"]), /thinking.*default, low/);
   });
 
   it("can read and keep the specs only, without building pages", () => {
@@ -186,5 +202,31 @@ describe("browserCandidates: where to look for Chrome or Edge", () => {
     assert.ok(win.some((p) => /Google.Chrome.Application.chrome\.exe$/.test(p)));
     assert.ok(win.some((p) => /Microsoft.Edge.Application.msedge\.exe$/.test(p)));
     assert.ok(browserCandidates("darwin", {}).includes("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"));
+  });
+});
+
+describe("runPool: N pages at the same time (Step 18.4)", () => {
+  const tick = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  it("never runs more than N at once, and starts the next one as soon as one ends", async () => {
+    let running = 0;
+    let most = 0;
+    await runPool([30, 10, 10, 10, 10], 2, async (ms) => {
+      most = Math.max(most, ++running);
+      await tick(ms);
+      running--;
+    });
+    assert.equal(most, 2);
+  });
+
+  it("keeps the results in the order of the items, whatever order they finish in", async () => {
+    const results = await runPool([30, 5, 15], 3, async (ms, i) => (await tick(ms), `page ${i + 1}`));
+    assert.deepEqual(results, ["page 1", "page 2", "page 3"]);
+  });
+
+  it("with N = 1 runs them one after another, like before", async () => {
+    const order = [];
+    await runPool([20, 5], 1, async (ms, i) => (order.push(`start ${i}`), await tick(ms), order.push(`end ${i}`)));
+    assert.deepEqual(order, ["start 0", "end 0", "start 1", "end 1"]);
   });
 });
