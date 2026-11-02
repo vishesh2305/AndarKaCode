@@ -262,9 +262,23 @@ Our templates are **building blocks**, not whole apps: model, list, search, filt
 | **18** | **Page-generation spike:** a single model call per page vs S2C, on cloud models, across the 8 sample mocks | A table of time, markers present and how close it looks, with a decision |
 | 18.1–18.3 | The page exam, the single-call builder, both builders on all 9 pages ([docs/tdd/step18-page-spike.tdd.md](tdd/step18-page-spike.tdd.md)) | ✅ Same specs, local: single 507.6 s, Check 9/9; S2C 868.4 s, Check 8/9. Gemini: ~37 s a page, m4 failed |
 | **18.4** | `--parallel N` and `--thinking low\|default` in the page exam; a 429 waits and tries again | Tests green; the exam can build N pages at once |
-| **18.5** | Real runs (paid key or after the daily reset): 9 pages one at a time vs all at once; default vs low thinking; why m4 fails on Gemini | A table with the time for 9 pages both ways |
-| **18.6** | **Decision:** the frontend lane has a page-builder slot, `single` (default) or `s2c` (kept as an option); a failed page gets one retry, then the other model; page concurrency per key | Written here, with the numbers |
-| **19** | **Cost and speed measurement:** tokens, seconds and cost per stage and per build; rate limits per key (requests per minute and per day, which cap pages at once); blob sizes | `docs/economics.md` gives the cost per build, a draft of credit prices, and the speed target |
+| 18.4 | `--parallel N`, `--thinking low`, wait on a per-minute 429 | ✅ unit 369/369; m5 with 2 pages at once on Laptop B passes |
+| 18.5 | Gemini runs with 9 pages at once (default and low thinking); why m4 fails on Gemini | **Not blocking:** run when convenient; the numbers go into §3.1 |
+| **18.6** | **Decision** (2 Nov 2026), see below | ✅ |
+| ~~19~~ | ~~Cost and speed measurement as its own step~~ | **Folded in (2 Nov 2026):** stage times come from 23d, and tokens and cost per call from the metering in Step 25. `docs/economics.md` and the credit prices are written from those numbers before Step 42 (plans and credits) |
+
+**Decision 18.6 (2 Nov 2026), made on the numbers from 18.3 (same specs for every builder):**
+1. **The frontend lane has a page-builder slot with two options:**
+   - **`single`, the default:** one model call per page. Locally it took 56 s a page, drew 51/51 markers and passed the Check 9/9. On Gemini it took 37 s a page.
+   - **`s2c`, kept as an option:** locally it took 96 s a page, drew 49/51 markers and passed the Check 8/9.
+
+   The two parallel lanes, the spec, the Sync Barrier, wiring and the Check are unchanged.
+2. **The plain prompt.** The strict prompt didn't change the look.
+3. **A failed page gets one retry, then the other model** (cloud ↔ local). Gemini failed m4 (the login page) with both prompts, while the local model built it correctly every time.
+4. **Pages run at the same time, as many as the key allows:**
+   - cloud: up to N at once, waiting on a per-minute 429 (built in 18.4) and halving N when 429s repeat;
+   - local GPU: 1–2 at once (18.4 measured that two pages on one GPU slow each other down).
+5. **The Gemini free tier (20 requests a day) is for development only.** Managed builds use a paid key. A BYOK user whose free key runs out sees "daily limit reached, try again in about N h".
 
 ### Stage 1b: Speed now, in today's app (≈1 week). Added 2 Nov 2026
 Today the two lanes already start together (`Promise.all` in `orchestrator.js`), but three places inside them still work one at a time:
@@ -281,7 +295,7 @@ Fixing these is the biggest speed win, bigger than any server move, so it comes 
 | **23c** | **Custom buttons written at the same time,** with a limit, each on its own test database | 3 custom buttons take about as long as 1 |
 | **23d** | **A timer per stage on each project** (read, spec, each page, backend, barrier, wire, check), and "built in N s" in the UI | Every READY project shows its stage times and names the slower lane |
 
-Stage 1b is done when a 3-page cloud build on the two laptops meets the Step 19 speed target, and the stage times prove that both lanes overlap.
+Stage 1b is done when a 3-page cloud build on the two laptops is READY in under 2 minutes (first target; it gets refined from the 23d timings), and the stage times prove that both lanes overlap.
 
 ### Stage 2: Foundation, still one process (≈1.5 weeks)
 | Step | What | Done when |
