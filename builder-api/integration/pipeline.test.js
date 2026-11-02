@@ -10,6 +10,7 @@ import { after, before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import mongoose from "mongoose";
 import sharp from "sharp";
+import { shrinkScreenshot } from "../src/storage.js";
 import { fakePage } from "./helpers/fake-s2c.js";
 
 const API_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -17,8 +18,10 @@ const MOCKS = path.resolve(API_DIR, "../samples/mocks");
 const MONGODB_URI = process.env.TEST_MONGODB_URI;
 if (!MONGODB_URI) throw new Error("Set TEST_MONGODB_URI (a throwaway database; it is dropped before the tests)");
 
-// ---- fake Ollama: answers /api/chat with the next prepared inventory ----
-const inventoryQueue = [];
+// ---- fake Ollama: answers /api/chat with the inventory prepared for THAT screenshot ----
+// Screenshots are read at the same time (Step 23), so requests arrive in any order: each prepared
+// inventory waits under the image the vision model will be sent (the upload shrunk to 1280 px, as base64).
+const inventoriesByImage = new Map();
 const visionRequests = { count: 0 }; // screenshots the fake vision AI was asked to read
 // ---- fake Gateway: finishes every job at once with a page built from the instructions (see helpers/fake-s2c.js);
 // a "Staff" page comes back without markers, so the Verifier has something to catch ----
@@ -49,7 +52,7 @@ const fakeOllama = await jsonServer(async (req, body) => {
     return { json: { message: { content: "```js\n" + code + "\n```" } } };
   }
   visionRequests.count++;
-  const inventory = inventoryQueue.shift();
+  const inventory = inventoriesByImage.get(body.messages[0].images[0])?.shift();
   if (!inventory) return { status: 500, json: { error: "test prepared no inventory" } };
   return { json: { message: { content: JSON.stringify(inventory) } } };
 });
@@ -152,11 +155,14 @@ after(() => {
 // Every test starts fresh (memory not used), except the memory tests (Step 14), which pass { fresh: false }.
 // A file is a sample's name, or { name, bytes, type } for an image made in the test.
 async function upload(files, inventories, { fresh = true } = {}) {
-  inventoryQueue.push(...inventories);
   const form = new FormData();
   form.append("fresh", String(fresh));
-  for (const file of files) {
+  for (const [i, file] of files.entries()) {
     const bytes = typeof file === "string" ? await import("node:fs/promises").then((fs) => fs.readFile(path.join(MOCKS, file))) : file.bytes;
+    if (inventories[i]) {
+      const image = (await shrinkScreenshot(bytes)).data.toString("base64");
+      inventoriesByImage.set(image, [...(inventoriesByImage.get(image) ?? []), inventories[i]]);
+    }
     form.append("image", new Blob([bytes], { type: file.type ?? "image/png" }), file.name ?? file);
   }
   const res = await fetch(`${base}/projects`, { method: "POST", body: form });
