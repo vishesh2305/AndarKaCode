@@ -144,8 +144,14 @@ export const STATIONS = {
     how: [
       "Every check passed. Try the app for real in the Pages tab (Live), then download it as a zip with its verify report.",
       "Publishing to GitHub comes in a later step.",
+      "The pages and the backend are built at the same time, so the build takes as long as the slower of the two lanes.",
     ],
-    details: () => [],
+    details: (project, s) => [
+      ["Built in", s.builtIn !== null && s.builtIn !== undefined ? `${s.builtIn} s` : null],
+      ["Pages lane", s.lanes ? `${s.lanes.pages} s` : null],
+      ["Backend lane", s.lanes ? `${s.lanes.backend} s` : null],
+      ["Waited for", s.lanes ? (s.lanes.slower === "pages" ? "the pages (Laptop B)" : "the backend (custom buttons)") : null],
+    ],
   },
 };
 
