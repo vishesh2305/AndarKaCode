@@ -179,7 +179,7 @@ The pages need an internet connection for their styling (they load Tailwind CSS 
 | Builder API + Gateway | **Express 5** | Small, well known; Express 5 passes async errors to the error handler |
 | Database | **MongoDB** + **Mongoose 9** | Specs, jobs and generated apps are document-shaped; the generated apps use the same stack |
 | Uploads / images | **multer 2**, **sharp** | In-memory upload with type and size limits; fast resizing before the vision pass |
-| Vision AI (read screenshots) | **Ollama** with `qwen3-vl:8b-instruct`; backup **Gemini** (`gemini-3-flash-preview`) | Runs locally for free; cloud backup when local is slow or down |
+| Vision AI (read screenshots) | **Ollama** with `qwen3-vl:8b-instruct`; backup **Gemini** (`gemini-3.5-flash`) | Runs locally for free; cloud backup when local is slow or down |
 | Coding AI (custom buttons) | **Ollama** with `qwen2.5-coder:7b`; **Gemini** (`gemini-3.5-flash` in our test) | Chosen by a test of 5 buttons with known right answers (see [docs/tdd/step13-custom.tdd.md](docs/tdd/step13-custom.tdd.md)) |
 | Code safety check | **acorn** (a JavaScript parser) | Reads AI code and page sample data as a structure, without running it |
 | Page builder | **[Screenshot-to-Code](https://github.com/abi/screenshot-to-code)** (commit `a813977` + [our patch](docs/s2c-local.patch)), on **Ollama with CUDA** (RTX 4060) | Proven screenshot → HTML tool; our patch adds Windows fixes, one variant, retries and a step limit |
@@ -244,7 +244,7 @@ cd ../web && npm install && npm run build                 # repeat the build aft
 powershell -ExecutionPolicy Bypass -File scripts\start-laptop-b.ps1
 # optional: -S2cBackend <path to screenshot-to-code\backend> if it is not in the default place
 ```
-It starts Ollama (port 11434), Screenshot-to-Code (port 7001) and the Gateway (port 8787), each in its own window. Leave them open. Running it twice is safe.
+It starts Ollama (port 11434), Screenshot-to-Code (the port in `S2C_WS_URL` in `gateway/.env`: 7002, because NoMachine takes S2C's default 7001) and the Gateway (port 8787), each in its own window. Leave them open. Running it twice is safe. If something else holds the Screenshot-to-Code port, the script names it instead of saying "already running". After changing `gateway/.env`, close the Gateway window and run the script again.
 
 **2. Laptop A**: Tailscale connected, Ollama running, then:
 ```bash

@@ -15,7 +15,7 @@ delete schema.$comment;
 const OLLAMA_URL = process.env.OLLAMA_URL ?? "http://localhost:11434";
 // The -instruct variant: the thinking variant returns structured output in `thinking` and leaves `content` empty.
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? "qwen3-vl:8b-instruct";
-const GEMINI_MODEL = process.env.GEMINI_MODEL ?? "gemini-3-flash-preview";
+const GEMINI_MODEL = process.env.GEMINI_MODEL ?? "gemini-3.5-flash";
 const TIMEOUT_MS = Number(process.env.TIMEOUT_MS ?? 180_000);
 
 const PROMPT = `You are reading a screenshot of a data-management web page (a table, a form, buttons).

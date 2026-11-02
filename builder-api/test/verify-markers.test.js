@@ -2,7 +2,7 @@
 // expectedMarkers = what the spec asks of a page; pageMarkers = what the page (with its own scripts) has.
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { expectedMarkers, markerCheck, pageMarkers } from "../src/verify/markers.js";
+import { expectedMarkers, markerCheck, missingMarkers, pageMarkers } from "../src/verify/markers.js";
 import { apiMap } from "../src/wirer/index.js";
 import { dashboardSpec, employeesSpec } from "./fixtures/page-specs.js";
 import { authSpec, editDeleteSpec } from "./fixtures/specs.js";
@@ -125,6 +125,13 @@ describe("markerCheck: pass, or say what is missing in a person's words", () => 
     const check = markerCheck(expectedMarkers(employeesSpec, 1), { fields: [], actions: [], filters: [], stats: [], submitForm: false, repaired: [], scriptErrors: ["Uncaught [SyntaxError: missing ) after argument list]"] });
     assert.equal(check.status, "fail");
     assert.ok(check.detail.startsWith("The page's own script has an error (SyntaxError: missing ) after argument list)"), check.detail);
+  });
+
+  it("missingMarkers lists each missing marker on its own, for counting (Step 18 page exam)", async () => {
+    const html = page("employees-real.html").replaceAll('data-field="salary"', "");
+    const missing = missingMarkers(expectedMarkers(employeesSpec, 1), await pageMarkers(html));
+    assert.deepEqual(missing, ['the field "Salary" (data-field="salary")']);
+    assert.deepEqual(missingMarkers(expectedMarkers(employeesSpec, 1), await pageMarkers(page("employees-real.html"))), []);
   });
 
   it("a missing Edit/Delete button in the sample rows is a page problem too", async () => {
