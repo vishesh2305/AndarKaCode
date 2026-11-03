@@ -12,7 +12,9 @@ import { writeCustomCode, writtenButtons } from "./custom/writer.js";
 import { generateBackend, writeBackend } from "./generator/index.js";
 import { origin, recall, recallLibrary, recallSimilarPage, rememberProject } from "./memory/index.js";
 import { customKey, inventoryKey, pageKey } from "./memory/keys.js";
+import { loadConfig } from "./config.js";
 import { getFrontend, submitFrontend } from "./gateway-client.js";
+import { getPage, submitPage } from "./page-queue.js";
 import { Contract } from "./models/contract.js";
 import { withUsage } from "../../shared/meter.mjs";
 import { askRerun, claimProject, freeProjects, releaseAll, releaseProject, renewLease } from "./lease.js";
@@ -41,6 +43,10 @@ const LEASE_MS = Number(process.env.LEASE_MS ?? 60_000);
 // Step 24: ROLE=api only saves what should be built; ROLE=orchestrator (or all) builds it.
 const ROLE = process.env.ROLE ?? "all";
 const PICKUP_MS = Number(process.env.PICKUP_MS ?? (ROLE === "orchestrator" ? 1000 : LEASE_MS / 3));
+// Step 26: pages go to Laptop B's Gateway (development) or into the page queue for ui-workers (production).
+// Both lanes answer the same two calls, so the frontend branch below doesn't change.
+const PAGE_LANE = loadConfig(process.env).pageLane;
+const pages = PAGE_LANE === "queue" ? { submit: submitPage, get: getPage } : { submit: submitFrontend, get: getFrontend };
 const active = new Set(); // projects this process is building now (its own second request becomes a rerun)
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -113,7 +119,7 @@ async function pollGateway(job) {
     await sleep(POLL_MS);
     let remote;
     try {
-      remote = await getFrontend(job.remoteJobId);
+      remote = await pages.get(job.remoteJobId);
       errors = 0;
     } catch (err) {
       if (err.status === 404) throw Object.assign(new Error("Gateway no longer knows this job"), { gone: true });
@@ -121,7 +127,7 @@ async function pollGateway(job) {
       continue;
     }
     if (remote.status === "done") return remote;
-    if (remote.status === "failed") throw new Error(`Frontend failed on Laptop B: ${remote.error}`);
+    if (remote.status === "failed") throw new Error(`Frontend failed ${PAGE_LANE === "queue" ? "in the ui-worker" : "on Laptop B"}: ${remote.error}`);
   }
 }
 
@@ -154,7 +160,7 @@ async function frontendBranch(project, contract, n) {
     for (let attempt = 1; !remote; attempt++) {
       if (!job.remoteJobId) {
         const image = await readFile(path.join(REPO_ROOT, screenshotsOf(project)[n - 1].path));
-        const submitted = await submitFrontend({
+        const submitted = await pages.submit({
           imageDataUrl: `data:image/png;base64,${image.toString("base64")}`,
           instructions: pageInstructions(contract.body, n),
           contractHash: contract.hash,

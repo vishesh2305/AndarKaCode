@@ -3,15 +3,9 @@ import { withUsage } from "../../shared/meter.mjs";
 
 const sha256 = (text) => createHash("sha256").update(text).digest("hex");
 
-/**
- * The models a page is tried on, in order (Step 18.6): the job's model, once more, then the other model.
- * auto = local first, then cloud (or local again when no cloud key is set).
- */
-export function attemptPlan(mode, { hasCloud }) {
-  if (mode === "auto") return hasCloud ? ["local", "cloud"] : ["local", "local"];
-  if (mode === "cloud") return ["cloud", "cloud", "local"];
-  return hasCloud ? ["local", "local", "cloud"] : ["local", "local"];
-}
+import { attemptPlan } from "../../shared/attempts.mjs";
+
+export { attemptPlan }; // one retry, then the other model (shared with the ui-worker, Step 26)
 
 /**
  * Jobs live in memory: Laptop A owns the real state and resubmits if the Gateway restarts.

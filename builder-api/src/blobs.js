@@ -2,8 +2,8 @@
 // named by the SHA-256 of their content; the database keeps only that name, so its rows stay small
 // (memory plan M1). The same content is stored once. "local" keeps them under runs/blobs/; "r2"
 // (Cloudflare R2, Step 46) will keep the same names in a bucket behind the same three calls.
-import { createHash } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { access, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { gunzip, gzip } from "node:zlib";
@@ -12,6 +12,8 @@ import { RUNS_DIR } from "./storage.js";
 const zip = promisify(gzip);
 const unzip = promisify(gunzip);
 const NAME = /^[0-9a-f]{64}$/;
+
+const exists = (file) => access(file).then(() => true, () => false);
 
 export function createBlobStore({ dir }) {
   const fileOf = (key) => {
@@ -24,11 +26,18 @@ export function createBlobStore({ dir }) {
     const data = Buffer.isBuffer(content) ? content : Buffer.from(content, "utf8");
     const key = createHash("sha256").update(data).digest("hex");
     const file = fileOf(key);
+    if (await exists(file)) return key; // the name is the content: already stored
     await mkdir(path.dirname(file), { recursive: true });
-    // Written next to its place, then renamed: a reader never sees half a blob.
-    const part = `${file}.${process.pid}.${Date.now()}.part`;
+    // Written next to its place under a name of its own, then renamed: a reader never sees half a blob,
+    // and two writers of the same content at the same moment (identical pages, Step 26) never collide.
+    const part = `${file}.${randomUUID()}.part`;
     await writeFile(part, await zip(data));
-    await rename(part, file);
+    try {
+      await rename(part, file);
+    } catch (err) {
+      await rm(part, { force: true });
+      if (!(await exists(file))) throw err; // lost the race to an identical blob: fine
+    }
     return key;
   }
 
