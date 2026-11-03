@@ -255,3 +255,14 @@ m1 + m3 (2 screenshots), fresh: **READY in 139 s**.
 Both page jobs were claimed at the same instant (17:04:38.366). After drawing, each job holds its page (3,465 and 4,009 bytes) and no screenshot.
 
 The run before the streaming fix: Laptop B's GPU was full (7.8 of 8 GB, 22% of the model on the CPU, 3.2 tokens/s), the pages took over 5 minutes, and both failed with `fetch failed` (Found #2). Earlier still, a cold `ollama serve` let both readings run past their 3-minute limit. Neither was the two-server split. On one local GPU the two pages share it; with a cloud model, or one GPU per ui-worker, they overlap fully.
+
+## The Mac check (4 Nov 2026)
+
+`main` pulled on the Mac, m1 built from its browser.
+
+| Run | Where the pages were drawn | READY in |
+|---|---|---|
+| Compose on the Mac, `PAGE_LANE=queue` | the Mac's own ui-worker | **84 s** |
+| Compose on the Mac, Laptop B's Gateway | Laptop B's GPU over Tailscale (one page call: 40.2 s) | **60 s** |
+
+Found on the way: the Windows GPU light was red because Compose reads `deploy/.env`, which had no `GATEWAY_URL`/`GATEWAY_API_KEY` (the light's tooltip said so). With both set there, the light turned green and the pages went to Laptop B. In zsh, `read -p` reads from a coprocess, not a prompt (it saved an empty key): `read -s "K?Gateway key: "` is the zsh form.
