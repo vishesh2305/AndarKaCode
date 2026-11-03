@@ -158,3 +158,11 @@ GREEN: web **29/29**, and the build works.
 - **Built:** 23, 23b, 23c and 23d, each test-first and merged into `main`.
 - **Measured on Laptop B (local model, one GPU):** m5 (2 screenshots) was READY in **108 s**, and the app waited for the pages lane.
 - **Not measured yet:** "a 3-page cloud build is READY in under 2 minutes". The Gemini free key was at its daily limit. It needs the Mac (its own key) or a paid key; the Ready station now shows the number by itself.
+
+## Mac check of Stage 1b (3 Nov 2026)
+
+- After `cd web && npm run build` (the Builder API serves the built `web/dist`, which `git pull` doesn't update), Laptop B's light turned green with Screenshot-to-Code not running.
+- A 3-screenshot project (m4-login, m1-edit-delete, m3-dashboard) built on the Mac through Laptop B's Gateway: **READY, "Built in 58 s"**, under the 2-minute first target.
+  - Memory may have reused earlier readings or pages, because "Start fresh" wasn't confirmed as ticked. A fresh run would be higher.
+
+**Stage 1b is done.**

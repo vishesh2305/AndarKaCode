@@ -3,7 +3,7 @@
 > **Design:** see [ARCHITECTURE.md](ARCHITECTURE.md) (v3.1, approved 16 Oct: Phase 1 builds exactly what the screenshots show; every backend part has visible evidence). This file is our **step-by-step to-do list**.
 > **Rule:** do one step, report back, then move on. Tick the box when its "Done when" is true.
 
-**Current step:** Stage 1b built (Steps 23–23d, merged into `main`); waiting for the Mac check of the stage. Next: Stage 2 (Steps 20–22: config, storage, job queue). See [docs/production-architecture.md](docs/production-architecture.md) §7.
+**Current step:** Stage 2 (Steps 20–22: config, storage, job queue). Stage 1b done: the Mac built a 3-page app in 58 s. See [docs/production-architecture.md](docs/production-architecture.md) §7.
 
 > **28 Oct 2026:** the production plan replaces the old Steps 18–20 below. The old Step 18 (Sandbox) is now Step 33, the old Step 19 (GitHub) is now Step 48, and the rest of Step 17 (editing the spec in the UI) is now Step 38. The demo rehearsal (old Step 20) can still be done at any time.
 
