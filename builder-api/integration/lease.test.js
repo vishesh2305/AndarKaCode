@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import { after, before, beforeEach, describe, it } from "node:test";
 import mongoose from "mongoose";
-import { askRerun, claimProject, releaseProject, renewLease, freeProjects } from "../src/lease.js";
+import { askRerun, claimProject, freeProjects, releaseAll, releaseProject, renewLease } from "../src/lease.js";
 import { Project } from "../src/models/project.js";
 import { databaseUri } from "../src/verify/index.js";
 
@@ -103,5 +103,19 @@ describe("freeProjects: what a builder may pick up at start, and every so often"
     await make("attention", "NEEDS_ATTENTION");
     const ids = (await freeProjects({ now: T })).map(String).sort();
     assert.deepEqual(ids, [free._id, expired._id].map(String).sort());
+  });
+});
+
+describe("releaseAll: a Builder API that is stopped on purpose (Ctrl+C) gives its projects back", () => {
+  it("frees every project this builder holds, at once, and leaves the others' alone", async () => {
+    await Project.deleteMany({});
+    const make = (name) => Project.create({ name, imageHash: "h".repeat(64), state: "BUILDING" });
+    const [mine1, mine2, theirs] = await Promise.all([make("mine 1"), make("mine 2"), make("theirs")]);
+    await claimProject(mine1._id, { owner: "A", now: T, ms: 60_000 });
+    await claimProject(mine2._id, { owner: "A", now: T, ms: 60_000 });
+    await claimProject(theirs._id, { owner: "B", now: T, ms: 60_000 });
+    assert.equal(await releaseAll({ owner: "A" }), 2);
+    const ids = (await freeProjects({ now: T + 1000 })).map(String).sort();
+    assert.deepEqual(ids, [mine1._id, mine2._id].map(String).sort(), "a restarted Builder API can take them at once");
   });
 });
