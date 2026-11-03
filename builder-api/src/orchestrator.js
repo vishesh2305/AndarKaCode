@@ -12,6 +12,7 @@ import { origin, recall, recallLibrary, recallSimilarPage, rememberProject } fro
 import { customKey, inventoryKey, pageKey } from "./memory/keys.js";
 import { getFrontend, submitFrontend } from "./gateway-client.js";
 import { Contract } from "./models/contract.js";
+import { log } from "./log.js";
 import { Job } from "./models/job.js";
 import { Project } from "./models/project.js";
 import { checkSpec } from "./spec/check.js";
@@ -39,7 +40,7 @@ async function setState(project, state, error) {
   project.state = state;
   project.error = error;
   await project.save();
-  console.log(`[${project.id}] ${state}${error ? `: ${error}` : ""}`);
+  log.info(`${state}${error ? `: ${error}` : ""}`, { project: project.id, state });
 }
 
 export const currentContract = (project) =>
