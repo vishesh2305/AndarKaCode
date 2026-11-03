@@ -1,6 +1,8 @@
 // Moves projects through the lifecycle (ARCHITECTURE.md §3). MongoDB is the source of truth:
 // every step is saved before the next one starts, so a restart can pick up where it stopped.
+import { randomUUID } from "node:crypto";
 import { readFile, rm } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { contractHash } from "../../shared/hash.mjs";
 import { checkCustomCode } from "./custom/safety.js";
@@ -12,6 +14,7 @@ import { origin, recall, recallLibrary, recallSimilarPage, rememberProject } fro
 import { customKey, inventoryKey, pageKey } from "./memory/keys.js";
 import { getFrontend, submitFrontend } from "./gateway-client.js";
 import { Contract } from "./models/contract.js";
+import { askRerun, claimProject, freeProjects, releaseProject, renewLease } from "./lease.js";
 import { log } from "./log.js";
 import { Job } from "./models/job.js";
 import { Project } from "./models/project.js";
@@ -30,8 +33,11 @@ const POLL_MS = Number(process.env.GATEWAY_POLL_MS ?? 2000); // A polls B every 
 const MAX_POLL_ERRORS = 30; // about a minute of Gateway/Tailscale trouble before giving up
 const MAX_BUILD_ROUNDS = 3; // how many Contract edits one build follows before asking for attention
 
-const active = new Set(); // projectIds with a pipeline running in this process
-const rerun = new Set(); // asked to start again while already running
+// Step 22: a project is built only by the Builder API holding its lease in MongoDB (src/lease.js), so two
+// Builder APIs on one database never build it at once, and a dead one's projects are taken over.
+const OWNER = `${os.hostname()}:${process.pid}:${randomUUID().slice(0, 8)}`;
+const LEASE_MS = Number(process.env.LEASE_MS ?? 60_000);
+const active = new Set(); // projects this process is building now (its own second request becomes a rerun)
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const short = (hash) => hash?.slice(0, 12);
@@ -321,30 +327,57 @@ async function run(projectId) {
   }
 }
 
-/** Starts (or continues) a project's pipeline in the background; safe to call at any time. */
+/** Starts (or continues) a project's pipeline in the background; safe to call at any time, from any server. */
 export function startPipeline(projectId) {
-  const id = projectId.toString();
-  if (active.has(id)) {
-    rerun.add(id); // look again once the current run ends (e.g. the Contract was edited)
-    return;
-  }
-  active.add(id);
-  run(id)
-    .catch((err) => console.error(`[${id}] pipeline crashed:`, err))
-    .finally(() => {
-      active.delete(id);
-      if (rerun.delete(id)) startPipeline(id);
-    });
+  buildWithLease(projectId.toString()).catch((err) => log.error(`pipeline crashed: ${err.stack ?? err.message}`, { project: projectId.toString() }));
 }
 
-/** On startup: finish what a restart cut off. Running frontend jobs keep their Gateway jobId and resume. */
+async function buildWithLease(id) {
+  if (active.has(id)) return void (await askRerun(id)); // look again once the current run ends (e.g. a spec edit)
+  active.add(id);
+  let again = false;
+  try {
+    if (!(await claimProject(id, { owner: OWNER, ms: LEASE_MS }))) {
+      // Another Builder API holds it: ask it to look again, unless it finished in the meantime.
+      await askRerun(id);
+      if (!(await claimProject(id, { owner: OWNER, ms: LEASE_MS }))) return;
+    }
+    const heartbeat = setInterval(() => {
+      renewLease(id, { owner: OWNER, ms: LEASE_MS })
+        .then((mine) => mine || log.error("lost the project's lease (its time ran out); another Builder API may take it over", { project: id }))
+        .catch(() => {});
+    }, LEASE_MS / 3);
+    heartbeat.unref();
+    try {
+      await run(id);
+    } finally {
+      clearInterval(heartbeat);
+    }
+    again = (await releaseProject(id, { owner: OWNER }))?.rerun ?? false;
+  } finally {
+    active.delete(id);
+  }
+  if (again) await buildWithLease(id);
+}
+
+// Unfinished projects nobody holds: at start (a restart cut them off) and every lease period (a Builder
+// API died). Only their running reading and Check jobs were interrupted; running page jobs keep their
+// Gateway jobId and resume. SYNCED projects from before Step 16 get wired and checked too.
+async function pickUpFree() {
+  const ids = await freeProjects();
+  const interrupted = ids.length
+    ? await Job.updateMany(
+        { projectId: { $in: ids }, status: "running", kind: { $in: ["contract", "verify"] } },
+        { status: "failed", error: "Interrupted: its Builder API stopped", finishedAt: new Date() }
+      )
+    : { modifiedCount: 0 };
+  ids.forEach((id) => startPipeline(id));
+  return { projects: ids.length, interrupted: interrupted.modifiedCount };
+}
+
+/** On startup: finish what was cut off, then keep looking for projects a stopped Builder API left behind. */
 export async function resumeAll() {
-  const interrupted = await Job.updateMany(
-    { status: "running", kind: { $in: ["contract", "verify"] } },
-    { status: "failed", error: "Interrupted by a Builder API restart", finishedAt: new Date() }
-  );
-  // SYNCED projects from before Step 16 get wired and checked too.
-  const projects = await Project.find({ state: { $in: ["UPLOADED", "CONTRACT_DRAFT", "BUILDING", "SYNCED", "INTEGRATING", "VERIFYING"] } }, { _id: 1 });
-  projects.forEach((p) => startPipeline(p._id));
-  if (projects.length) console.log(`Resuming ${projects.length} project(s), ${interrupted.modifiedCount} interrupted job(s)`);
+  const { projects, interrupted } = await pickUpFree();
+  if (projects) log.info(`Resuming ${projects} project(s), ${interrupted} interrupted job(s)`);
+  setInterval(() => pickUpFree().catch((err) => log.error(`looking for free projects failed: ${err.message}`)), LEASE_MS).unref();
 }

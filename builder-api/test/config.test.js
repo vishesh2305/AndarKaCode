@@ -94,6 +94,10 @@ describe("checkConfig: what is refused", () => {
     assert.match(problemsOf({ STORAGE: "s3" })[0], /STORAGE in builder-api\/\.env must be local/);
   });
 
+  it("a project lease shorter than a second (Step 22)", () => {
+    assert.match(problemsOf({ LEASE_MS: "500" })[0], /LEASE_MS in builder-api\/\.env must be a whole number of at least 1000/);
+  });
+
   it("lists every problem at once, not only the first", () => {
     assert.equal(problemsOf({ PORT: "abc", DEFAULT_MODE: "clod", MONGODB_URI: "x" }).length, 3);
   });
