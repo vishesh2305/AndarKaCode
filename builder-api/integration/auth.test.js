@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { createServer } from "node:http";
+import { createServer, request as httpRequest } from "node:http";
 import path from "node:path";
 import { after, before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -240,6 +240,23 @@ describe("Step 29: only invited accounts get in", () => {
     const { session, token } = await signIn("github", person("old@example.com"));
     await Session.updateOne({ tokenHash: createHash("sha256").update(token).digest("hex") }, { expiresAt: new Date(Date.now() - 1000) });
     assert.equal((await get("/api/projects", session)).status, 401);
+  });
+
+  // Found on the Mac: the app opened at 127.0.0.1 while PUBLIC_URL said localhost. The login cookie was set
+  // for 127.0.0.1, the provider sent the person back to localhost, and the cookie stayed behind ("failed").
+  it("a sign-in started on another address of this server moves to PUBLIC_URL first, once", async () => {
+    const asked = (p) =>
+      new Promise((resolve, reject) => {
+        const req = httpRequest(new URL(p, root), { headers: { Host: "localhost:1" } }, (res) => (res.resume(), resolve(res)));
+        req.on("error", reject).end();
+      });
+    const moved = await asked("/auth/github/start");
+    assert.equal(moved.statusCode, 302);
+    assert.equal(moved.headers.location, `${root}/auth/github/start?moved=1`);
+    assert.equal(moved.headers["set-cookie"], undefined, "no login cookie on the wrong address");
+    // A proxy that rewrites the Host header must not loop: the second time, the sign-in goes ahead.
+    const ahead = await asked("/auth/github/start?moved=1");
+    assert.equal(new URL(ahead.headers.location).pathname, "/login/oauth/authorize");
   });
 
   it("a change sent from another site, with a signed-in cookie, is refused", async () => {
