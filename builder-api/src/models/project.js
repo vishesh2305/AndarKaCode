@@ -43,6 +43,9 @@ const projectSchema = new mongoose.Schema(
     useMemory: { type: Boolean, default: true }, // false = "Start fresh": build everything again (Step 14)
     currentContractVersion: { type: Number, default: 0 }, // 0 = no Contract yet
     error: String, // why the project is NEEDS_ATTENTION
+    // Step 22: who is building this project, until when (src/lease.js), and whether to look again after.
+    lease: { owner: String, until: Date },
+    rerun: { type: Boolean, default: false },
   },
   schemaOptions
 );

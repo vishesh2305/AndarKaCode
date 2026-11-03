@@ -13,7 +13,7 @@
 |---|---|---|
 | 20 | Config checked at start-up, `/healthz` and `/readyz`, JSON logs | ✅ |
 | 21 | Blob store (`local`; `r2` in Step 46); memory content in compressed blobs, rows under 1 KB | ✅ |
-| 22 | Job queue and project leases in MongoDB | to do |
+| 22 | Project leases in MongoDB (one builder per project, takeover after a crash) | ✅ |
 
 ## Step 20: Settings, health checks, logs
 
@@ -90,3 +90,49 @@ GREEN, all on Laptop B: blobs + config **22/22**; unit **411/411**; integration 
 | 7 | `STORAGE` is `local` by default; `r2` waits for Step 46; anything else is refused | `config.test.js: storage other than local…` | PASS |
 | 8 | After a real READY, every memory row has no content inside, a blob name, and is under 1 KB | `integration: keeps each memory row small…` | PASS |
 | 9 | Memory reuse still works from blobs: exact repeats, near-duplicate pages, the custom-code library | `integration: Memory (Step 14)` (all) | PASS |
+
+## Step 22: Project leases in MongoDB
+
+The in-memory `active` and `rerun` sets that decided "this process is building that project" are gone; MongoDB decides now (`src/lease.js`).
+- **`claimProject`:** one atomic `findOneAndUpdate` gives a free project, or one whose lease has run out, to one Builder API for `LEASE_MS` (default 60 s).
+- **`renewLease`:** the holder renews every third of the lease while it works. If renewing fails, the lease ran out and was taken, which is logged.
+- **`releaseProject`:** gives the lease back and says whether someone asked to look again meanwhile (`rerun`, e.g. a spec edit), which starts the next round.
+- **`askRerun`:** a start request for a project someone else holds becomes "look again when you're done". Its own second request inside one process does the same.
+- **`freeProjects`:** unfinished projects nobody holds, or whose lease ran out.
+  - At start, and then every `LEASE_MS`, a Builder API picks these up.
+  - Only *their* running reading and Check jobs are marked interrupted. Before, every running job was, which would break a second server's work.
+  - Running page jobs keep their Gateway job and resume.
+- **The owner** is `hostname:pid:random`, new at every start.
+
+The job queue for the workers themselves (claimed jobs with leases) belongs with the services split in Stage 3 (Step 24 onward). Until then the jobs still run inside the project's lease.
+
+### Tests
+
+RED (`2a8cb88`): `TEST_MONGODB_URI=… node --test integration/lease.test.js` gives `Cannot find module '.../src/lease.js'`.
+
+GREEN, all on Laptop B: lease **10/10** (real MongoDB); unit **412/412**; integration **130/130**, with every pipeline test (including the spec edit that relies on "look again") on leases.
+
+| # | What is guaranteed | Test (`integration/lease.test.js`) | Result |
+|---|---|---|---|
+| 1 | A free project goes to the first who asks, until the lease runs out | `gives a free project to the first who asks…` | PASS |
+| 2 | A project held by another builder is refused | `refuses a project another builder holds` | PASS |
+| 3 | After the lease runs out, another builder takes over | `lets another builder take over…` | PASS |
+| 4 | **Ten builders asking at the same moment: exactly one gets it** | `gives the project to exactly one of ten…` | PASS |
+| 5 | Renewing works for the holder only | `renewLease: moves the end of the lease on…` | PASS |
+| 6 | A builder whose lease was taken over learns it | `says the lease is lost…` | PASS |
+| 7 | Releasing frees the project for the next builder | `frees the project for the next builder` | PASS |
+| 8 | "Look again" asked during a run is handed to the holder at release, and used up | `tells the holder to look again…` | PASS |
+| 9 | A builder that no longer holds the lease can't release it | `does nothing for a builder that no longer holds…` | PASS |
+| 10 | Free projects: unfinished and unheld (or expired); never finished or held ones | `freeProjects: …` | PASS |
+| 11 | `LEASE_MS` under 1000 is refused | `config.test.js: a project lease shorter than a second` | PASS |
+
+### Real check on Laptop B: kill the Builder API mid-build
+
+`LEASE_MS=5000`, m6 + m8 (2 screenshots), local model, through the Gateway:
+1. API A started the build. It was **killed (`kill -9`) 6 s in, while reading the screenshots** (state `UPLOADED`).
+2. API B started on the same database. It logged `Resuming 1 project(s), 1 interrupted job(s)`, read the screenshots again, and the project went CONTRACT_DRAFT → BUILDING → SYNCED → INTEGRATING → VERIFYING → **READY**.
+3. Jobs: the interrupted reading (`failed: Interrupted: its Builder API stopped`), **one** new reading, **one** backend, **one job per page**, **one** Check. Finished once, never twice.
+
+## Stage 2: where it stands
+
+Steps 20, 21 and 22 are built, test-first, and merged into `main`. Next is the Mac check of the stage, then Stage 3 (microservices, Steps 24–28).

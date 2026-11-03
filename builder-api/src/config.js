@@ -46,6 +46,7 @@ export function checkConfig(env) {
   wholeNumber("CUSTOM_PARALLEL", 3, { min: 1, max: 20 });
   wholeNumber("GATEWAY_POLL_MS", 2000, { min: 100 });
   wholeNumber("PREVIEW_IDLE_MS", 15 * 60_000, { min: 1000 });
+  wholeNumber("LEASE_MS", 60_000, { min: 1000 }); // how long a project's lease lasts without renewal (Step 22)
 
   const config = { port, host: has("HOST") ? env.HOST : "127.0.0.1", previewPort, mongodbUri, defaultMode, gateway, storage, modes: MODES };
   return { config, problems };
