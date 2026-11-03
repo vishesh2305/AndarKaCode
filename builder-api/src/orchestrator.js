@@ -14,6 +14,7 @@ import { origin, recall, recallLibrary, recallSimilarPage, rememberProject } fro
 import { customKey, inventoryKey, pageKey } from "./memory/keys.js";
 import { getFrontend, submitFrontend } from "./gateway-client.js";
 import { Contract } from "./models/contract.js";
+import { withUsage } from "../../shared/meter.mjs";
 import { askRerun, claimProject, freeProjects, releaseAll, releaseProject, renewLease } from "./lease.js";
 import { log } from "./log.js";
 import { Job } from "./models/job.js";
@@ -58,8 +59,9 @@ export const currentContract = (project) =>
 // Records one piece of work as a Job; `work(job)` may set job.provider / job.contractHash.
 async function runJob(project, kind, work) {
   const job = await Job.create({ projectId: project._id, kind, status: "running", startedAt: new Date() });
+  const usage = []; // Step 25: every model call made while doing this job
   try {
-    const result = await work(job);
+    const result = await withUsage(usage, () => work(job));
     job.status = "done";
     return result;
   } catch (err) {
@@ -67,6 +69,7 @@ async function runJob(project, kind, work) {
     job.error = err.message.slice(0, 1000);
     throw err;
   } finally {
+    if (usage.length) job.usage = usage;
     job.finishedAt = new Date();
     await job.save();
   }
@@ -170,6 +173,7 @@ async function frontendBranch(project, contract, n) {
     if (remote.contractHash !== contract.hash) throw new Error("Gateway returned a page for a different Contract");
 
     job.provider = remote.provider;
+    if (remote.usage?.length) job.usage = remote.usage; // Step 25: what Laptop B's model calls used for this page
     job.artifactPath = await saveArtifact(project._id, `frontend/v${contract.version}/page-${n}.html`, remote.html);
     if (remote.finishedEarly) job.note = "Gateway took the complete page while the model kept editing";
     job.status = "done";

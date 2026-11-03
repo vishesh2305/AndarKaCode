@@ -1,5 +1,7 @@
 // Step 13: the coding AI. A prompt -> the model's answer (text). Local Ollama or cloud Gemini, the same
 // calls as the vision client (src/ai/vision.js), without an image or a JSON schema.
+import { geminiUsage, ollamaUsage, recordUsage, secondsSince } from "../../../shared/meter.mjs";
+
 const OLLAMA_URL = process.env.OLLAMA_URL ?? "http://localhost:11434";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || null;
 export const codeModelName = {
@@ -9,6 +11,7 @@ export const codeModelName = {
 const TIMEOUT_MS = 180_000;
 
 async function local(prompt, model = codeModelName.local) {
+  const started = Date.now();
   const res = await fetch(`${OLLAMA_URL}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -23,6 +26,7 @@ async function local(prompt, model = codeModelName.local) {
   });
   const data = await res.json();
   if (!res.ok) throw new Error(`Ollama ${res.status}: ${data.error ?? JSON.stringify(data)}`);
+  recordUsage({ purpose: "code", provider: "local", model, ...ollamaUsage(data), seconds: secondsSince(started) });
   return data.message.content || data.message.thinking || "";
 }
 
@@ -33,6 +37,7 @@ const TRANSIENT = new Set([500, 502, 503, 504]);
 async function cloud(prompt, model = codeModelName.cloud) {
   if (!GEMINI_API_KEY) throw new Error("The cloud coding model needs GEMINI_API_KEY");
   for (const delay of [...RETRY_DELAYS_MS, null]) {
+    const started = Date.now();
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": GEMINI_API_KEY },
@@ -40,7 +45,10 @@ async function cloud(prompt, model = codeModelName.cloud) {
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     const data = await res.json();
-    if (res.ok) return data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
+    if (res.ok) {
+      recordUsage({ purpose: "code", provider: "cloud", model, ...geminiUsage(data), seconds: secondsSince(started) });
+      return data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
+    }
     if (delay === null || !TRANSIENT.has(res.status)) throw new Error(`Gemini ${res.status}: ${data.error?.message ?? JSON.stringify(data)}`);
     await new Promise((r) => setTimeout(r, delay));
   }

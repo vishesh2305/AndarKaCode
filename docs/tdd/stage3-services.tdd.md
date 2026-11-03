@@ -9,7 +9,7 @@
 | Step | What | Status |
 |---|---|---|
 | 24 | `api` and `orchestrator` as two services on one database, Docker Compose | ✅ |
-| 25 | `ai-router`: every model call through one service, tokens and seconds per job | to do |
+| 25 | Every model call metered on its job (tokens incl. thinking, seconds); new provider adapters moved to Step 31 | ✅ |
 | 26 | `ui-worker`: page jobs from the queue | to do |
 | 27 | `backend-worker` and `verifier` services | to do |
 | 28 | Compose profiles `server-1`/`server-2`, killed-worker test, placement check | to do |
@@ -66,3 +66,46 @@ docker compose -f deploy/docker-compose.yml --env-file deploy/.env up --build -d
 - The api container reaches Laptop B's Gateway over Tailscale (`pageBuilder: single`).
 - m1, local model, fresh: **READY in 81 s**. Jobs: reading, backend, page 1 and Check, each done once.
 - The orchestrator's JSON log has the project's 6 state changes, and the API's log has none.
+
+## Step 25: Every model call metered on its job
+
+- **`shared/meter.mjs`** (Builder API and Gateway):
+  - `withUsage(list, work)` collects every `recordUsage(...)` made inside `work`, however deep and however parallel (Node's `AsyncLocalStorage`), so the model calls keep their shapes;
+  - `ollamaUsage` and `geminiUsage` read the tokens out of each provider's answer, with Gemini's thinking tokens kept apart, because they are billed like output.
+- **Every model call records** `{ purpose, provider, model, inputTokens, outputTokens, thinkingTokens, seconds }`:
+  - reading a screenshot (`src/ai/vision.js`, `read`);
+  - drawing a page (`shared/page.mjs`, `page`);
+  - writing a custom button (`src/custom/model.js`, `code`).
+
+  A call the provider refuses records nothing.
+- **On the job:** `runJob` meters its work into `job.usage`. A page job takes the usage the Gateway hands back with its page: the Gateway meters each of its jobs, and `/v1/generations/:id` returns `usage` once the page is done.
+- **Not in this step:** the extra provider adapters (OpenAI, Anthropic, Groq, OpenRouter) and the "one service for every AI call" shape are needed once users bring their own keys, so they move to **Step 31 (BYOK)**. The metering is what the cost per build needs now.
+
+### Tests
+
+RED (`a35d228`):
+- `node --test test/meter.test.js` and the Gateway suite give `Cannot find module '.../shared/meter.mjs'`;
+- the pipeline test now expects usage on its jobs (its fake Ollama returns token counts, and its fake Gateway returns page usage).
+
+GREEN, all on Laptop B: meter **10/10**, unit **426/426**, integration **134/134**, Gateway **15/15**.
+
+| # | What is guaranteed | Test | Result |
+|---|---|---|---|
+| 1 | Usage recorded while work runs is collected, in order | `meter.test.js: collects what is recorded…` | PASS |
+| 2 | Outside metered work, recording is ignored without failing | `records nothing outside…` | PASS |
+| 3 | Two pieces of work at the same time keep their usage apart | `keeps two pieces of work…apart` | PASS |
+| 4 | Ollama's and Gemini's token counts are read; thinking is apart; missing usage gives zeros | `ollamaUsage and geminiUsage: …` | PASS |
+| 5 | Reading, pages and custom code record purpose, provider, model, tokens and seconds, locally and on Gemini | `every model call records its usage` | PASS |
+| 6 | A refused call records nothing | `a call the provider refuses records nothing` | PASS |
+| 7 | The Gateway hands back its page's usage | `gateway/test/jobs.test.js: usage (Step 25)` | PASS |
+| 8 | In the real pipeline, the reading job holds one `read` entry per screenshot, and each page job holds the Gateway's usage | `integration/pipeline.test.js: builds a spec from two screenshots…` | PASS |
+
+### First real numbers (Laptop B, local `qwen3-vl:8b-instruct`, m7, fresh), 3 Nov 2026
+
+| Job | Calls | Tokens in | Tokens out | Seconds |
+|---|---|---|---|---|
+| Reading | 1 | 1,409 | 298 | 19.7 |
+| Page (through the Gateway) | 1 | 1,472 | 1,336 | 70.4 |
+| **Build** | **2** | **2,881** | **1,634** | **90.1** |
+
+The backend made no model call here: this reading of m7 gave no custom buttons. The `code` metering is covered by the tests, not yet by a real run. Cloud numbers, with thinking tokens and real prices, come when a paid or reset Gemini key is used; they feed `docs/economics.md` before Step 42.
