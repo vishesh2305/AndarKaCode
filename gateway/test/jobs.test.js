@@ -4,6 +4,7 @@
 // on the other model. The builders here are fakes: no model, no Screenshot-to-Code.
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { recordUsage } from "../../shared/meter.mjs";
 import { attemptPlan, createJobQueue } from "../src/jobs.js";
 
 const IMAGE = "data:image/png;base64,aW1n";
@@ -159,5 +160,18 @@ describe("createJobQueue: the same request twice", () => {
     assert.equal(second.created, false);
     assert.equal(second.job.id, first.job.id);
     assert.equal(queue.submit({ ...request, builder: "s2c" }).created, true, "another builder draws its own page");
+  });
+});
+
+describe("createJobQueue: usage (Step 25)", () => {
+  it("hands back the tokens and seconds the page builder's model calls used, once the page is done", async () => {
+    const build = async ({ provider }) => {
+      recordUsage({ purpose: "page", provider, model: "m", inputTokens: 900, outputTokens: 300, thinkingTokens: 0, seconds: 12.5 });
+      return { html: "<html></html>" };
+    };
+    const queue = createJobQueue({ builders: { single: build }, hasCloud: true });
+    const { job } = queue.submit({ image: IMAGE, instructions: "x", contractHash: hash(71), mode: "cloud" });
+    const view = await finished(queue, job);
+    assert.deepEqual(view.usage, [{ purpose: "page", provider: "cloud", model: "m", inputTokens: 900, outputTokens: 300, thinkingTokens: 0, seconds: 12.5 }]);
   });
 });

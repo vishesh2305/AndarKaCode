@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { withUsage } from "../../shared/meter.mjs";
 
 const sha256 = (text) => createHash("sha256").update(text).digest("hex");
 
@@ -45,6 +46,7 @@ export function createJobQueue({ builders, defaultBuilder = "single", limits = {
       createdAt: Date.now(),
       startedAt: null,
       finishedAt: null,
+      usage: [], // every model call this job made (Step 25), handed back with the page
       input: { image, instructions }, // dropped once the job finishes
     };
     jobs.set(job.id, job);
@@ -79,7 +81,7 @@ export function createJobQueue({ builders, defaultBuilder = "single", limits = {
     for (const provider of attemptPlan(job.mode, { hasCloud })) {
       job.provider = provider;
       try {
-        const { html, early = false } = await builders[job.builder]({
+        const { html, early = false } = await withUsage(job.usage, () => builders[job.builder]({
           provider,
           image: job.input.image,
           instructions: job.input.instructions,
@@ -87,7 +89,7 @@ export function createJobQueue({ builders, defaultBuilder = "single", limits = {
             job.progress = status;
             job.chars = chars;
           },
-        });
+        }));
         job.html = html;
         job.finishedEarly = early;
         job.error = null;
@@ -117,7 +119,7 @@ export function createJobQueue({ builders, defaultBuilder = "single", limits = {
       builder: job.builder,
       provider: job.provider,
       contractHash: job.contractHash,
-      ...(job.status === "done" && { finishedEarly: job.finishedEarly, html: job.html }),
+      ...(job.status === "done" && { finishedEarly: job.finishedEarly, html: job.html, usage: job.usage }),
       ...(job.status === "failed" && { error: job.error }),
     };
   }

@@ -1,6 +1,8 @@
 // The single-call page builder (Steps 18.2 and 23b), shared by the Builder API (page exam) and the Gateway
 // on Laptop B (real builds). One screenshot + the page instructions -> one model call -> one HTML page: no
 // agent steps, no Screenshot-to-Code. Reads OLLAMA_URL, OLLAMA_MODEL, GEMINI_API_KEY, GEMINI_PAGE_MODEL/GEMINI_MODEL.
+import { geminiUsage, ollamaUsage, recordUsage, secondsSince } from "./meter.mjs";
+
 const OLLAMA_URL = process.env.OLLAMA_URL ?? "http://localhost:11434";
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? "qwen3-vl:8b-instruct";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || null;
@@ -40,6 +42,7 @@ export function extractHtml(answer) {
 }
 
 async function local({ prompt, imageB64 }) {
+  const started = Date.now();
   const res = await fetch(`${OLLAMA_URL}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -54,6 +57,7 @@ async function local({ prompt, imageB64 }) {
   });
   const data = await res.json();
   if (!res.ok) throw new Error(`Ollama ${res.status}: ${data.error ?? JSON.stringify(data)}`);
+  recordUsage({ purpose: "page", provider: "local", model: OLLAMA_MODEL, ...ollamaUsage(data), seconds: secondsSince(started) });
   return data.message.content || data.message.thinking || "";
 }
 
@@ -78,6 +82,7 @@ async function cloud({ prompt, imageB64, thinking }) {
   if (!GEMINI_API_KEY) throw new Error("Cloud mode needs GEMINI_API_KEY in .env (builder-api/.env, or gateway/.env on Laptop B)");
   const generationConfig = { temperature: 0.2, ...(thinking === "low" && { thinkingConfig: { thinkingLevel: "low" } }) };
   for (const delay of [...RETRY_DELAYS_MS, null]) {
+    const started = Date.now();
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${pageModelName.cloud}:generateContent`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": GEMINI_API_KEY },
@@ -88,7 +93,10 @@ async function cloud({ prompt, imageB64, thinking }) {
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     const data = await res.json();
-    if (res.ok) return data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
+    if (res.ok) {
+      recordUsage({ purpose: "page", provider: "cloud", model: pageModelName.cloud, ...geminiUsage(data), seconds: secondsSince(started) });
+      return data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
+    }
     const wait = res.status === 429 ? quotaWait(data) : null;
     if (wait !== null && wait > MAX_QUOTA_WAIT_S) {
       throw new Error(`Gemini daily limit reached for this key: try again in about ${hours(wait)}, or use a paid key`);

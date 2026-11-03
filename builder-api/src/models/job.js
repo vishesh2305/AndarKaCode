@@ -15,6 +15,7 @@ const jobSchema = new mongoose.Schema(
     contractHash: String, // which Contract version this job was built for
     page: Number, // frontend jobs: which screenshot (1-based) this page is built from
     remoteJobId: String, // the Gateway's jobId for frontend jobs
+    usage: { type: [mongoose.Schema.Types.Mixed], default: undefined }, // Step 25: { purpose, provider, model, inputTokens, outputTokens, thinkingTokens, seconds } per model call
     artifactPath: String, // what the job produced, relative to the repo root (e.g. runs/<id>/frontend/v1.html)
     note: String, // e.g. "placeholder until Step 10"
     report: mongoose.Schema.Types.Mixed, // verify jobs: the Verifier's report (src/verify/index.js)
