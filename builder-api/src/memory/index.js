@@ -10,7 +10,7 @@ import { Job } from "../models/job.js";
 import { Memory } from "../models/memory.js";
 import { pageInstructions } from "../spec/instructions.js";
 import { REPO_ROOT } from "../storage.js";
-import { NEAR, hammingDistance } from "./dhash.js";
+import { NEAR, bands, hammingDistance } from "./dhash.js";
 import { buttonShape, customKey, instructionsHash, inventoryKey, pageKey } from "./keys.js";
 import { fitsTable } from "./library.js";
 
@@ -58,7 +58,14 @@ async function keep(kind, key, { payload, provider, seconds, project, lookup = {
  */
 export async function recallSimilarPage(dHash, instructions) {
   if (!dHash) return null;
-  const pages = await Memory.find({ kind: "page", instructionsHash: instructionsHash(instructions), dHash: { $type: "string" } }).lean();
+  // Only the rows sharing a band can be NEAR bits away (Step 28, M3); rows remembered before the bands are
+  // compared as before, until the next READY project with that page fills them in.
+  const pages = await Memory.find({
+    kind: "page",
+    instructionsHash: instructionsHash(instructions),
+    dHash: { $type: "string" },
+    $or: [{ dHashBands: { $in: bands(dHash) } }, { dHashBands: { $exists: false } }],
+  }).lean();
   const closest = pages.map((memory) => ({ memory, distance: hammingDistance(dHash, memory.dHash) })).sort((a, b) => a.distance - b.distance)[0];
   if (!closest || closest.distance > NEAR) return null;
   const memory = await withPayload(closest.memory);
@@ -100,7 +107,7 @@ export async function rememberProject(project, contract) {
       provider: job.provider,
       seconds: secondsOf(job),
       project,
-      lookup: { ...(shot.dHash && { dHash: shot.dHash }), instructionsHash: instructionsHash(instructions) },
+      lookup: { ...(shot.dHash && { dHash: shot.dHash, dHashBands: bands(shot.dHash) }), instructionsHash: instructionsHash(instructions) },
     });
   }
 
