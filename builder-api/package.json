@@ -15,17 +15,15 @@
     "eval:inventory": "node --env-file-if-exists=.env scripts/eval-inventory.mjs",
     "smoke:wire": "node scripts/wire-smoke.mjs",
     "eval:pages": "node --env-file-if-exists=.env scripts/eval-pages.mjs",
-    "eval:custom":"node --env-file-if-exists=.env scripts/custom-model-test.mjs",
+    "eval:custom": "node --env-file-if-exists=.env scripts/custom-model-test.mjs",
     "test:integration": "node --test --test-concurrency=1 \"integration/**/*.test.js\""
   },
   "dependencies": {
     "acorn": "8.18.0",
     "express": "^5.3.0",
+    "jsdom": "29.1.1",
     "mongoose": "^9.11.2",
     "multer": "^2.4.0",
     "sharp": "^0.35.5"
-  },
-  "devDependencies": {
-    "jsdom": "29.1.1"
   }
 }

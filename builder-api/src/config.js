@@ -2,6 +2,7 @@
 // message naming the setting and the file; every problem is listed at once; a secret is never printed.
 const FILE = "builder-api/.env";
 const MODES = ["local", "cloud", "auto"];
+const ROLES = ["all", "api", "orchestrator"]; // Step 24: one process, or the two services
 const MIN_GATEWAY_KEY = 16; // what the Gateway itself accepts (gateway/src/server.js)
 
 /** { config, problems }: the settings read from env, and what is wrong with them (plain sentences). */
@@ -38,6 +39,11 @@ export function checkConfig(env) {
     gateway = { url: env.GATEWAY_URL, apiKey: env.GATEWAY_API_KEY };
   }
 
+  // Behind a container HOST is 0.0.0.0, which a browser can't open: PREVIEW_ORIGIN says where the browser
+  // finds the live preview (Step 24). Without it, the address is worked out when the preview listens.
+  const previewOrigin = has("PREVIEW_ORIGIN") ? env.PREVIEW_ORIGIN.replace(/\/$/, "") : null;
+  if (previewOrigin && !/^https?:\/\//.test(previewOrigin)) problems.push(`PREVIEW_ORIGIN in ${FILE} must start with http:// or https:// (for example http://127.0.0.1:4001)`);
+
   const storage = has("STORAGE") ? env.STORAGE : "local";
   if (storage === "r2") problems.push(`STORAGE=r2 comes with the servers and Cloudflare (Step 46): use STORAGE=local for now`);
   else if (storage !== "local") problems.push(`STORAGE in ${FILE} must be local (it is "${storage}")`);
@@ -47,8 +53,12 @@ export function checkConfig(env) {
   wholeNumber("GATEWAY_POLL_MS", 2000, { min: 100 });
   wholeNumber("PREVIEW_IDLE_MS", 15 * 60_000, { min: 1000 });
   wholeNumber("LEASE_MS", 60_000, { min: 1000 }); // how long a project's lease lasts without renewal (Step 22)
+  wholeNumber("PICKUP_MS", 20_000, { min: 100 }); // how often the orchestrator looks for new work (Step 24)
 
-  const config = { port, host: has("HOST") ? env.HOST : "127.0.0.1", previewPort, mongodbUri, defaultMode, gateway, storage, modes: MODES };
+  const role = has("ROLE") ? env.ROLE : "all";
+  if (!ROLES.includes(role)) problems.push(`ROLE in ${FILE} must be one of ${ROLES.join(", ")} (it is "${role}")`);
+
+  const config = { port, host: has("HOST") ? env.HOST : "127.0.0.1", previewPort, mongodbUri, defaultMode, gateway, storage, role, previewOrigin, modes: MODES };
   return { config, problems };
 }
 

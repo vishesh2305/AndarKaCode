@@ -1,0 +1,53 @@
+# Step 24: the Builder API as two services plus MongoDB, on one machine (the two production servers come
+# in Step 28 as Compose profiles). From the repo root:
+#   docker compose -f deploy/docker-compose.yml up --build
+# Then open http://127.0.0.1:4000. Settings come from deploy/.env (copy deploy/.env.example).
+name: andarkacode
+
+x-builder: &builder
+  image: andarkacode/builder-api
+  restart: unless-stopped
+  depends_on: { mongo: { condition: service_healthy } }
+  volumes: [runs:/app/runs]
+  environment: &env
+    MONGODB_URI: mongodb://mongo:27017/builder_db
+    DEFAULT_MODE: ${DEFAULT_MODE:-local}
+    GATEWAY_URL: ${GATEWAY_URL:-}
+    GATEWAY_API_KEY: ${GATEWAY_API_KEY:-}
+    OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+    GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+  extra_hosts: ["host.docker.internal:host-gateway"]
+
+services:
+  mongo:
+    image: mongo:8
+    restart: unless-stopped
+    volumes: [mongo-data:/data/db]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    <<: *builder
+    build: { context: .., dockerfile: deploy/Dockerfile } # built once; the orchestrator runs the same image
+    environment:
+      <<: *env
+      ROLE: api
+      PREVIEW_PORT: "4001"
+      PREVIEW_ORIGIN: http://127.0.0.1:4001
+    ports: ["127.0.0.1:4000:4000", "127.0.0.1:4001:4001"] # this computer only (no login yet)
+
+  orchestrator:
+    <<: *builder
+    pull_policy: never # the image the api service built
+    environment:
+      <<: *env
+      ROLE: orchestrator
+      PORT: "4100"
+    # no ports: it only talks to MongoDB, the models and the Gateway
+
+volumes:
+  mongo-data:
+  runs:

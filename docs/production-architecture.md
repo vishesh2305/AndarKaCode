@@ -307,7 +307,7 @@ Stage 1b is done when a 3-page cloud build on the two laptops is READY in under 
 ### Stage 3: Microservices, two servers simulated on the Mac (≈2 weeks)
 | Step | What | Done when |
 |---|---|---|
-| **24** | Split `api` and `orchestrator` into `services/`, with `shared/` and Docker Compose | The same project reaches READY through Compose |
+| **24** | `api` and `orchestrator` as two services that meet only in MongoDB (`ROLE`, one image), with Docker Compose. The code splits into `services/` folders when the services' code differs (Step 25 on) | ✅ 3 Nov 2026: a project reached READY through Compose in 81 s; the orchestrator built it, the API built nothing |
 | **25** | `ai-router` service: adapters (Gemini, Ollama, then OpenAI, Anthropic, Groq, OpenRouter), slots, token metering | Every AI call goes through it, with tokens and seconds recorded on the Job |
 | **26** | `ui-worker` (the method chosen in Step 18), with Laptop B as the `local-gpu` dev provider | 3 pages are built at the same time |
 | **27** | `backend-worker` and `verifier` services | The backend is built at the same time as the pages; the Barrier still waits for both |
