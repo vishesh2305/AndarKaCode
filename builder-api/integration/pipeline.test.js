@@ -372,6 +372,16 @@ describe("UI endpoints", () => {
     assert.equal(project.state, "READY", project.error);
   });
 
+  it("answers /healthz (alive) and /readyz (database connected) for the servers' health checks (Step 20)", async () => {
+    const root = base.replace(/\/api$/, "");
+    const alive = await fetch(`${root}/healthz`);
+    assert.equal(alive.status, 200);
+    assert.deepEqual(await alive.json(), { ok: true });
+    const ready = await fetch(`${root}/readyz`);
+    assert.equal(ready.status, 200);
+    assert.deepEqual(await ready.json(), { ready: true, db: true });
+  });
+
   it("serves each uploaded screenshot, and 404 for one that doesn't exist", async () => {
     const res = await fetch(`${base}/projects/${id}/screenshots/2`);
     assert.equal(res.status, 200);
