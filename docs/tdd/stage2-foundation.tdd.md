@@ -136,3 +136,21 @@ GREEN, all on Laptop B: lease **10/10** (real MongoDB); unit **412/412**; integr
 ## Stage 2: where it stands
 
 Steps 20, 21 and 22 are built, test-first, and merged into `main`. Next is the Mac check of the stage, then Stage 3 (microservices, Steps 24–28).
+
+### After the Mac check: a faster restart (3 Nov 2026)
+
+**The Mac's crash test** (Ctrl+C during Read, then `npm start`) finished the project once, by itself, but took **247 s**. Most of that was waiting:
+- up to 60 s for the old lease to run out;
+- up to another 60 s for the next search for free projects.
+
+**What changed:**
+- **Stopped on purpose (Ctrl+C, or a deploy's SIGTERM):** the Builder API now gives back every project it holds before it exits (`releaseAll`, `stopBuilding`), so the next start continues them at once. A second Ctrl+C stops it straight away.
+- **After a real crash:** the search for free projects runs every third of a lease (20 s), not every lease (60 s). A crashed Builder API's projects now wait at most about 80 s.
+
+RED (`4b6fa73`): `integration/lease.test.js` gives `does not provide an export named 'releaseAll'`. GREEN: lease **11/11**.
+
+| # | What is guaranteed | Test | Result |
+|---|---|---|---|
+| 12 | Stopping on purpose frees every project this builder holds, at once, and leaves the others' alone | `releaseAll: frees every project this builder holds…` | PASS |
+
+Ctrl+C itself is checked on the Mac. On Windows a background process can't be sent a real Ctrl+C: Windows ends it without running its shutdown handler.
