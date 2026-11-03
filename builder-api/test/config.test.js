@@ -109,6 +109,12 @@ describe("checkConfig: what is refused", () => {
     assert.match(problemsOf({ PICKUP_MS: "10" })[0], /PICKUP_MS in builder-api\/\.env must be a whole number of at least 100/);
   });
 
+  it("the live preview's address for the browser: from HOST, or PREVIEW_ORIGIN behind a container (Step 24)", () => {
+    assert.equal(checkConfig({}).config.previewOrigin, null, "worked out when the preview listens");
+    assert.equal(checkConfig({ PREVIEW_ORIGIN: "http://127.0.0.1:4001" }).config.previewOrigin, "http://127.0.0.1:4001");
+    assert.match(problemsOf({ PREVIEW_ORIGIN: "127.0.0.1:4001" })[0], /PREVIEW_ORIGIN in builder-api\/\.env must start with http:\/\/ or https:\/\//);
+  });
+
   it("lists every problem at once, not only the first", () => {
     assert.equal(problemsOf({ PORT: "abc", DEFAULT_MODE: "clod", MONGODB_URI: "x" }).length, 3);
   });
