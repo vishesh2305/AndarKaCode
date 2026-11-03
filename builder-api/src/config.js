@@ -38,12 +38,16 @@ export function checkConfig(env) {
     gateway = { url: env.GATEWAY_URL, apiKey: env.GATEWAY_API_KEY };
   }
 
+  const storage = has("STORAGE") ? env.STORAGE : "local";
+  if (storage === "r2") problems.push(`STORAGE=r2 comes with the servers and Cloudflare (Step 46): use STORAGE=local for now`);
+  else if (storage !== "local") problems.push(`STORAGE in ${FILE} must be local (it is "${storage}")`);
+
   wholeNumber("READ_PARALLEL", 6, { min: 1, max: 20 });
   wholeNumber("CUSTOM_PARALLEL", 3, { min: 1, max: 20 });
   wholeNumber("GATEWAY_POLL_MS", 2000, { min: 100 });
   wholeNumber("PREVIEW_IDLE_MS", 15 * 60_000, { min: 1000 });
 
-  const config = { port, host: has("HOST") ? env.HOST : "127.0.0.1", previewPort, mongodbUri, defaultMode, gateway, modes: MODES };
+  const config = { port, host: has("HOST") ? env.HOST : "127.0.0.1", previewPort, mongodbUri, defaultMode, gateway, storage, modes: MODES };
   return { config, problems };
 }
 

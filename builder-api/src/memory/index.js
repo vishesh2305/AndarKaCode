@@ -4,6 +4,8 @@
 // what the same input produced before, and a reused page or code still goes through the Check.
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { blobs } from "../blobs.js";
+import { log } from "../log.js";
 import { Job } from "../models/job.js";
 import { Memory } from "../models/memory.js";
 import { pageInstructions } from "../spec/instructions.js";
@@ -15,8 +17,20 @@ import { fitsTable } from "./library.js";
 const KINDS = ["inventory", "page", "custom"];
 const secondsOf = (job) => (job?.startedAt && job.finishedAt ? Math.round((job.finishedAt - job.startedAt) / 100) / 10 : null);
 
+// A row keeps only its content's blob name (Step 21); this puts the content back. A row whose blob is gone
+// counts as not remembered (the work is simply done again).
+async function withPayload(memory) {
+  if (!memory?.payloadKey) return memory ?? null;
+  try {
+    return { ...memory, payload: await blobs.getJson(memory.payloadKey) };
+  } catch (err) {
+    log.error(`memory ${memory.kind} ${memory.key}: ${err.message}`);
+    return null;
+  }
+}
+
 /** The remembered work for this key, or null. */
-export const recall = (kind, key) => Memory.findOne({ kind, key }).lean();
+export const recall = async (kind, key) => withPayload(await Memory.findOne({ kind, key }).lean());
 
 /** What a reused piece says about where it came from (kept on the job). */
 export const origin = (memory) => ({ sourceProjectId: memory.sourceProjectId, sourceName: memory.sourceName, seconds: memory.seconds ?? null });
@@ -24,15 +38,19 @@ export const origin = (memory) => ({ sourceProjectId: memory.sourceProjectId, so
 // Keeps the first project's work: a later identical piece doesn't replace its source. `lookup` fields
 // (a page's dHash and instructions hash) describe the work itself, so they are filled in every time:
 // pages remembered before they existed get them too.
-const keep = (kind, key, { payload, provider, seconds, project, lookup = {} }) =>
-  Memory.updateOne(
+// The content goes into the blob store; the row keeps its name and size.
+async function keep(kind, key, { payload, provider, seconds, project, lookup = {} }) {
+  const payloadKey = await blobs.putJson(payload);
+  const payloadBytes = Buffer.byteLength(JSON.stringify(payload));
+  return Memory.updateOne(
     { kind, key },
     {
-      $setOnInsert: { kind, key, payload, provider: provider ?? null, seconds, sourceProjectId: project._id, sourceName: project.name },
+      $setOnInsert: { kind, key, payloadKey, payloadBytes, provider: provider ?? null, seconds, sourceProjectId: project._id, sourceName: project.name },
       ...(Object.keys(lookup).length && { $set: lookup }),
     },
     { upsert: true }
   );
+}
 
 /**
  * A page drawn from a copy of this screenshot (dHash at most NEAR bits away) with the same instructions:
@@ -42,7 +60,9 @@ export async function recallSimilarPage(dHash, instructions) {
   if (!dHash) return null;
   const pages = await Memory.find({ kind: "page", instructionsHash: instructionsHash(instructions), dHash: { $type: "string" } }).lean();
   const closest = pages.map((memory) => ({ memory, distance: hammingDistance(dHash, memory.dHash) })).sort((a, b) => a.distance - b.distance)[0];
-  return closest && closest.distance <= NEAR ? closest : null;
+  if (!closest || closest.distance > NEAR) return null;
+  const memory = await withPayload(closest.memory);
+  return memory ? { memory, distance: closest.distance } : null;
 }
 
 /**
@@ -51,7 +71,8 @@ export async function recallSimilarPage(dHash, instructions) {
  */
 export async function recallLibrary(spec, op) {
   const entity = spec.entities.find((e) => e.name === op.entity);
-  const candidates = await Memory.find({ kind: "custom", ...buttonShape(op), fields: { $type: "array" } }).sort({ createdAt: -1 }).limit(5).lean();
+  const rows = await Memory.find({ kind: "custom", ...buttonShape(op), fields: { $type: "array" } }).sort({ createdAt: -1 }).limit(5).lean();
+  const candidates = (await Promise.all(rows.map(withPayload))).filter(Boolean);
   return candidates.filter((memory) => fitsTable(memory.payload, memory.fields, entity.fields));
 }
 

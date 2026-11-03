@@ -615,6 +615,22 @@ describe("Memory (Step 14): work from a Ready project is reused", () => {
     assert.deepEqual(await (await fetch(`${base}/memory`)).json(), { inventory: 1, page: 1, custom: 0 });
   });
 
+  it("keeps each memory row small: the content is a compressed blob, the row only its name (Step 21)", async () => {
+    const conn = await mongoose.createConnection(MONGODB_URI).asPromise();
+    try {
+      const rows = await conn.collection("memories").find({}).toArray();
+      assert.equal(rows.length, 2);
+      for (const row of rows) {
+        assert.equal(row.payload, undefined, `${row.kind}: no content in the row`);
+        assert.match(row.payloadKey ?? "", /^[0-9a-f]{64}$/);
+        const bytes = mongoose.mongo.BSON.calculateObjectSize(row);
+        assert.ok(bytes < 1024, `${row.kind} row is ${bytes} bytes`);
+      }
+    } finally {
+      await conn.close();
+    }
+  });
+
   it("the same screenshot again reaches READY with no vision AI and no Laptop B call, and says where it came from", async () => {
     const [vision, sent] = [visionRequests.count, submissions.length];
     const again = await waitFor(await upload(["m5b-departments.png"], [], { fresh: false }), settled);

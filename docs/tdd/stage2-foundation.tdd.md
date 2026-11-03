@@ -12,7 +12,7 @@
 | Step | What | Status |
 |---|---|---|
 | 20 | Config checked at start-up, `/healthz` and `/readyz`, JSON logs | ✅ |
-| 21 | Storage interface (`local` or `r2`); memory payloads become compressed blobs named by their hash | to do |
+| 21 | Blob store (`local`; `r2` in Step 46); memory content in compressed blobs, rows under 1 KB | ✅ |
 | 22 | Job queue and project leases in MongoDB | to do |
 
 ## Step 20: Settings, health checks, logs
@@ -56,3 +56,37 @@ GREEN, all on Laptop B: `config` + `startup` **23/23**; integration **119/119** 
 | 15 | A JSON log line is one line of valid JSON; text keeps today's `[project] message` | `logLine: …` | PASS |
 | 16 | Outdated UI build: true when a source file is newer than `dist/index.html`; false when the build is newer, or there is none | `webBuildIsStale: …` | PASS |
 | 17 | The real server answers `/healthz` and `/readyz` | `integration/pipeline.test.js: answers /healthz…` | PASS |
+
+## Step 21: Blob store, and small memory rows
+
+- **`src/blobs.js`, `createBlobStore({ dir })`:**
+  - `put` and `get` keep content as gzip files named by its SHA-256, and the same content is stored once;
+  - `putJson` and `getJson` keep JSON values;
+  - a blob is written next to its place and then renamed, so a reader never sees half of one;
+  - a name that isn't 64 hex characters is refused, so it can't reach outside the folder.
+
+  The Builder API's store lives in `runs/blobs/`.
+- **`STORAGE` setting:** `local`, the default. `r2` is refused with "comes with the servers and Cloudflare (Step 46)", because it needs the Cloudflare account and keys; it will sit behind the same calls.
+- **Memory (`src/memory/index.js`, `models/memory.js`):** a remembered reading, page or custom code is now a blob. The row keeps only `payloadKey` and `payloadBytes` plus its lookup fields, so it stays under 1 KB, which matters for the free 512 MB Atlas database.
+  - Every read (`recall`, `recallSimilarPage`, `recallLibrary`) puts the content back.
+  - A row whose blob is gone counts as not remembered, so the work is done again.
+  - Rows remembered before Step 21 (content inside the row, e.g. on the Mac) still work.
+- **Not in this step, on purpose:** the generated app folders and pages stay as files under `runs/`. The app has to run from a real folder for the Check and the live preview. When the two servers exist (Steps 24–28), pages travel through the job queue and the blob store.
+
+### Tests
+
+RED (`8fc98e2`): `node --test test/blobs.test.js test/config.test.js` gives `Cannot find module '.../src/blobs.js'`, and the `STORAGE` test fails.
+
+GREEN, all on Laptop B: blobs + config **22/22**; unit **411/411**; integration **120/120**.
+
+| # | What is guaranteed | Test | Result |
+|---|---|---|---|
+| 1 | A blob's name is the SHA-256 of its content, and the content comes back as it was | `blobs.test.js: names a blob by the SHA-256…` | PASS |
+| 2 | The same content is kept once | `keeps the same content once…` | PASS |
+| 3 | Blobs are stored compressed (repetitive HTML under a tenth of its size) | `stores it compressed` | PASS |
+| 4 | JSON values (readings) and plain text come back as they were | `keeps JSON values as they were` | PASS |
+| 5 | A missing blob is named in the error | `says which blob is missing` | PASS |
+| 6 | Names that could reach outside the folder are refused | `refuses a name that is not a SHA-256…` | PASS |
+| 7 | `STORAGE` is `local` by default; `r2` waits for Step 46; anything else is refused | `config.test.js: storage other than local…` | PASS |
+| 8 | After a real READY, every memory row has no content inside, a blob name, and is under 1 KB | `integration: keeps each memory row small…` | PASS |
+| 9 | Memory reuse still works from blobs: exact repeats, near-duplicate pages, the custom-code library | `integration: Memory (Step 14)` (all) | PASS |
