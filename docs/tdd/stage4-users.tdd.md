@@ -55,4 +55,6 @@
 
 **Suites:** unit 457 (was 438), integration 161 (was 151), Gateway 15, web 34 (was 29).
 
+**Found on the Mac (first real sign-in):** the app was opened at `http://127.0.0.1:4000` while `PUBLIC_URL` was `http://localhost:4000`. To a browser those are two sites: the login cookie was set for 127.0.0.1, the provider sent the person back to localhost, and the cookie stayed behind ("unknown or used state, or another browser"). Now `/auth/<provider>/start` on any other address first moves to `PUBLIC_URL` (once, with `?moved=1`, so a proxy that rewrites the Host header can't make it loop). Test: integration, "a sign-in started on another address of this server moves to PUBLIC_URL first, once" (RED, then GREEN).
+
 **Still to do by hand:** a sign-in with the real GitHub and Google. That needs an OAuth app at each provider, with the callback address allowed (see README, Configuration).

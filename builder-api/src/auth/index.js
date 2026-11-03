@@ -54,6 +54,12 @@ export function createAuth(auth) {
   router.get("/auth/:provider/start", async (req, res) => {
     const provider = providers[req.params.provider];
     if (!provider) return res.status(404).json({ error: "No such sign-in" });
+    // The login cookie belongs to the address the browser is on, and the provider sends the person back to
+    // PUBLIC_URL: start there (127.0.0.1 and localhost are two sites to a browser). Once, so a proxy that
+    // rewrites the Host header can't make it loop.
+    if (req.headers.host !== new URL(auth.publicUrl).host && req.query.moved === undefined) {
+      return res.redirect(302, `${auth.publicUrl}/auth/${provider.name}/start?moved=1`);
+    }
     const browser = newToken();
     const state = newToken();
     const { verifier, challenge } = pkce();
