@@ -38,3 +38,10 @@ export async function freeProjects({ now = Date.now() } = {}) {
   const rows = await Project.find({ state: { $in: UNFINISHED }, ...free(now) }, { _id: 1 }).lean();
   return rows.map((r) => r._id);
 }
+
+/** A Builder API stopped on purpose (Ctrl+C, a deploy) gives every project it holds back, so a restart can
+ *  continue them at once instead of waiting for the leases to run out. Returns how many it gave back. */
+export async function releaseAll({ owner }) {
+  const { modifiedCount } = await Project.updateMany({ "lease.owner": owner }, { $unset: { lease: 1 } });
+  return modifiedCount;
+}

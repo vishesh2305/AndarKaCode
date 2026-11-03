@@ -13,7 +13,7 @@ import { Job } from "./models/job.js";
 import { Project } from "./models/project.js";
 import path from "node:path";
 import { contractHash } from "../../shared/hash.mjs";
-import { currentContract, resumeAll, startPipeline } from "./orchestrator.js";
+import { currentContract, resumeAll, startPipeline, stopBuilding } from "./orchestrator.js";
 import { dHash } from "./memory/dhash.js";
 import { forgetAll, memoryCounts } from "./memory/index.js";
 import { checkSpec } from "./spec/check.js";
@@ -326,6 +326,22 @@ try {
   process.exit(1);
 }
 await resumeAll();
+
+// Step 22: stopped on purpose (Ctrl+C, a deploy's SIGTERM): give the projects back before exiting, so the
+// next start continues them at once. A crash can't do this; then the leases run out by themselves.
+let stopping = false;
+for (const signal of ["SIGINT", "SIGTERM"]) {
+  process.on(signal, async () => {
+    if (stopping) process.exit(1); // a second Ctrl+C: stop now
+    stopping = true;
+    try {
+      const given = await stopBuilding();
+      if (given) log.info(`Stopping: gave ${given} project(s) back; the next start continues them at once`);
+    } finally {
+      process.exit(0);
+    }
+  });
+}
 if (await webBuildIsStale(path.join(REPO_ROOT, "web"))) {
   log.info("The UI build is older than its source (git pull does not rebuild it): run `npm run build` in web/, then reload the page.");
 }

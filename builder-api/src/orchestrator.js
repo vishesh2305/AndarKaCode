@@ -14,7 +14,7 @@ import { origin, recall, recallLibrary, recallSimilarPage, rememberProject } fro
 import { customKey, inventoryKey, pageKey } from "./memory/keys.js";
 import { getFrontend, submitFrontend } from "./gateway-client.js";
 import { Contract } from "./models/contract.js";
-import { askRerun, claimProject, freeProjects, releaseProject, renewLease } from "./lease.js";
+import { askRerun, claimProject, freeProjects, releaseAll, releaseProject, renewLease } from "./lease.js";
 import { log } from "./log.js";
 import { Job } from "./models/job.js";
 import { Project } from "./models/project.js";
@@ -379,5 +379,9 @@ async function pickUpFree() {
 export async function resumeAll() {
   const { projects, interrupted } = await pickUpFree();
   if (projects) log.info(`Resuming ${projects} project(s), ${interrupted} interrupted job(s)`);
-  setInterval(() => pickUpFree().catch((err) => log.error(`looking for free projects failed: ${err.message}`)), LEASE_MS).unref();
+  // Every third of a lease: a crashed Builder API's projects wait at most a lease plus this.
+  setInterval(() => pickUpFree().catch((err) => log.error(`looking for free projects failed: ${err.message}`)), LEASE_MS / 3).unref();
 }
+
+/** Stopping on purpose (Ctrl+C, a deploy): give every project back, so the next start continues them at once. */
+export const stopBuilding = () => releaseAll({ owner: OWNER });
