@@ -3,7 +3,7 @@
 > **Design:** see [ARCHITECTURE.md](ARCHITECTURE.md) (v3.1, approved 16 Oct: Phase 1 builds exactly what the screenshots show; every backend part has visible evidence). This file is our **step-by-step to-do list**.
 > **Rule:** do one step, report back, then move on. Tick the box when its "Done when" is true.
 
-**Current step:** Stage 3 built on Laptop B (Steps 24–28; 27 folded into 33); waiting for the Mac check of Stage 3. Next: Stage 4 (users and keys, Steps 29–32). See [docs/production-architecture.md](docs/production-architecture.md) §7 and [docs/tdd/stage3-services.tdd.md](docs/tdd/stage3-services.tdd.md).
+**Current step:** Stage 3 done (Steps 24–28; 27 folded into 33), checked on the Mac: m1 READY in 84 s on the Mac's own ui-worker, 60 s through Laptop B's Gateway. Next: Stage 4 (users and keys, Steps 29–32). See [docs/production-architecture.md](docs/production-architecture.md) §7 and [docs/tdd/stage3-services.tdd.md](docs/tdd/stage3-services.tdd.md).
 
 > **28 Oct 2026:** the production plan replaces the old Steps 18–20 below. The old Step 18 (Sandbox) is now Step 33, the old Step 19 (GitHub) is now Step 48, and the rest of Step 17 (editing the spec in the UI) is now Step 38. The demo rehearsal (old Step 20) can still be done at any time.
 
