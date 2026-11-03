@@ -2,6 +2,7 @@
 // message naming the setting and the file, instead of a silent fallback or a confusing error later.
 // Every problem is listed at once, and a secret is never printed.
 import assert from "node:assert/strict";
+import { randomBytes } from "node:crypto";
 import { describe, it } from "node:test";
 import { checkConfig, loadConfig } from "../src/config.js";
 
@@ -25,7 +26,7 @@ describe("checkConfig: the defaults", () => {
       PORT: "5000",
       PREVIEW_PORT: "5100",
       HOST: "0.0.0.0",
-      MONGODB_URI: "mongodb+srv://user:pw@cluster0.example.net/builder",
+      MONGODB_URI: "mongodb+srv://cluster0.example.net/builder",
       GATEWAY_URL: "http://100.125.27.97:8787",
       GATEWAY_API_KEY: KEY,
       DEFAULT_MODE: "cloud",
@@ -113,12 +114,12 @@ describe("loadConfig: start, or stop with every problem", () => {
   });
 
   it("never prints a secret, not even a wrong one", () => {
-    const secret = "s3cret-but-too-short";
+    const secret = randomBytes(5).toString("hex"); // shorter than allowed, made up at every run
     try {
       loadConfig({ GATEWAY_URL: "ftp://x", GATEWAY_API_KEY: secret.slice(0, 10), DEFAULT_MODE: "cloud" });
       assert.fail("should have thrown");
     } catch (err) {
-      assert.doesNotMatch(err.message, /s3cret/);
+      assert.ok(!err.message.includes(secret), err.message);
     }
   });
 });

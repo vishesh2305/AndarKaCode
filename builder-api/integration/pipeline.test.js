@@ -3,7 +3,7 @@
 // Needs a MongoDB: TEST_MONGODB_URI=mongodb://127.0.0.1:27017/builder_db_itest npm run test:integration
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import path from "node:path";
 import { after, before, describe, it } from "node:test";
@@ -26,6 +26,8 @@ const visionRequests = { count: 0 }; // screenshots the fake vision AI was asked
 // ---- fake Gateway: finishes every job at once with a page built from the instructions (see helpers/fake-s2c.js);
 // a "Staff" page comes back without markers, so the Verifier has something to catch ----
 const gatewayJobs = new Map();
+// Made up at every run, so no key-like text sits in the repository (secret scanners flag those).
+const FAKE_GATEWAY_KEY = randomBytes(16).toString("hex");
 const submissions = [];
 
 function jsonServer(handler) {
@@ -58,7 +60,7 @@ const fakeOllama = await jsonServer(async (req, body) => {
 });
 
 const fakeGateway = await jsonServer(async (req, body) => {
-  if (req.headers["x-api-key"] !== "test-key-for-the-fake-gateway") return { status: 401, json: { error: "bad key" } };
+  if (req.headers["x-api-key"] !== FAKE_GATEWAY_KEY) return { status: 401, json: { error: "bad key" } };
   if (req.method === "POST" && req.url === "/v1/generations") {
     const jobId = randomUUID();
     submissions.push({ jobId, instructions: body.instructions, contractHash: body.contractHash, mode: body.mode });
@@ -128,7 +130,7 @@ before(async () => {
       MONGODB_URI,
       OLLAMA_URL: urlOf(fakeOllama),
       GATEWAY_URL: urlOf(fakeGateway),
-      GATEWAY_API_KEY: "test-key-for-the-fake-gateway",
+      GATEWAY_API_KEY: FAKE_GATEWAY_KEY,
       GATEWAY_POLL_MS: "100",
       DEFAULT_MODE: "local",
       GEMINI_API_KEY: "",
@@ -138,7 +140,8 @@ before(async () => {
   });
   api.stdout.on("data", (d) => (apiLog += d));
   api.stderr.on("data", (d) => (apiLog += d));
-  for (let i = 0; i < 100; i++) {
+  // Up to 60 s: loading the app from a OneDrive folder on Laptop B takes 6-10 s when nothing is cached.
+  for (let i = 0; i < 600; i++) {
     if (/listening/.test(apiLog)) return;
     if (api.exitCode !== null) break;
     await new Promise((r) => setTimeout(r, 100));
