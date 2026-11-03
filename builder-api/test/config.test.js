@@ -128,6 +128,12 @@ describe("checkConfig: what is refused", () => {
     assert.match(problemsOf({ UI_PARALLEL: "0" })[0], /UI_PARALLEL in builder-api\/\.env must be a whole number from 1 to 20/);
   });
 
+  it("how far MongoDB may be from a ui-worker before it warns: 5 ms, from 1 to 1000 (Step 28)", () => {
+    assert.equal(checkConfig({}).config.placementMs, 5);
+    assert.equal(checkConfig({ PLACEMENT_MS: "20" }).config.placementMs, 20);
+    assert.match(problemsOf({ PLACEMENT_MS: "0" })[0], /PLACEMENT_MS in builder-api\/\.env must be a whole number from 1 to 1000/);
+  });
+
   it("lists every problem at once, not only the first", () => {
     assert.equal(problemsOf({ PORT: "abc", DEFAULT_MODE: "clod", MONGODB_URI: "x" }).length, 3);
   });
