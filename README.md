@@ -251,6 +251,8 @@ It starts Ollama (port 11434), Screenshot-to-Code (the port in `S2C_WS_URL` in `
 brew services start mongodb-community      # once after a reboot
 cd builder-api && npm start                # → Builder API listening on http://127.0.0.1:4000
 curl -s http://127.0.0.1:4000/api/health   # optional: "db":true and "reachable":true
+# Every setting is checked at start (Step 20): a wrong one stops the start and names each problem.
+# Health checks for servers: GET /healthz (alive) and GET /readyz (200 when the database is connected, else 503).
 ```
 
 **3. Open http://127.0.0.1:4000** on Laptop A. The two lights in the top right (Mac, Windows GPU) should be green.
@@ -304,6 +306,8 @@ Each service reads its own `.env` (copy it from `.env.example`). `.env` files ar
 
 | Variable | Meaning |
 |---|---|
+| `LOG_FORMAT` | `text` (default) or `json`: one JSON object per log line, for production (Step 20) |
+| `READ_PARALLEL`, `CUSTOM_PARALLEL` | How many screenshots are read, and custom buttons written, at the same time (defaults 6 and 3; Steps 23, 23c) |
 | `PORT`, `HOST` | Where the Builder API and UI listen (default `127.0.0.1:4000`: this computer only) |
 | `PREVIEW_PORT` | The live preview's own local port (default: `PORT` + 1, e.g. 4001) |
 | `PREVIEW_IDLE_MS` | How long a live preview runs without use before it stops (default 15 minutes) |

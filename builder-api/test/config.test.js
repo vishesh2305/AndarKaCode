@@ -50,6 +50,12 @@ describe("checkConfig: what is refused", () => {
     }
   });
 
+  it("allows PREVIEW_PORT=0: any free port (the integration tests use it)", () => {
+    const { config, problems } = checkConfig({ PREVIEW_PORT: "0" });
+    assert.deepEqual(problems, []);
+    assert.equal(config.previewPort, 0);
+  });
+
   it("the live preview on the same port as the Builder API", () => {
     assert.match(problemsOf({ PORT: "4000", PREVIEW_PORT: "4000" })[0], /PREVIEW_PORT.*different from PORT/);
   });
@@ -68,18 +74,18 @@ describe("checkConfig: what is refused", () => {
   });
 
   it("a Gateway address that is not http(s), and a key shorter than the Gateway accepts", () => {
-    assert.match(problemsOf({ GATEWAY_URL: "100.125.27.97:8787", GATEWAY_API_KEY: KEY })[0], /GATEWAY_URL must start with http:\/\/ or https:\/\//);
-    assert.match(problemsOf({ GATEWAY_URL: "http://x:8787", GATEWAY_API_KEY: "short" })[0], /GATEWAY_API_KEY must be at least 16 characters/);
+    assert.match(problemsOf({ GATEWAY_URL: "100.125.27.97:8787", GATEWAY_API_KEY: KEY })[0], /GATEWAY_URL in builder-api\/\.env must start with http:\/\/ or https:\/\//);
+    assert.match(problemsOf({ GATEWAY_URL: "http://x:8787", GATEWAY_API_KEY: "short" })[0], /GATEWAY_API_KEY in builder-api\/\.env must be at least 16 characters/);
   });
 
   it("a database address that is not a MongoDB address", () => {
-    assert.match(problemsOf({ MONGODB_URI: "postgres://localhost/db" })[0], /MONGODB_URI must start with mongodb:\/\/ or mongodb\+srv:\/\//);
+    assert.match(problemsOf({ MONGODB_URI: "postgres://localhost/db" })[0], /MONGODB_URI in builder-api\/\.env must start with mongodb:\/\/ or mongodb\+srv:\/\//);
   });
 
   it("how many at once, outside 1 to 20, and a Gateway poll faster than 100 ms", () => {
-    assert.match(problemsOf({ READ_PARALLEL: "0" })[0], /READ_PARALLEL must be a whole number from 1 to 20/);
-    assert.match(problemsOf({ CUSTOM_PARALLEL: "x" })[0], /CUSTOM_PARALLEL must be a whole number from 1 to 20/);
-    assert.match(problemsOf({ GATEWAY_POLL_MS: "50" })[0], /GATEWAY_POLL_MS must be a whole number of at least 100/);
+    assert.match(problemsOf({ READ_PARALLEL: "0" })[0], /READ_PARALLEL in builder-api\/\.env must be a whole number from 1 to 20/);
+    assert.match(problemsOf({ CUSTOM_PARALLEL: "x" })[0], /CUSTOM_PARALLEL in builder-api\/\.env must be a whole number from 1 to 20/);
+    assert.match(problemsOf({ GATEWAY_POLL_MS: "50" })[0], /GATEWAY_POLL_MS in builder-api\/\.env must be a whole number of at least 100/);
   });
 
   it("lists every problem at once, not only the first", () => {

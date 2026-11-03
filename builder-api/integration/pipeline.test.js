@@ -58,7 +58,7 @@ const fakeOllama = await jsonServer(async (req, body) => {
 });
 
 const fakeGateway = await jsonServer(async (req, body) => {
-  if (req.headers["x-api-key"] !== "test-key") return { status: 401, json: { error: "bad key" } };
+  if (req.headers["x-api-key"] !== "test-key-for-the-fake-gateway") return { status: 401, json: { error: "bad key" } };
   if (req.method === "POST" && req.url === "/v1/generations") {
     const jobId = randomUUID();
     submissions.push({ jobId, instructions: body.instructions, contractHash: body.contractHash, mode: body.mode });
@@ -128,7 +128,7 @@ before(async () => {
       MONGODB_URI,
       OLLAMA_URL: urlOf(fakeOllama),
       GATEWAY_URL: urlOf(fakeGateway),
-      GATEWAY_API_KEY: "test-key",
+      GATEWAY_API_KEY: "test-key-for-the-fake-gateway",
       GATEWAY_POLL_MS: "100",
       DEFAULT_MODE: "local",
       GEMINI_API_KEY: "",
