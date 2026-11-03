@@ -56,7 +56,7 @@ const fakeOllama = await jsonServer(async (req, body) => {
   visionRequests.count++;
   const inventory = inventoriesByImage.get(body.messages[0].images[0])?.shift();
   if (!inventory) return { status: 500, json: { error: "test prepared no inventory" } };
-  return { json: { message: { content: JSON.stringify(inventory) } } };
+  return { json: { message: { content: JSON.stringify(inventory) }, prompt_eval_count: 700, eval_count: 120 } };
 });
 
 const fakeGateway = await jsonServer(async (req, body) => {
@@ -70,6 +70,7 @@ const fakeGateway = await jsonServer(async (req, body) => {
       status: "done",
       provider: "local",
       contractHash: body.contractHash,
+      usage: [{ purpose: "page", provider: "local", model: "fake-vision", inputTokens: 1500, outputTokens: 2200, thinkingTokens: 0, seconds: 3.2 }],
       html: /page title "Staff"/.test(body.instructions) ? `<!doctype html><html><body><!-- ${firstRule} --></body></html>` : fakePage(body.instructions),
     });
     return { status: 202, json: { jobId, status: "running" } };
@@ -203,6 +204,11 @@ describe("pipeline: screenshots -> spec -> pages -> SYNCED -> Wire -> Check -> R
     assert.equal(sent.length, 2, "one Gateway job per screenshot");
     assert.ok(sent.some((s) => /Data: employee\b/.test(s.instructions)));
     assert.ok(sent.some((s) => /Data: department\b/.test(s.instructions)));
+
+    // Step 25: every model call is metered on its job: two screenshots read, and each page's usage from the Gateway.
+    const reading = project.jobs.find((j) => j.kind === "contract");
+    assert.deepEqual(reading.usage.map((u) => [u.purpose, u.provider, u.inputTokens, u.outputTokens]), [["read", "local", 700, 120], ["read", "local", 700, 120]]);
+    assert.ok(pages.every((j) => j.usage?.[0]?.outputTokens === 2200), "page usage handed back by the Gateway");
 
     const page2 = await fetch(`${base}/projects/${id}/frontend?page=2`);
     assert.equal(page2.status, 200);
