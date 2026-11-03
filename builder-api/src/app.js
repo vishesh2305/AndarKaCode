@@ -325,7 +325,7 @@ try {
   console.error("Is MongoDB running? On the Mac: brew services start mongodb-community");
   process.exit(1);
 }
-await resumeAll();
+if (config.role !== "api") await resumeAll(); // the API service leaves the building to the orchestrator (Step 24)
 
 // Step 22: stopped on purpose (Ctrl+C, a deploy's SIGTERM): give the projects back before exiting, so the
 // next start continues them at once. A crash can't do this; then the leases run out by themselves.
@@ -360,6 +360,6 @@ const previewServer = previewSite.listen(PREVIEW_PORT, HOST, (err) => {
     console.error(`The live preview could not start on ${HOST}:${PREVIEW_PORT}: ${err.code ?? err.message} (set PREVIEW_PORT to a free port)`);
     return;
   }
-  previewOrigin = `http://${HOST}:${previewServer.address().port}`;
+  previewOrigin = config.previewOrigin ?? `http://${HOST}:${previewServer.address().port}`;
   console.log(`Live preview on ${previewOrigin}`);
 });

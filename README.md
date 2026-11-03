@@ -269,6 +269,23 @@ curl -s http://127.0.0.1:4000/api/health   # optional: "db":true and "reachable"
 
 ---
 
+## Running as two services (Docker Compose, Step 24)
+
+The Builder API can run as two services that only meet in MongoDB:
+- **`api`:** uploads, the UI, status and the live preview;
+- **`orchestrator`:** finds unfinished projects, takes their lease and builds them.
+
+`ROLE` picks one (`all`, the default, is the single process used above).
+
+```bash
+cp deploy/.env.example deploy/.env      # GATEWAY_URL / GATEWAY_API_KEY of Laptop B; OLLAMA_URL as seen from the containers
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env up --build -d
+curl -s http://127.0.0.1:4000/readyz    # {"ready":true,"db":true}
+docker compose -f deploy/docker-compose.yml down   # stops it; the database and runs/ stay in volumes
+```
+
+Run it from a fresh terminal: Compose prefers variables already set in the shell over `deploy/.env`.
+
 ## Tests and checks
 
 ```bash

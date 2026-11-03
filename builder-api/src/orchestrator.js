@@ -37,6 +37,9 @@ const MAX_BUILD_ROUNDS = 3; // how many Contract edits one build follows before 
 // Builder APIs on one database never build it at once, and a dead one's projects are taken over.
 const OWNER = `${os.hostname()}:${process.pid}:${randomUUID().slice(0, 8)}`;
 const LEASE_MS = Number(process.env.LEASE_MS ?? 60_000);
+// Step 24: ROLE=api only saves what should be built; ROLE=orchestrator (or all) builds it.
+const ROLE = process.env.ROLE ?? "all";
+const PICKUP_MS = Number(process.env.PICKUP_MS ?? (ROLE === "orchestrator" ? 1000 : LEASE_MS / 3));
 const active = new Set(); // projects this process is building now (its own second request becomes a rerun)
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -329,6 +332,9 @@ async function run(projectId) {
 
 /** Starts (or continues) a project's pipeline in the background; safe to call at any time, from any server. */
 export function startPipeline(projectId) {
+  // The API service never builds: an orchestrator picks the project up from MongoDB within PICKUP_MS
+  // (an unfinished project nobody holds), and one already building it looks again when it is done.
+  if (ROLE === "api") return void askRerun(projectId).catch((err) => log.error(`asking for a build failed: ${err.message}`, { project: projectId.toString() }));
   buildWithLease(projectId.toString()).catch((err) => log.error(`pipeline crashed: ${err.stack ?? err.message}`, { project: projectId.toString() }));
 }
 
@@ -379,8 +385,9 @@ async function pickUpFree() {
 export async function resumeAll() {
   const { projects, interrupted } = await pickUpFree();
   if (projects) log.info(`Resuming ${projects} project(s), ${interrupted} interrupted job(s)`);
-  // Every third of a lease: a crashed Builder API's projects wait at most a lease plus this.
-  setInterval(() => pickUpFree().catch((err) => log.error(`looking for free projects failed: ${err.message}`)), LEASE_MS / 3).unref();
+  // Every PICKUP_MS (a third of a lease; every second in the orchestrator service, where new projects come
+  // from the API this way): a crashed builder's projects wait at most a lease plus this.
+  setInterval(() => pickUpFree().catch((err) => log.error(`looking for free projects failed: ${err.message}`)), PICKUP_MS).unref();
 }
 
 /** Stopping on purpose (Ctrl+C, a deploy): give every project back, so the next start continues them at once. */

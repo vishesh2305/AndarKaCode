@@ -2,10 +2,12 @@
 // app and its many modules are loaded, so a wrong setting stops the start at once with every problem listed.
 import { loadConfig } from "./config.js";
 
+let config;
 try {
-  loadConfig(process.env);
+  config = loadConfig(process.env);
 } catch (err) {
   console.error(err.message);
   process.exit(1);
 }
-await import("./app.js");
+// Step 24: ROLE=orchestrator is the building service (no UI); api and all (the default) serve the UI and API.
+await import(config.role === "orchestrator" ? "./worker.js" : "./app.js");
