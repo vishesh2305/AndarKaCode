@@ -16,7 +16,7 @@ const { visionProviders } = await import("../src/ai/vision.js");
 const { pageProviders } = await import("../src/ai/page.js");
 const { codeProviders } = await import("../src/custom/model.js");
 
-const reply = (status, body) => ({ ok: status < 400, status, json: async () => body });
+const reply = (status, body) => ({ ok: status < 400, status, json: async () => body, text: async () => JSON.stringify(body) });
 const ollamaAnswer = (content) => reply(200, { message: { content }, prompt_eval_count: 812, eval_count: 95 });
 const geminiAnswer = (text) =>
   reply(200, { candidates: [{ content: { parts: [{ text }] } }], usageMetadata: { promptTokenCount: 1290, candidatesTokenCount: 410, thoughtsTokenCount: 230, totalTokenCount: 1930 } });

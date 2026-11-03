@@ -6,7 +6,7 @@ import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
-import { NEAR, dHash, hammingDistance } from "../src/memory/dhash.js";
+import { NEAR, bands, dHash, hammingDistance } from "../src/memory/dhash.js";
 
 const MOCKS = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../samples/mocks");
 const read = (file) => readFileSync(path.join(MOCKS, file));
@@ -45,5 +45,32 @@ describe("hammingDistance: how many of the 64 bits differ", () => {
     assert.equal(hammingDistance("0".repeat(16), "0".repeat(16)), 0);
     assert.equal(hammingDistance("0".repeat(16), "f".repeat(16)), 64);
     assert.equal(hammingDistance("0000000000000001", "0000000000000003"), 1);
+  });
+});
+
+// Step 28 (memory plan M3): bands, so a near-duplicate is found through an index instead of by comparing
+// every remembered page. The 64 bits are cut into NEAR + 1 bands; two fingerprints at most NEAR bits apart
+// differ in at most NEAR bands, so at least one band is the same (no copy is missed).
+describe("bands: the fingerprint cut into pieces for the index (Step 28, M3)", () => {
+  const flip = (hex, bit) => (BigInt(`0x${hex}`) ^ (1n << BigInt(bit))).toString(16).padStart(16, "0");
+  const random = () => [...Array(16)].map(() => "0123456789abcdef"[Math.floor(Math.random() * 16)]).join("");
+
+  it("cuts 64 bits into NEAR + 1 numbered bands", () => {
+    const b = bands("0123456789abcdef");
+    assert.equal(b.length, NEAR + 1);
+    assert.equal(new Set(b).size, b.length);
+    assert.ok(b.every((band, i) => band.startsWith(`${i}:`)), "a band is only compared with the band in the same place");
+  });
+
+  it("two fingerprints at most NEAR bits apart always share a band (2,000 random pairs)", () => {
+    for (let n = 0; n < 2000; n++) {
+      const a = random();
+      let b = a;
+      const bits = new Set();
+      while (bits.size < 1 + (n % NEAR)) bits.add(Math.floor(Math.random() * 64));
+      for (const bit of bits) b = flip(b, bit);
+      assert.ok(hammingDistance(a, b) <= NEAR);
+      assert.ok(bands(a).some((band) => bands(b).includes(band)), `${a} and ${b} share no band`);
+    }
   });
 });

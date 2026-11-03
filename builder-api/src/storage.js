@@ -4,9 +4,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 
-// runs/ sits at the repo root and is git-ignored.
+// runs/ sits at the repo root and is git-ignored; RUNS_DIR puts it elsewhere (a server's own disk, Step 28).
 export const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-export const RUNS_DIR = path.join(REPO_ROOT, "runs");
+export const RUNS_DIR = process.env.RUNS_DIR ? path.resolve(process.env.RUNS_DIR) : path.join(REPO_ROOT, "runs");
 
 const MAX_WIDTH = 1280; // smaller image = shorter prompt = faster GPU (ARCHITECTURE.md §3)
 

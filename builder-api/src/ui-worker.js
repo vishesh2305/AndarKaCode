@@ -10,10 +10,11 @@ import { attemptPlan } from "../../shared/attempts.mjs";
 import { withUsage } from "../../shared/meter.mjs";
 import { buildPage } from "../../shared/page.mjs";
 import { loadConfig } from "./config.js";
-import { connectDb, isDbConnected } from "./db.js";
+import { connectDb, isDbConnected, pingDb } from "./db.js";
 import { readiness } from "./health.js";
 import { log } from "./log.js";
 import { claimPageJob, failPageJob, finishPageJob, renewPageJob } from "./page-queue.js";
+import { measureDelay, placementCheck } from "./placement.js";
 
 const config = loadConfig(process.env);
 const WORKER = `${os.hostname()}:${process.pid}:${randomUUID().slice(0, 8)}`;
@@ -80,6 +81,9 @@ try {
   log.error(`Cannot connect to MongoDB at ${config.mongodbUri}: ${err.message}`);
   process.exit(1);
 }
+// Step 28: this ui-worker may run on server 2; say plainly when server 1 (MongoDB) is too far away.
+const placement = placementCheck({ ms: await measureDelay(pingDb), limit: config.placementMs });
+(placement.ok ? log.info : log.error)(placement.message);
 for (let i = 0; i < PARALLEL; i++) lane();
 
 for (const signal of ["SIGINT", "SIGTERM"]) {

@@ -41,6 +41,19 @@ export function extractHtml(answer) {
   return block.slice(start, end + "</html>".length);
 }
 
+/**
+ * Ollama's answer read as lines of JSON: a streamed answer is one object per line (the last one carries the
+ * token counts), an answer that was not streamed is a single line. { content, last }; throws its error.
+ */
+export function readOllamaLines(text) {
+  const lines = String(text).split("\n").filter((line) => line.trim()).map((line) => JSON.parse(line));
+  const failed = lines.find((line) => line.error);
+  if (failed) throw new Error(`Ollama: ${failed.error}`);
+  return { content: lines.map((line) => line.message?.content ?? "").join(""), last: lines.at(-1) ?? {} };
+}
+
+// Streamed (Step 28): not streamed, Ollama sends nothing until the whole page is written, and Node's fetch
+// gives up after 5 minutes without headers ("fetch failed"), well before TIMEOUT_MS.
 async function local({ prompt, imageB64 }) {
   const started = Date.now();
   const res = await fetch(`${OLLAMA_URL}/api/chat`, {
@@ -49,16 +62,19 @@ async function local({ prompt, imageB64 }) {
     body: JSON.stringify({
       model: OLLAMA_MODEL,
       messages: [{ role: "user", content: prompt, images: [imageB64] }],
-      stream: false,
+      stream: true,
       think: false,
       options: { temperature: 0.2, num_ctx: 16384 },
     }),
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(`Ollama ${res.status}: ${data.error ?? JSON.stringify(data)}`);
-  recordUsage({ purpose: "page", provider: "local", model: OLLAMA_MODEL, ...ollamaUsage(data), seconds: secondsSince(started) });
-  return data.message.content || data.message.thinking || "";
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(`Ollama ${res.status}: ${data.error ?? JSON.stringify(data)}`);
+  }
+  const { content, last } = readOllamaLines(await res.text());
+  recordUsage({ purpose: "page", provider: "local", model: OLLAMA_MODEL, ...ollamaUsage(last), seconds: secondsSince(started) });
+  return content || last.message?.thinking || "";
 }
 
 // Gemini often answers 503 "high demand" for a few seconds; retry those, fail fast on anything else.

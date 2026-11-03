@@ -101,6 +101,20 @@ describe("finishPageJob and failPageJob: the result", () => {
     assert.equal((await getPage(jobId)).status, "running");
   });
 
+  it("the screenshot and the page travel inside the job, so a ui-worker on another server needs no shared disk (Step 28)", async () => {
+    await mongoose.connection.collection("pagejobs").deleteMany({});
+    const r = request();
+    const { jobId } = await submitPage(r);
+    const queued = await mongoose.connection.collection("pagejobs").findOne({});
+    assert.equal(Buffer.from(queued.image.buffer).toString("utf8"), `screenshot ${n}`);
+    await claimPageJob({ worker: "w1", now: T, ms: 60_000 });
+    await finishPageJob(jobId, { worker: "w1", html: "<html>here</html>", provider: "local", usage: [] });
+    const done = await mongoose.connection.collection("pagejobs").findOne({});
+    assert.equal(done.html, "<html>here</html>");
+    assert.equal(done.image, undefined, "the screenshot is dropped once the page is drawn");
+    assert.equal((await getPage(jobId)).html, "<html>here</html>");
+  });
+
   it("a failed page says why, and the same request then makes a new job", async () => {
     await mongoose.connection.collection("pagejobs").deleteMany({});
     const r = request();

@@ -1,0 +1,6 @@
+# Step 28: server 2 has no api service to build the image, so its ui-worker builds it (on one machine the
+# api builds it once for all three). Used with docker-compose.yml, see the top of that file.
+services:
+  ui-worker:
+    build: { context: .., dockerfile: deploy/Dockerfile }
+    pull_policy: build

@@ -22,3 +22,20 @@ export function hammingDistance(a, b) {
   for (; x; x >>= 1n) count += Number(x & 1n);
   return count;
 }
+
+/**
+ * Step 28 (memory plan M3): the 64 bits cut into NEAR + 1 numbered bands ("0:101100110", ...) for the
+ * index. Two fingerprints at most NEAR bits apart differ in at most NEAR bands, so they share at least one:
+ * looking up the rows that share a band finds every copy, without comparing every remembered page.
+ */
+export function bands(hex) {
+  const bits = BigInt(`0x${hex}`).toString(2).padStart(64, "0");
+  const count = NEAR + 1;
+  const out = [];
+  for (let i = 0, start = 0; i < count; i++) {
+    const size = Math.floor(64 / count) + (i < 64 % count ? 1 : 0);
+    out.push(`${i}:${bits.slice(start, start + size)}`);
+    start += size;
+  }
+  return out;
+}

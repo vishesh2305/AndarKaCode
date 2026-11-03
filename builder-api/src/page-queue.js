@@ -2,6 +2,8 @@
 // uses submitPage/getPage exactly like the Gateway's submitFrontend/getFrontend; ui-worker services use
 // claimPageJob/renewPageJob/finishPageJob/failPageJob. A claim is one atomic update with a lease, so each
 // page is drawn by one worker, and a dead worker's page goes back to the queue once its lease runs out.
+// The screenshot and the page travel inside the job (Step 28): a ui-worker on server 2 shares only
+// MongoDB with server 1, not its disk, so not its blob store either (until R2, Step 46).
 import { createHash } from "node:crypto";
 import mongoose from "mongoose";
 import { blobs } from "./blobs.js";
@@ -16,7 +18,7 @@ export async function submitPage({ imageDataUrl, instructions, contractHash, mod
   const existing = await PageJob.findOne({ key, status: { $ne: "failed" } }).sort({ createdAt: -1 });
   if (existing) return { jobId: existing.id, status: existing.status };
   const image = Buffer.from(imageDataUrl.replace(/^data:image\/[a-z]+;base64,/, ""), "base64");
-  const job = await PageJob.create({ key, imageKey: await blobs.put(image), instructions, contractHash, mode });
+  const job = await PageJob.create({ key, image, instructions, contractHash, mode });
   return { jobId: job.id, status: job.status };
 }
 
@@ -29,7 +31,8 @@ export async function getPage(jobId) {
     status: job.status,
     provider: job.provider,
     contractHash: job.contractHash,
-    ...(job.status === "done" && { html: (await blobs.get(job.htmlKey)).toString("utf8"), usage: job.usage ?? [] }),
+    // htmlKey: a page drawn before Step 28, kept in the blob store
+    ...(job.status === "done" && { html: job.html ?? (await blobs.get(job.htmlKey)).toString("utf8"), usage: job.usage ?? [] }),
     ...(job.status === "failed" && { error: job.error }),
   };
 }
@@ -42,7 +45,8 @@ export async function claimPageJob({ worker, now = Date.now(), ms }) {
     { sort: { createdAt: 1 }, returnDocument: "after" }
   ).lean();
   if (!job) return null;
-  return { id: String(job._id), image: await blobs.get(job.imageKey), instructions: job.instructions, mode: job.mode, contractHash: job.contractHash };
+  const image = job.image ? Buffer.from(job.image.buffer) : await blobs.get(job.imageKey); // imageKey: queued before Step 28
+  return { id: String(job._id), image, instructions: job.instructions, mode: job.mode, contractHash: job.contractHash };
 }
 
 /** Keeps the page while drawing it. False when the lease is no longer this worker's. */
@@ -53,10 +57,9 @@ export async function renewPageJob(id, { worker, now = Date.now(), ms }) {
 
 /** Hands the drawn page back. False when this worker no longer holds it (it was taken over). */
 export async function finishPageJob(id, { worker, html, provider, usage }) {
-  const htmlKey = await blobs.put(html);
   const { modifiedCount } = await PageJob.updateOne(
     { _id: id, status: "running", worker },
-    { $set: { status: "done", htmlKey, provider, usage, finishedAt: new Date() }, $unset: { leaseUntil: 1 } }
+    { $set: { status: "done", html, provider, usage, finishedAt: new Date() }, $unset: { leaseUntil: 1, image: 1 } }
   );
   return modifiedCount === 1;
 }
@@ -65,7 +68,7 @@ export async function finishPageJob(id, { worker, html, provider, usage }) {
 export async function failPageJob(id, { worker, error }) {
   const { modifiedCount } = await PageJob.updateOne(
     { _id: id, status: "running", worker },
-    { $set: { status: "failed", error: String(error).slice(0, 500), finishedAt: new Date() }, $unset: { leaseUntil: 1 } }
+    { $set: { status: "failed", error: String(error).slice(0, 500), finishedAt: new Date() }, $unset: { leaseUntil: 1, image: 1 } }
   );
   return modifiedCount === 1;
 }
