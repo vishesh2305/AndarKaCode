@@ -154,3 +154,7 @@ RED (`4b6fa73`): `integration/lease.test.js` gives `does not provide an export n
 | 12 | Stopping on purpose frees every project this builder holds, at once, and leaves the others' alone | `releaseAll: frees every project this builder holds…` | PASS |
 
 Ctrl+C itself is checked on the Mac. On Windows a background process can't be sent a real Ctrl+C: Windows ends it without running its shutdown handler.
+
+**The Mac repeated the crash test** with this change (Ctrl+C during Read, then `npm start`): **"Built in 79 s"**, against 247 s before. The project continued as soon as the Builder API started again.
+
+**Stage 2 is done.**
