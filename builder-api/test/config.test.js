@@ -88,6 +88,12 @@ describe("checkConfig: what is refused", () => {
     assert.match(problemsOf({ GATEWAY_POLL_MS: "50" })[0], /GATEWAY_POLL_MS in builder-api\/\.env must be a whole number of at least 100/);
   });
 
+  it("storage other than local: R2 comes with the servers (Step 46)", () => {
+    assert.equal(checkConfig({}).config.storage, "local");
+    assert.match(problemsOf({ STORAGE: "r2" })[0], /STORAGE=r2.*Step 46.*local/);
+    assert.match(problemsOf({ STORAGE: "s3" })[0], /STORAGE in builder-api\/\.env must be local/);
+  });
+
   it("lists every problem at once, not only the first", () => {
     assert.equal(problemsOf({ PORT: "abc", DEFAULT_MODE: "clod", MONGODB_URI: "x" }).length, 3);
   });
