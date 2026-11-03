@@ -269,20 +269,36 @@ curl -s http://127.0.0.1:4000/api/health   # optional: "db":true and "reachable"
 
 ---
 
-## Running as two services (Docker Compose, Step 24)
+## Running as services (Docker Compose, Steps 24, 26 and 28)
 
-The Builder API can run as two services that only meet in MongoDB:
+The Builder API runs as three services that only meet in MongoDB:
 - **`api`:** uploads, the UI, status and the live preview;
-- **`orchestrator`:** finds unfinished projects, takes their lease and builds them.
+- **`orchestrator`:** finds unfinished projects, takes their lease and builds them (reading, the spec, the backend, the Check);
+- **`ui-worker`:** draws the pages from a queue in MongoDB, `UI_PARALLEL` at a time (with `PAGE_LANE=queue`, so no Laptop B).
 
 `ROLE` picks one (`all`, the default, is the single process used above).
 
+Compose has one profile per production server (`COMPOSE_PROFILES` in `deploy/.env`):
+- **`server-1`:** `mongo`, `api`, `orchestrator`;
+- **`server-2`:** `ui-worker`. It shares only MongoDB with server 1, not a disk: each page job carries its screenshot and its page.
+
 ```bash
-cp deploy/.env.example deploy/.env      # GATEWAY_URL / GATEWAY_API_KEY of Laptop B; OLLAMA_URL as seen from the containers
+cp deploy/.env.example deploy/.env      # COMPOSE_PROFILES=server-1,server-2 runs both on this machine
 docker compose -f deploy/docker-compose.yml --env-file deploy/.env up --build -d
 curl -s http://127.0.0.1:4000/readyz    # {"ready":true,"db":true}
 docker compose -f deploy/docker-compose.yml down   # stops it; the database and runs/ stay in volumes
 ```
+
+On two machines in the same region:
+- **Server 1:** `COMPOSE_PROFILES=server-1`, and `MONGO_BIND` set to its **private** address (Tailscale or the provider's private network; never a public one, because the database has no login until Step 46).
+- **Server 2:** `COMPOSE_PROFILES=server-2` and `MONGODB_URI=mongodb://<server 1's private address>:27018/builder_db`, then:
+
+  ```bash
+  docker compose -f deploy/docker-compose.yml -f deploy/server-2.yml --env-file deploy/.env up --build -d
+  docker compose -f deploy/docker-compose.yml logs ui-worker   # "MongoDB is 0.6 ms away (under 5 ms)"
+  ```
+
+  The ui-worker measures its round trip to MongoDB at start and warns when it is over `PLACEMENT_MS` (5 ms): then the servers are too far apart for fast parallel builds.
 
 Run it from a fresh terminal: Compose prefers variables already set in the shell over `deploy/.env`.
 

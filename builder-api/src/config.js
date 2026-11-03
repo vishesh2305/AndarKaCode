@@ -56,6 +56,7 @@ export function checkConfig(env) {
   wholeNumber("LEASE_MS", 60_000, { min: 1000 }); // how long a project's lease lasts without renewal (Step 22)
   wholeNumber("PICKUP_MS", 20_000, { min: 100 }); // how often the orchestrator looks for new work (Step 24)
   wholeNumber("UI_PARALLEL", 4, { min: 1, max: 20 }); // pages one ui-worker draws at the same time (Step 26)
+  const placementMs = wholeNumber("PLACEMENT_MS", 5, { min: 1, max: 1000 }); // a ui-worker warns past this round trip to MongoDB (Step 28)
 
   // Step 26: where pages are drawn. Laptop B's Gateway when it is set (development), else the page queue
   // for ui-worker services (production, no Laptop B).
@@ -66,7 +67,7 @@ export function checkConfig(env) {
   const role = has("ROLE") ? env.ROLE : "all";
   if (!ROLES.includes(role)) problems.push(`ROLE in ${FILE} must be one of ${ROLES.join(", ")} (it is "${role}")`);
 
-  const config = { port, host: has("HOST") ? env.HOST : "127.0.0.1", previewPort, mongodbUri, defaultMode, gateway, storage, role, previewOrigin, pageLane, modes: MODES };
+  const config = { port, host: has("HOST") ? env.HOST : "127.0.0.1", previewPort, mongodbUri, defaultMode, gateway, storage, role, previewOrigin, pageLane, placementMs, modes: MODES };
   return { config, problems };
 }
 

@@ -1,7 +1,12 @@
-# Steps 24 and 26: the Builder API as services (api, orchestrator, ui-worker) plus MongoDB, on one machine (the two production servers come
-# in Step 28 as Compose profiles). From the repo root:
-#   docker compose -f deploy/docker-compose.yml up --build
-# Then open http://127.0.0.1:4000. Settings come from deploy/.env (copy deploy/.env.example).
+# Steps 24, 26 and 28: the Builder API as services plus MongoDB, in two profiles, one per production server:
+#   server-1: mongo, api, orchestrator (the backend and the Check run in the orchestrator)
+#   server-2: ui-worker (draws the pages; shares only MongoDB with server 1, no disk)
+# Settings come from deploy/.env (copy deploy/.env.example). From the repo root:
+#   one machine (COMPOSE_PROFILES=server-1,server-2):  docker compose -f deploy/docker-compose.yml up --build
+#   server 1:  docker compose -f deploy/docker-compose.yml --profile server-1 up --build
+#   server 2:  MONGODB_URI=mongodb://<server 1's private address>:27018/builder_db in deploy/.env, then
+#              docker compose -f deploy/docker-compose.yml -f deploy/server-2.yml --profile server-2 up --build
+# Then open http://127.0.0.1:4000 on server 1.
 name: andarkacode
 
 x-builder: &builder
@@ -10,7 +15,7 @@ x-builder: &builder
   depends_on: { mongo: { condition: service_healthy } }
   volumes: [runs:/app/runs]
   environment: &env
-    MONGODB_URI: mongodb://mongo:27017/builder_db
+    MONGODB_URI: ${MONGODB_URI:-mongodb://mongo:27017/builder_db}
     DEFAULT_MODE: ${DEFAULT_MODE:-local}
     GATEWAY_URL: ${GATEWAY_URL:-}
     GATEWAY_API_KEY: ${GATEWAY_API_KEY:-}
@@ -22,9 +27,13 @@ x-builder: &builder
 
 services:
   mongo:
+    profiles: [server-1]
     image: mongo:8
     restart: unless-stopped
     volumes: [mongo-data:/data/db]
+    # For server 2 only. MONGO_BIND must be server 1's PRIVATE address (Tailscale or the provider's private
+    # network), never a public one: there is no database login yet (it comes with going live, Step 46).
+    ports: ["${MONGO_BIND:-127.0.0.1}:${MONGO_PORT:-27018}:27017"]
     healthcheck:
       test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]
       interval: 10s
@@ -33,6 +42,7 @@ services:
 
   api:
     <<: *builder
+    profiles: [server-1]
     build: { context: .., dockerfile: deploy/Dockerfile } # built once; the orchestrator runs the same image
     environment:
       <<: *env
@@ -43,6 +53,7 @@ services:
 
   orchestrator:
     <<: *builder
+    profiles: [server-1]
     pull_policy: never # the image the api service built
     environment:
       <<: *env
@@ -52,13 +63,18 @@ services:
 
   ui-worker:
     <<: *builder
-    pull_policy: never # the image the api service built
+    profiles: [server-2]
+    pull_policy: never # the image the api service built; on server 2, deploy/server-2.yml builds it
+    depends_on: { mongo: { condition: service_healthy, required: false } } # mongo is on server 1
+    volumes: [] # no shared disk: the screenshot and the page travel inside the page job
     environment:
       <<: *env
       ROLE: ui-worker
       PORT: "4200"
       UI_PARALLEL: ${UI_PARALLEL:-4}
-    # no ports: it claims page jobs from MongoDB and calls the models (Step 26)
+      PLACEMENT_MS: ${PLACEMENT_MS:-5}
+    # no ports: it claims page jobs from MongoDB and calls the models (Step 26); at start it says how
+    # far MongoDB is, and warns past PLACEMENT_MS (Step 28)
 
 volumes:
   mongo-data:

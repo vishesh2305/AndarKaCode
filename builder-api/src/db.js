@@ -7,3 +7,6 @@ export async function connectDb(uri) {
 }
 
 export const isDbConnected = () => mongoose.connection.readyState === 1;
+
+/** One round trip to MongoDB (Step 28: how far server 1 is). */
+export const pingDb = () => mongoose.connection.db.admin().ping();
