@@ -115,6 +115,19 @@ describe("checkConfig: what is refused", () => {
     assert.match(problemsOf({ PREVIEW_ORIGIN: "127.0.0.1:4001" })[0], /PREVIEW_ORIGIN in builder-api\/\.env must start with http:\/\/ or https:\/\//);
   });
 
+  it("where pages are drawn: Laptop B's Gateway when it is set, else the page queue for ui-workers (Step 26)", () => {
+    assert.equal(checkConfig({}).config.pageLane, "queue");
+    assert.equal(checkConfig({ GATEWAY_URL: "http://x:8787", GATEWAY_API_KEY: KEY }).config.pageLane, "gateway");
+    assert.equal(checkConfig({ GATEWAY_URL: "http://x:8787", GATEWAY_API_KEY: KEY, PAGE_LANE: "queue" }).config.pageLane, "queue");
+    assert.match(problemsOf({ PAGE_LANE: "gateway" })[0], /PAGE_LANE=gateway needs GATEWAY_URL and GATEWAY_API_KEY/);
+    assert.match(problemsOf({ PAGE_LANE: "s3" })[0], /PAGE_LANE in builder-api\/\.env must be one of gateway, queue/);
+  });
+
+  it("a ui-worker draws 1 to 20 pages at once, and is a role of its own", () => {
+    assert.equal(checkConfig({ ROLE: "ui-worker" }).config.role, "ui-worker");
+    assert.match(problemsOf({ UI_PARALLEL: "0" })[0], /UI_PARALLEL in builder-api\/\.env must be a whole number from 1 to 20/);
+  });
+
   it("lists every problem at once, not only the first", () => {
     assert.equal(problemsOf({ PORT: "abc", DEFAULT_MODE: "clod", MONGODB_URI: "x" }).length, 3);
   });
