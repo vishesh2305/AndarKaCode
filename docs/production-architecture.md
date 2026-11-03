@@ -310,8 +310,8 @@ Stage 1b is done when a 3-page cloud build on the two laptops is READY in under 
 | **24** | `api` and `orchestrator` as two services that meet only in MongoDB (`ROLE`, one image), with Docker Compose. The code splits into `services/` folders when the services' code differs (Step 25 on) | ✅ 3 Nov 2026: a project reached READY through Compose in 81 s; the orchestrator built it, the API built nothing |
 | **25** | `ai-router` service: adapters (Gemini, Ollama, then OpenAI, Anthropic, Groq, OpenRouter), slots, token metering | Every AI call goes through it, with tokens and seconds recorded on the Job |
 | **26** | `ui-worker` (the method chosen in Step 18), with Laptop B as the `local-gpu` dev provider | 3 pages are built at the same time |
-| **27** | `backend-worker` and `verifier` services | The backend is built at the same time as the pages; the Barrier still waits for both |
-| **28** | Compose profiles `server-1` and `server-2`; a test that kills a worker mid-build; **fingerprint bands for near-duplicate search** (M3); **a placement check:** the delay between the two servers must stay under about 5 ms | Builds survive a killed worker; a test with 100,000 entries still finds the near-duplicate fast; the servers can't be split across regions by accident |
+| **27** | ~~`backend-worker` and `verifier` services~~ **Folded into Step 33** (3 Nov 2026): the backend already runs at the same time as the pages (orchestrator on server 1, ui-workers on server 2); the verifier becomes its own service together with its sandbox | — |
+| **28** | Compose profiles `server-1` and `server-2`; a test that kills a worker mid-build; **fingerprint bands for near-duplicate search** (M3); **a placement check:** the delay between the two servers must stay under about 5 ms | Builds survive a killed worker; a test with 100,000 entries still finds the near-duplicate fast; the servers can't be split across regions by accident **Done 3 Nov 2026:** READY in 139 s on two Compose projects as servers 1 and 2; page jobs carry their bytes (no shared disk); bands: 100,000 pages in 32 ms (was 2,056 ms) |
 
 ### Stage 4: Users and keys (≈2 weeks)
 | Step | What | Done when |
@@ -324,7 +324,7 @@ Stage 1b is done when a 3-page cloud build on the two laptops is READY in under 
 ### Stage 5: Safety (≈1.5 weeks). Required before any outside user
 | Step | What | Done when |
 |---|---|---|
-| **33** | Sandbox: gVisor containers, no network, limits, a database inside the sandbox | Attack tests are blocked; the employees sample reaches READY 8/8 |
+| **33** | Sandbox: gVisor containers, no network, limits, a database inside the sandbox; the `verifier` becomes its own service with it (from Step 27) | Attack tests are blocked; the employees sample reaches READY 8/8 |
 | **34** | Preview on its own domain, auto-stop | A preview can't read the main site's cookies |
 | **35** | Trust & safety: a famous brand's name together with a login or payment form is flagged; report button; audit log | A bank-login mock is held for review |
 

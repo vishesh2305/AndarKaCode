@@ -11,8 +11,8 @@
 | 24 | `api` and `orchestrator` as two services on one database, Docker Compose | ✅ |
 | 25 | Every model call metered on its job (tokens incl. thinking, seconds); new provider adapters moved to Step 31 | ✅ |
 | 26 | `ui-worker`: page jobs from a queue in MongoDB, several at once (no Laptop B needed) | ✅ |
-| 27 | `backend-worker` and `verifier` services | to do |
-| 28 | Compose profiles `server-1`/`server-2`, killed-worker test, placement check | to do |
+| 27 | `backend-worker` and `verifier` services | folded into Step 33 (see below) |
+| 28 | Compose profiles `server-1`/`server-2`, killed-worker test, placement check, fingerprint bands (M3) | ✅ |
 
 ## Step 24: Two services that meet only in MongoDB
 
@@ -180,3 +180,78 @@ GREEN, all on Laptop B: page queue **10/10**, ui-worker **2/2**, blobs **7/7**; 
 | Check | 102.7 → 105.1 s | none |
 
 Both pages started together. On one local GPU they share it; with a cloud model they overlap fully.
+
+## Step 27: folded into Step 33
+
+The backend already runs at the same time as the pages: on server 1, inside the orchestrator, while the ui-workers on server 2 draw the pages. A container of its own would not make anything faster: the backend lane takes milliseconds (templates), plus a few seconds per custom button. The verifier is the one part that runs generated code, so it gets its own service **together with its sandbox** (Step 33: gVisor, no network), instead of being split twice.
+
+## Step 28: Two servers that share only MongoDB
+
+- **Compose profiles** (`deploy/docker-compose.yml`, `COMPOSE_PROFILES` in `deploy/.env`):
+  - `server-1`: `mongo`, `api`, `orchestrator`;
+  - `server-2`: `ui-worker`, built on that machine by `deploy/server-2.yml` (on one machine the api service builds the image once for all three, so two builds of one image never collide again, Step 24);
+  - MongoDB is published on `MONGO_BIND:MONGO_PORT` (default `127.0.0.1:27018`) for server 2. `MONGO_BIND` must be server 1's private address: the database has no login until Step 46.
+- **Page jobs carry their screenshot and their page** (`src/page-queue.js`). The screenshot is dropped once the job is over. Jobs and pages from before Step 28 are still read from the blob store.
+- **Placement check** (`src/placement.js`): at start, a ui-worker pings MongoDB 5 times and takes the median. Over `PLACEMENT_MS` (5 ms by default, 1–1000) it logs an error saying the servers are too far apart.
+- **`RUNS_DIR`** puts `runs/` elsewhere (a server's own disk; the tests give each ui-worker its own).
+
+### Found while splitting the servers
+
+1. **A ui-worker on server 2 could not draw any page.** It read the screenshot from the blob store, a folder on server 1's disk: `claiming a page failed: blob d622… is missing`, again and again, with the page never drawn. The test with a ui-worker on a disk of its own shows it: it fails with the Step 26 page queue and passes now.
+2. **Local pages over 5 minutes failed with `fetch failed`** (real run below). Not streamed, Ollama sends nothing until the whole page is written, and Node's `fetch` gives up after 300 s without headers, whatever our own 10-minute limit says. Both pages failed after exactly 2 × 5 minutes. The local page call now streams (`shared/page.mjs`), so headers come at once; one reader takes a streamed or a single answer and throws an error sent in the middle of the stream. The Gateway on Laptop B uses the same code, so it is fixed there too.
+
+## Step 28b: Fingerprint bands for near-duplicate search (memory plan M3)
+
+A copy of a screenshot (resized, re-saved) is found by its dHash, at most `NEAR` (6) bits away. Before, the search loaded every remembered page with the same instructions and compared each one.
+
+Now each remembered page also keeps its dHash cut into `NEAR + 1` = 7 numbered bands, under an index (`src/memory/dhash.js`, `models/memory.js`). Two fingerprints at most 6 bits apart differ in at most 6 bands, so they always share one: the search looks only at the rows that share a band, and misses no copy. Rows remembered before the bands are still compared, until a READY project fills them in.
+
+Measured on Laptop B, 100,000 remembered pages with the same instructions, a copy 1 bit away:
+
+| | Rows compared | Time |
+|---|---|---|
+| Before (every row) | 100,000 | 2,056 ms |
+| Bands | 1,273 | **32 ms** |
+
+### Tests
+
+RED:
+- `0d29a79`: `placement.test.js` (no `src/placement.js`), the `PLACEMENT_MS` config test, the page-queue test for the bytes inside the job, and `two-servers.test.js` (no round trip logged). The killed-worker test already passed: the Step 26 lease takeover holds when a worker is killed mid-page;
+- `9de5d33`: `page-model.test.js`, the stream asked and read, an error in the middle of the stream;
+- `df19053`: `dhash.test.js` bands, `memory-bands.test.js` (no `bands`).
+
+GREEN, all on Laptop B: unit **438/438**, integration **151/151**, web **29/29**, Gateway **15/15**.
+
+| # | What is guaranteed | Test | Result |
+|---|---|---|---|
+| 1 | **A ui-worker with a disk of its own** (as on server 2) draws the pages, and the project reaches READY | `two-servers.test.js: a ui-worker with a disk of its own…` | PASS |
+| 2 | **A ui-worker killed in the middle of a page** (SIGKILL): a second one takes the page over when the lease runs out, draws it once more, and the project reaches READY | `two-servers.test.js: a ui-worker killed in the middle of a page…` | PASS |
+| 3 | The screenshot and the page travel inside the job; the screenshot is dropped once it is drawn | `page-queue.test.js: the screenshot and the page travel inside the job…` | PASS |
+| 4 | The round trip is the median of 5 pings (one slow ping doesn't count) | `placement.test.js: measureDelay…` | PASS |
+| 5 | Under the limit it says so; over it, it says how far, the same region, and `PLACEMENT_MS` | `placement.test.js: placementCheck…` | PASS |
+| 6 | `PLACEMENT_MS` is 5 by default, 1–1000 | `config.test.js: how far MongoDB may be…` | PASS |
+| 7 | The local page call streams, and the pieces are joined into the page with the last piece's token counts | `page-model.test.js: asks Ollama to stream…` | PASS |
+| 8 | An error sent in the middle of the stream is thrown | `page-model.test.js: throws an error Ollama sends…` | PASS |
+| 9 | 7 numbered bands; any two fingerprints at most 6 bits apart share one (2,000 random pairs) | `dhash.test.js: bands…` | PASS |
+| 10 | Among 100,000 remembered pages, a copy 4 bits away is found in under 0.5 s | `memory-bands.test.js: finds the copy…` | PASS |
+| 11 | A page remembered before the bands is still found | `memory-bands.test.js: a page remembered before…` | PASS |
+
+Compose checked with `docker compose config --services`: `server-1` gives `mongo`, `api`, `orchestrator`; `server-2` gives `ui-worker`; both give all four.
+
+### Real run: two servers on Laptop B, 3 Nov 2026
+
+Two separate Compose projects, `ak-server-1` (`--profile server-1`) and `ak-server-2` (`--profile server-2` with `deploy/server-2.yml`), no Laptop B Gateway (`PAGE_LANE=queue`), local model on Laptop B's GPU. Server 2 has **no volume**, and it reaches server 1's MongoDB only through the published port (`host.docker.internal:27018`). Its log: `MongoDB is 2.2 ms away (under 5 ms)`.
+
+m1 + m3 (2 screenshots), fresh: **READY in 139 s**.
+
+| Job | Where | From → to | Model calls |
+|---|---|---|---|
+| Reading (2 screenshots at once) | server 1, orchestrator | 0 → 32 s | 2 reads: in 1,409 / out 370, 22.7 s and in 1,409 / out 279, 32.3 s |
+| Backend | server 1, orchestrator | 32 → 32 s | none |
+| Page 1 | **server 2**, ui-worker `050985f5995d` | 33 → 86 s | in 1,429 / out 950, 52.5 s |
+| Page 2 | **server 2**, same ui-worker, **same moment** | 33 → 134 s | in 1,409 / out 1,105, 100.1 s |
+| Check | server 1, orchestrator | 134 → 136 s | none |
+
+Both page jobs were claimed at the same instant (17:04:38.366). After drawing, each job holds its page (3,465 and 4,009 bytes) and no screenshot.
+
+The run before the streaming fix: Laptop B's GPU was full (7.8 of 8 GB, 22% of the model on the CPU, 3.2 tokens/s), the pages took over 5 minutes, and both failed with `fetch failed` (Found #2). Earlier still, a cold `ollama serve` let both readings run past their 3-minute limit. Neither was the two-server split. On one local GPU the two pages share it; with a cloud model, or one GPU per ui-worker, they overlap fully.
