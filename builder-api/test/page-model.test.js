@@ -9,10 +9,13 @@ process.env.GEMINI_API_KEY = "test-key";
 process.env.GEMINI_MODEL = "test-gemini";
 delete process.env.GEMINI_PAGE_MODEL;
 const { buildPage, extractHtml, pageModelName, pagePrompt, pageProviders, quotaWait } = await import("../src/ai/page.js");
+const { withUsage } = await import("../../shared/meter.mjs");
 
 const PAGE = '<!DOCTYPE html>\n<html><head><script src="https://cdn.tailwindcss.com"></script></head><body><h1>Employees</h1></body></html>';
 const request = { prompt: "Build it", imageB64: "aW1n" };
-const reply = (status, body) => ({ ok: status < 400, status, json: async () => body });
+const reply = (status, body) => ({ ok: status < 400, status, json: async () => body, text: async () => JSON.stringify(body) });
+// Ollama streaming: one JSON object per line, the last one with done and the token counts.
+const streamed = (lines) => ({ ok: true, status: 200, json: async () => { throw new Error("a stream is not one JSON object"); }, text: async () => lines.map((l) => JSON.stringify(l)).join("\n") + "\n" });
 
 describe("pagePrompt: what the model is asked", () => {
   const prompt = pagePrompt('Fields on this page:\n- fullName -> label "Full Name"');
@@ -93,6 +96,30 @@ describe("pageProviders.local (Ollama)", () => {
   it("throws Ollama's error message", async (t) => {
     t.mock.method(globalThis, "fetch", async () => reply(404, { error: "model not found" }));
     await assert.rejects(pageProviders.local(request), /Ollama 404: model not found/);
+  });
+
+  // Step 28, found in the real two-server run: without streaming, Ollama sends nothing until the whole page
+  // is written, and Node's fetch gives up after 5 minutes without headers ("fetch failed"), whatever our own
+  // 10-minute limit says. Streamed, the headers come at once and the tokens keep coming.
+  it("asks Ollama to stream, and joins the streamed pieces into the page, with the token counts of the last one", async (t) => {
+    const half = PAGE.length >> 1;
+    const fetch = t.mock.method(globalThis, "fetch", async () =>
+      streamed([
+        { message: { content: PAGE.slice(0, half) }, done: false },
+        { message: { content: PAGE.slice(half) }, done: false },
+        { message: { content: "" }, done: true, prompt_eval_count: 1300, eval_count: 900 },
+      ])
+    );
+    const usage = [];
+    const html = await withUsage(usage, () => pageProviders.local(request));
+    assert.equal(JSON.parse(fetch.mock.calls[0].arguments[1].body).stream, true);
+    assert.equal(html, PAGE);
+    assert.deepEqual([usage[0].inputTokens, usage[0].outputTokens], [1300, 900]);
+  });
+
+  it("throws an error Ollama sends in the middle of the stream", async (t) => {
+    t.mock.method(globalThis, "fetch", async () => streamed([{ message: { content: "<!DOCTYPE" }, done: false }, { error: "model runner stopped" }]));
+    await assert.rejects(pageProviders.local(request), /Ollama: model runner stopped/);
   });
 });
 
