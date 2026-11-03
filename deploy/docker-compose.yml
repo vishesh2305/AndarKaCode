@@ -1,4 +1,4 @@
-# Step 24: the Builder API as two services plus MongoDB, on one machine (the two production servers come
+# Steps 24 and 26: the Builder API as services (api, orchestrator, ui-worker) plus MongoDB, on one machine (the two production servers come
 # in Step 28 as Compose profiles). From the repo root:
 #   docker compose -f deploy/docker-compose.yml up --build
 # Then open http://127.0.0.1:4000. Settings come from deploy/.env (copy deploy/.env.example).
@@ -16,6 +16,8 @@ x-builder: &builder
     GATEWAY_API_KEY: ${GATEWAY_API_KEY:-}
     OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
     GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    # gateway (Laptop B, development) when GATEWAY_URL is set, else queue: the ui-worker draws the pages
+    PAGE_LANE: ${PAGE_LANE:-}
   extra_hosts: ["host.docker.internal:host-gateway"]
 
 services:
@@ -47,6 +49,16 @@ services:
       ROLE: orchestrator
       PORT: "4100"
     # no ports: it only talks to MongoDB, the models and the Gateway
+
+  ui-worker:
+    <<: *builder
+    pull_policy: never # the image the api service built
+    environment:
+      <<: *env
+      ROLE: ui-worker
+      PORT: "4200"
+      UI_PARALLEL: ${UI_PARALLEL:-4}
+    # no ports: it claims page jobs from MongoDB and calls the models (Step 26)
 
 volumes:
   mongo-data:

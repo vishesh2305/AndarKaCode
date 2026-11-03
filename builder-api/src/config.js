@@ -2,7 +2,8 @@
 // message naming the setting and the file; every problem is listed at once; a secret is never printed.
 const FILE = "builder-api/.env";
 const MODES = ["local", "cloud", "auto"];
-const ROLES = ["all", "api", "orchestrator"]; // Step 24: one process, or the two services
+const ROLES = ["all", "api", "orchestrator", "ui-worker"]; // Step 24: one process, or the services (ui-worker: Step 26)
+const PAGE_LANES = ["gateway", "queue"];
 const MIN_GATEWAY_KEY = 16; // what the Gateway itself accepts (gateway/src/server.js)
 
 /** { config, problems }: the settings read from env, and what is wrong with them (plain sentences). */
@@ -54,11 +55,18 @@ export function checkConfig(env) {
   wholeNumber("PREVIEW_IDLE_MS", 15 * 60_000, { min: 1000 });
   wholeNumber("LEASE_MS", 60_000, { min: 1000 }); // how long a project's lease lasts without renewal (Step 22)
   wholeNumber("PICKUP_MS", 20_000, { min: 100 }); // how often the orchestrator looks for new work (Step 24)
+  wholeNumber("UI_PARALLEL", 4, { min: 1, max: 20 }); // pages one ui-worker draws at the same time (Step 26)
+
+  // Step 26: where pages are drawn. Laptop B's Gateway when it is set (development), else the page queue
+  // for ui-worker services (production, no Laptop B).
+  const pageLane = has("PAGE_LANE") ? env.PAGE_LANE : gateway ? "gateway" : "queue";
+  if (!PAGE_LANES.includes(pageLane)) problems.push(`PAGE_LANE in ${FILE} must be one of ${PAGE_LANES.join(", ")} (it is "${pageLane}")`);
+  else if (pageLane === "gateway" && !has("GATEWAY_URL")) problems.push(`PAGE_LANE=gateway needs GATEWAY_URL and GATEWAY_API_KEY in ${FILE} (or PAGE_LANE=queue with a ui-worker)`);
 
   const role = has("ROLE") ? env.ROLE : "all";
   if (!ROLES.includes(role)) problems.push(`ROLE in ${FILE} must be one of ${ROLES.join(", ")} (it is "${role}")`);
 
-  const config = { port, host: has("HOST") ? env.HOST : "127.0.0.1", previewPort, mongodbUri, defaultMode, gateway, storage, role, previewOrigin, modes: MODES };
+  const config = { port, host: has("HOST") ? env.HOST : "127.0.0.1", previewPort, mongodbUri, defaultMode, gateway, storage, role, previewOrigin, pageLane, modes: MODES };
   return { config, problems };
 }
 

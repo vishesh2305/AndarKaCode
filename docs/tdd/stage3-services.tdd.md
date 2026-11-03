@@ -10,7 +10,7 @@
 |---|---|---|
 | 24 | `api` and `orchestrator` as two services on one database, Docker Compose | ✅ |
 | 25 | Every model call metered on its job (tokens incl. thinking, seconds); new provider adapters moved to Step 31 | ✅ |
-| 26 | `ui-worker`: page jobs from the queue | to do |
+| 26 | `ui-worker`: page jobs from a queue in MongoDB, several at once (no Laptop B needed) | ✅ |
 | 27 | `backend-worker` and `verifier` services | to do |
 | 28 | Compose profiles `server-1`/`server-2`, killed-worker test, placement check | to do |
 
@@ -109,3 +109,74 @@ GREEN, all on Laptop B: meter **10/10**, unit **426/426**, integration **134/134
 | **Build** | **2** | **2,881** | **1,634** | **90.1** |
 
 The backend made no model call here: this reading of m7 gave no custom buttons. The `code` metering is covered by the tests, not yet by a real run. Cloud numbers, with thinking tokens and real prices, come when a paid or reset Gemini key is used; they feed `docs/economics.md` before Step 42.
+
+## Step 26: The ui-worker, pages from a queue in MongoDB
+
+- **`PAGE_LANE`:**
+  - `gateway`: Laptop B, for development; the default when `GATEWAY_URL` is set;
+  - `queue`: production; the default otherwise.
+
+  Both lanes answer the same two calls (`submit`, `get`), so the orchestrator's frontend branch is unchanged.
+- **`src/page-queue.js` and `models/page-job.js`:**
+  - `submitPage` and `getPage` work like the Gateway: the same screenshot and spec give the same job, an unknown job is a 404, and a finished one comes back with its HTML and usage;
+  - `claimPageJob` is one atomic update with a lease: the oldest waiting page, or one whose worker died;
+  - `renewPageJob`, `finishPageJob` and `failPageJob` work for the holder only.
+
+  The screenshot and the page travel as blobs.
+- **`src/ui-worker.js` (`ROLE=ui-worker`):**
+  - runs `UI_PARALLEL` lanes (default 4); each claims a page, renews its lease while drawing, and hands it back;
+  - draws with the single call (`shared/page.mjs`) and the Step 18.6 retry rule, which moved to `shared/attempts.mjs` so the Gateway uses the same one;
+  - meters every model call and hands the usage back with the page;
+  - its only HTTP answers are its health checks.
+- **Compose:** a `ui-worker` service on the same image; `PAGE_LANE` and `UI_PARALLEL` come from `deploy/.env`.
+
+### Found on the way: a race in the blob store
+
+Three identical pages finished at the same moment, and two of them tried to store the same blob under the same temporary name (process id plus millisecond). The second rename failed (`ENOENT`), so the page failed. Now:
+- a blob that already exists isn't written again (its name is its content);
+- every write uses a unique temporary name;
+- a writer that loses the race to an identical blob cleans up and succeeds.
+
+New test: 12 puts of the same content at once give one blob and no leftovers.
+
+### Tests
+
+RED (`940db3c`):
+- `integration/page-queue.test.js` gives `Cannot find module '.../src/page-queue.js'`;
+- `integration/ui-worker.test.js` fails, because there is no ui-worker role;
+- the `PAGE_LANE` and `UI_PARALLEL` config tests fail.
+
+The blob race was reproduced as RED in `test/blobs.test.js` before its fix.
+
+GREEN, all on Laptop B: page queue **10/10**, ui-worker **2/2**, blobs **7/7**; unit **429/429**, integration **146/146**, Gateway **15/15**, web **29/29**.
+
+| # | What is guaranteed | Test | Result |
+|---|---|---|---|
+| 1 | A page job is queued and reported as waiting | `page-queue.test.js: queues a page job…` | PASS |
+| 2 | The same screenshot and spec give the same job | `hands back the same job…` | PASS |
+| 3 | An unknown job is a 404, like the Gateway after a restart | `knows no such job…` | PASS |
+| 4 | **Five workers asking at once: exactly one gets the page, with its screenshot and instructions** | `gives a waiting job to exactly one of five workers…` | PASS |
+| 5 | Nothing to claim gives nothing | `gives nothing when no job waits` | PASS |
+| 6 | A dead worker's page goes back to the queue once its lease runs out, and only then | `gives a job back to the queue when its worker died…` | PASS |
+| 7 | Renewing works for the holder only | `renews a lease for its holder only` | PASS |
+| 8 | A drawn page comes back with its provider and usage | `a drawn page is handed back…` | PASS |
+| 9 | A worker that lost its lease can't hand back a result | `a worker that lost its lease…` | PASS |
+| 10 | A failed page says why; the same request then makes a new job | `a failed page says why…` | PASS |
+| 11 | **A ui-worker draws the 3 pages of a 3-screenshot project at the same time** (the fake model sees 3 at once), and the project reaches READY with each page's usage | `ui-worker.test.js: draws the 3 pages…` | PASS |
+| 12 | The ui-worker has only its health checks | `ui-worker.test.js: the ui-worker has only its health checks` | PASS |
+| 13 | `PAGE_LANE` defaults (gateway with `GATEWAY_URL`, else queue); `gateway` without the Gateway is refused; `UI_PARALLEL` 1–20; `ui-worker` is a role | `config.test.js: where pages are drawn…`, `a ui-worker draws 1 to 20…` | PASS |
+| 14 | The same content stored 12 times at once gives one blob, no leftovers | `blobs.test.js: stores the same content put many times…` | PASS |
+
+### Real run through Compose with no Laptop B Gateway, 3 Nov 2026
+
+`PAGE_LANE=queue`, `UI_PARALLEL=2`, local model on Laptop B's GPU through `host.docker.internal`; m5 (2 screenshots), fresh: **READY in 108 s**.
+
+| Job | From → to | Model calls |
+|---|---|---|
+| Reading (2 screenshots at once) | 0 → 16.5 s | 2 reads: 8.6 s and 16.5 s, overlapping |
+| Backend | 16.5 → 16.6 s | none |
+| Page 1 (ui-worker) | 16.5 → 102.7 s | in 1,408, out 883, 85.3 s |
+| Page 2 (ui-worker, same time) | 16.5 → 60.6 s | in 1,342, out 746, 43.3 s |
+| Check | 102.7 → 105.1 s | none |
+
+Both pages started together. On one local GPU they share it; with a cloud model they overlap fully.

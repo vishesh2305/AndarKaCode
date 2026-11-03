@@ -35,6 +35,14 @@ describe("createBlobStore (local)", () => {
     assert.equal((await filesIn(dir)).length, 1);
   });
 
+  it("stores the same content put many times at the same moment once, without failing (Step 26: identical pages)", async () => {
+    const { dir, blobs } = await store();
+    const keys = await Promise.all(Array.from({ length: 12 }, () => blobs.put(PAGE)));
+    assert.equal(new Set(keys).size, 1);
+    assert.equal((await filesIn(dir)).length, 1, "no leftover part files");
+    assert.equal((await blobs.get(keys[0])).toString("utf8"), PAGE);
+  });
+
   it("stores it compressed", async () => {
     const { dir, blobs } = await store();
     await blobs.put(PAGE);

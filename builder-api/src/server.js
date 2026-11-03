@@ -9,5 +9,7 @@ try {
   console.error(err.message);
   process.exit(1);
 }
-// Step 24: ROLE=orchestrator is the building service (no UI); api and all (the default) serve the UI and API.
-await import(config.role === "orchestrator" ? "./worker.js" : "./app.js");
+// Step 24: ROLE=orchestrator is the building service, ROLE=ui-worker draws pages (Step 26); neither has a UI.
+// api and all (the default) serve the UI and API.
+const entry = { orchestrator: "./worker.js", "ui-worker": "./ui-worker.js" }[config.role] ?? "./app.js";
+await import(entry);
