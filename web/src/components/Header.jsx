@@ -11,7 +11,7 @@ function Light({ label, ok, detail }) {
   );
 }
 
-export function Header({ health }) {
+export function Header({ health, user, onSignOut }) {
   const { ok: gpuReady, detail: gpuDetail } = gatewayLight(health?.gateway);
 
   return (
@@ -31,6 +31,14 @@ export function Header({ health }) {
       <div className="lights">
         <Light label="Mac" ok={health ? health.db : null} detail={health ? (health.db ? "Builder API and database ready" : "Database not connected") : "checking…"} />
         <Light label="Windows GPU" ok={gpuReady} detail={gpuDetail} />
+        {user && (
+          <span className="account" title={user.email}>
+            {user.name ?? user.email}
+            <button type="button" className="sign-out" onClick={onSignOut}>
+              Sign out
+            </button>
+          </span>
+        )}
       </div>
     </header>
   );

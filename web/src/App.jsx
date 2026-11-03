@@ -8,7 +8,9 @@ import { NewProject } from "./components/NewProject.jsx";
 import { ProjectList, ago } from "./components/ProjectList.jsx";
 import { StationInfo } from "./components/StationInfo.jsx";
 import { Backend, Pages, Plan, Screenshots } from "./components/Tabs.jsx";
+import { SignIn } from "./components/SignIn.jsx";
 import { pipelineStatus } from "./pipeline.js";
+import { signInView } from "./sign-in.js";
 
 const TABS = ["Screenshots", "Plan", "Pages", "Backend"];
 
@@ -36,7 +38,24 @@ function usePolling(load, ms, deps) {
   }, deps); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
+// Step 29: with sign-in on (AUTH=on), the sign-in screen until there is a session.
 export function App() {
+  const [me, setMe] = useState(null);
+  const loadMe = useCallback(() => api.me().then(setMe, () => setMe({ auth: false, user: null })), []);
+  useEffect(() => {
+    loadMe();
+    window.addEventListener("signed-out", loadMe);
+    return () => window.removeEventListener("signed-out", loadMe);
+  }, [loadMe]);
+
+  const view = signInView(me, window.location.search);
+  if (view.show === "loading") return <p className="empty">Loading…</p>;
+  if (view.show === "sign-in") return <SignIn view={view} />;
+  const signOut = () => api.signOut().finally(() => (window.history.replaceState(null, "", "/"), loadMe()));
+  return <Builder user={view.user} onSignOut={signOut} />;
+}
+
+function Builder({ user, onSignOut }) {
   const [health, setHealth] = useState(null);
   const [projects, setProjects] = useState([]);
   const initial = readHash();
@@ -80,7 +99,7 @@ export function App() {
 
   return (
     <div className="app">
-      <Header health={health} />
+      <Header health={health} user={user} onSignOut={onSignOut} />
       <div className="layout">
         <ProjectList projects={projects} selectedId={selectedId} onSelect={select} onNew={() => setCreating(true)} creating={showForm} />
         {/* Scrolls on its own on wide screens, so the sidebar never makes the page taller (styles.css). */}

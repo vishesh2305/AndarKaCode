@@ -352,6 +352,11 @@ Each service reads its own `.env` (copy it from `.env.example`). `.env` files ar
 | `GEMINI_API_KEY`, `GEMINI_MODEL` | Optional cloud backup for reading screenshots |
 | `OLLAMA_CODE_MODEL` | Local coding AI for custom buttons (default `qwen2.5-coder:7b`) |
 | `GEMINI_CODE_MODEL` | Cloud coding AI (default: `GEMINI_MODEL`; `gemini-3.5-flash` scored 5/5 in our test) |
+| `AUTH` | `off` (default: this computer only, no accounts) or `on`: GitHub/Google sign-in, invited accounts only (Step 29) |
+| `PUBLIC_URL` | With `AUTH=on`: the address people open. Each provider's OAuth app allows `<PUBLIC_URL>/auth/github/callback` or `/auth/google/callback` |
+| `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | GitHub sign-in (an OAuth App under GitHub's Developer settings) |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google sign-in (an OAuth client in Google Cloud Console) |
+| `SESSION_DAYS` | How long a sign-in lasts (1-90, default 14) |
 
 **`gateway/.env` (Laptop B)**
 
@@ -369,7 +374,8 @@ Each service reads its own `.env` (copy it from `.env.example`). `.env` files ar
 ## Security and privacy
 
 - **Secrets stay out of Git.** Only `.env.example` files are committed. Screenshot-to-Code holds no keys; the Gateway passes them per request.
-- **Small attack surface.** The Builder API listens on `127.0.0.1` only (there is no user login yet). The Gateway is the only service Laptop B exposes, only on the private Tailscale address, and only with the API key. Ollama and Screenshot-to-Code stay on localhost.
+- **Sign-in (Step 29, `AUTH=on`).** GitHub or Google, with PKCE and a one-time state tied to the browser that started it. Only an invited, provider-verified email gets an account (`npm run invite -- add <email>`; `list`, `remove`). The session cookie is HttpOnly, SameSite=Lax and Secure on https; it holds a random token, and MongoDB keeps only its SHA-256. Changes sent from another site are refused by an Origin check. Until Step 30, everyone signed in sees the same projects.
+- **Small attack surface.** The Builder API listens on `127.0.0.1` only by default. The Gateway is the only service Laptop B exposes, only on the private Tailscale address, and only with the API key. Ollama and Screenshot-to-Code stay on localhost.
 - **Uploads are checked.** Only PNG / JPEG / WebP, at most 10 MB each, and decoded before anything is stored. Generated-file viewing refuses paths outside the app folder.
 - **Generated apps:**
   - Login exists only if a login screen was shown. Passwords are hashed with scrypt; only a SHA-256 fingerprint of each login token is stored; sign-in for an email pauses for a minute after 5 wrong passwords.

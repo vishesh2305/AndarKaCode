@@ -1223,6 +1223,53 @@ a {
 /* Wide screens: the app fills the window exactly. The sidebar never makes the page taller than the main
    content: a long project list scrolls inside the sidebar (the Memory box stays in view below it), and the
    main column scrolls on its own. Only the structure changes; the look stays the same. */
+/* ---------- sign-in (Step 29) ---------- */
+.account {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 700;
+}
+
+.sign-out {
+  padding: 0.2rem 0.6rem;
+  border: var(--line);
+  border-radius: 999px;
+  background: var(--white);
+  color: var(--ink);
+  font: 700 0.85rem/1.2 var(--body);
+  cursor: pointer;
+}
+
+.sign-in {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 1rem;
+}
+
+.sign-in-card {
+  width: min(28rem, 100%);
+  padding: 2rem;
+  border: var(--line);
+  border-radius: 20px;
+  background: var(--white);
+  box-shadow: var(--pop);
+}
+
+.sign-in-message {
+  padding: 0.6rem 0.8rem;
+  border: var(--line);
+  border-radius: 12px;
+  background: var(--sunny);
+}
+
+.sign-in-buttons {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+
 @media (min-width: 901px) {
   .app {
     display: flex;

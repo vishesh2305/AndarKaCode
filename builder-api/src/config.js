@@ -67,7 +67,33 @@ export function checkConfig(env) {
   const role = has("ROLE") ? env.ROLE : "all";
   if (!ROLES.includes(role)) problems.push(`ROLE in ${FILE} must be one of ${ROLES.join(", ")} (it is "${role}")`);
 
-  const config = { port, host: has("HOST") ? env.HOST : "127.0.0.1", previewPort, mongodbUri, defaultMode, gateway, storage, role, previewOrigin, pageLane, placementMs, modes: MODES };
+  // Step 29: sign-in. Off: this computer only, as before. On: GitHub and/or Google, invited accounts only.
+  const authSetting = has("AUTH") ? env.AUTH : "off";
+  if (!["on", "off"].includes(authSetting)) problems.push(`AUTH in ${FILE} must be on or off (it is "${authSetting}")`);
+  const pair = (prefix) => {
+    const [id, secret] = [`${prefix}_CLIENT_ID`, `${prefix}_CLIENT_SECRET`];
+    if (has(id) !== has(secret)) problems.push(`${id} and ${secret} go together in ${FILE}: set both (from the provider's OAuth app) or neither`);
+    return has(id) && has(secret) ? { clientId: env[id], clientSecret: env[secret] } : null;
+  };
+  const github = pair("GITHUB");
+  const google = pair("GOOGLE");
+  const publicUrl = has("PUBLIC_URL") ? env.PUBLIC_URL.replace(/\/$/, "") : null;
+  if (publicUrl && !/^https?:\/\//.test(publicUrl)) problems.push(`PUBLIC_URL in ${FILE} must start with http:// or https:// (the address people open, for example https://andarkacode.com)`);
+  const sessionDays = wholeNumber("SESSION_DAYS", 14, { min: 1, max: 90 });
+  const authOn = authSetting === "on";
+  if (authOn && !publicUrl) problems.push(`AUTH=on needs PUBLIC_URL in ${FILE}: the address people open (the providers send them back there)`);
+  if (authOn && !github && !google) problems.push(`AUTH=on needs GitHub or Google sign-in in ${FILE}: GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET, or GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET`);
+  const auth = {
+    on: authOn,
+    publicUrl,
+    sessionDays,
+    secureCookie: Boolean(publicUrl?.startsWith("https://")),
+    // The providers' addresses can change for GitHub Enterprise or another OpenID issuer (and for the tests).
+    github: github && { ...github, url: (env.GITHUB_URL || "https://github.com").replace(/\/$/, ""), apiUrl: (env.GITHUB_API_URL || "https://api.github.com").replace(/\/$/, "") },
+    google: google && { ...google, issuer: (env.GOOGLE_ISSUER || "https://accounts.google.com").replace(/\/$/, "") },
+  };
+
+  const config = { port, host: has("HOST") ? env.HOST : "127.0.0.1", previewPort, mongodbUri, defaultMode, gateway, storage, role, previewOrigin, pageLane, placementMs, auth, modes: MODES };
   return { config, problems };
 }
 

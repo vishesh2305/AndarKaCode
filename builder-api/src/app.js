@@ -4,6 +4,7 @@ import http from "node:http";
 import express from "express";
 import mongoose from "mongoose";
 import multer from "multer";
+import { createAuth } from "./auth/index.js";
 import { loadConfig } from "./config.js";
 import { connectDb, isDbConnected } from "./db.js";
 import { readiness, webBuildIsStale } from "./health.js";
@@ -32,7 +33,7 @@ try {
   process.exit(1);
 }
 const { port: PORT, host: HOST, mongodbUri: MONGODB_URI, defaultMode: DEFAULT_MODE, previewPort: PREVIEW_PORT, modes: MODES } = config;
-const GATEWAY_URL = config.gateway?.url; // HOST defaults to 127.0.0.1: no login yet, so this computer only
+const GATEWAY_URL = config.gateway?.url; // HOST defaults to 127.0.0.1: with AUTH=off (no sign-in), this computer only
 const GATEWAY_API_KEY = config.gateway?.apiKey;
 const MAX_SCREENSHOTS = 10; // one page each
 
@@ -91,6 +92,11 @@ app.get("/readyz", (_req, res) => {
 app.get("/api/health", async (_req, res) => {
   res.json({ db: isDbConnected(), gateway: await gatewayHealth() });
 });
+
+// Step 29: sign-in. With AUTH=on every /api route below needs a session; with AUTH=off nothing changes.
+const auth = createAuth(config.auth);
+app.use(auth.router);
+app.use("/api", auth.requireSignIn);
 
 // Lifecycle step 1 (ARCHITECTURE.md §3): hash, shrink, store, create the project.
 // One or more screenshots in "image" fields, in page order; each becomes one page.

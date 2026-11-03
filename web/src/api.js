@@ -1,11 +1,16 @@
 // Calls to the Builder API (same origin in production; proxied by Vite in development).
 async function json(res) {
+  // Step 29: the session ended (expired, or signed out in another tab): the app shows the sign-in again.
+  if (res.status === 401) window.dispatchEvent(new Event("signed-out"));
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
   return body;
 }
 
 export const api = {
+  // Step 29: { auth, user, workspace?, providers? }, and signing out.
+  me: () => fetch("/api/me").then(json),
+  signOut: () => fetch("/auth/logout", { method: "POST" }),
   health: () => fetch("/api/health").then(json),
   projects: () => fetch("/api/projects").then(json),
   project: (id) => fetch(`/api/projects/${id}`).then(json),
