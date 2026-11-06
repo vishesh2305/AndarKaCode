@@ -93,7 +93,11 @@ export function checkConfig(env) {
     google: google && { ...google, issuer: (env.GOOGLE_ISSUER || "https://accounts.google.com").replace(/\/$/, "") },
   };
 
-  const config = { port, host: has("HOST") ? env.HOST : "127.0.0.1", previewPort, mongodbUri, defaultMode, gateway, storage, role, previewOrigin, pageLane, placementMs, auth, modes: MODES };
+  // Step 31b: the secret the key vault encrypts users' AI keys with. Without it, nobody can save keys.
+  const keyVaultSecret = has("KEY_VAULT_SECRET") ? env.KEY_VAULT_SECRET : null;
+  if (keyVaultSecret && !/^[0-9a-f]{64}$/i.test(keyVaultSecret)) problems.push(`KEY_VAULT_SECRET in ${FILE} must be 64 hex characters (32 bytes): make one with: openssl rand -hex 32`);
+
+  const config = { port, host: has("HOST") ? env.HOST : "127.0.0.1", previewPort, mongodbUri, defaultMode, gateway, storage, role, previewOrigin, pageLane, placementMs, auth, keyVaultSecret, modes: MODES };
   return { config, problems };
 }
 

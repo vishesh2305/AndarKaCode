@@ -11,6 +11,12 @@ const workspaceSchema = new mongoose.Schema(
     ownerId: { type: mongoose.Schema.Types.ObjectId, required: true, index: true },
     personal: { type: Boolean, default: false },
     members: { type: [memberSchema], default: [] },
+    // Step 31b: which saved key and model each slot uses with the workspace's own keys (BYOK).
+    // frontend: reading screenshots and drawing pages; backend: writing custom button code.
+    slots: {
+      frontend: { keyId: mongoose.Schema.Types.ObjectId, model: String },
+      backend: { keyId: mongoose.Schema.Types.ObjectId, model: String },
+    },
   },
   schemaOptions
 );

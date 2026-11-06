@@ -7,11 +7,19 @@ async function json(res) {
   return body;
 }
 
+const send = (method, url, body) =>
+  fetch(url, { method, headers: { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
+
 export const api = {
   // Step 29: { auth, user, workspace?, providers? }, and signing out.
   me: () => fetch("/api/me").then(json),
   signOut: () => fetch("/auth/logout", { method: "POST" }),
   health: () => fetch("/api/health").then(json),
+  // Step 31b: the workspace's own AI keys and slots.
+  keys: () => fetch("/api/keys").then(json),
+  addKey: ({ provider, apiKey, label }) => send("POST", "/api/keys", { provider, apiKey, label }).then(json),
+  deleteKey: (id) => send("DELETE", `/api/keys/${id}`).then((res) => (res.ok ? null : json(res))),
+  setSlots: (slots) => send("PUT", "/api/keys/slots", slots).then(json),
   projects: () => fetch("/api/projects").then(json),
   project: (id) => fetch(`/api/projects/${id}`).then(json),
   files: (id) => fetch(`/api/projects/${id}/files`).then(json),

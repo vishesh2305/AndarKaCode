@@ -6,7 +6,7 @@
 import { geminiUsage, recordUsage, secondsSince } from "./meter.mjs";
 
 export const PROVIDERS = ["gemini", "openai", "anthropic", "groq", "openrouter"];
-const LABELS = { gemini: "Gemini", openai: "OpenAI", anthropic: "Anthropic", groq: "Groq", openrouter: "OpenRouter" };
+export const PROVIDER_LABELS = { gemini: "Gemini", openai: "OpenAI", anthropic: "Anthropic", groq: "Groq", openrouter: "OpenRouter" };
 const BASE_URLS = {
   gemini: "https://generativelanguage.googleapis.com/v1beta",
   openai: "https://api.openai.com/v1",
@@ -112,7 +112,7 @@ function jsonOnly(text) {
 export async function callModel({ provider, apiKey, model, prompt, imageB64 = null, json = false, schema = null, temperature = 0.2, purpose }) {
   const adapter = ADAPTERS[provider];
   if (!adapter) throw new Error(`Unknown provider "${provider}" (one of ${PROVIDERS.join(", ")})`);
-  if (!apiKey) throw new Error(`${LABELS[provider]} needs a key`);
+  if (!apiKey) throw new Error(`${PROVIDER_LABELS[provider]} needs a key`);
   const { url, headers, body } = adapter.request({ apiKey, model, prompt, imageB64, json, schema, temperature });
   for (const delay of [...retry.delays, null]) {
     const started = Date.now();
@@ -122,14 +122,14 @@ export async function callModel({ provider, apiKey, model, prompt, imageB64 = nu
       res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", ...headers }, body: JSON.stringify(body), signal: AbortSignal.timeout(TIMEOUT_MS) });
       data = await res.json().catch(() => ({}));
     } catch (err) {
-      throw new Error(redactKey(`${LABELS[provider]}: ${err.message}`, apiKey));
+      throw new Error(redactKey(`${PROVIDER_LABELS[provider]}: ${err.message}`, apiKey));
     }
     if (res.ok) {
       recordUsage({ purpose, provider, model, ...adapter.usage(data), seconds: secondsSince(started) });
       const text = adapter.text(data);
       return json && provider === "anthropic" ? jsonOnly(text) : text;
     }
-    if (delay === null || !TRANSIENT.has(res.status)) throw new Error(redactKey(`${LABELS[provider]} ${res.status}: ${errorOf(data, res.status)}`, apiKey));
+    if (delay === null || !TRANSIENT.has(res.status)) throw new Error(redactKey(`${PROVIDER_LABELS[provider]} ${res.status}: ${errorOf(data, res.status)}`, apiKey));
     await new Promise((r) => setTimeout(r, delay));
   }
 }
@@ -144,8 +144,8 @@ export async function checkKey({ provider, apiKey }) {
     const res = await fetch(url, { headers, signal: AbortSignal.timeout(15_000) });
     if (res.ok) return { ok: true };
     const data = await res.json().catch(() => ({}));
-    return { ok: false, reason: redactKey(`${LABELS[provider]} ${res.status}: ${errorOf(data, res.status)}`, apiKey) };
+    return { ok: false, reason: redactKey(`${PROVIDER_LABELS[provider]} ${res.status}: ${errorOf(data, res.status)}`, apiKey) };
   } catch (err) {
-    return { ok: false, reason: redactKey(`${LABELS[provider]}: ${err.message}`, apiKey) };
+    return { ok: false, reason: redactKey(`${PROVIDER_LABELS[provider]}: ${err.message}`, apiKey) };
   }
 }

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "./api.js";
 import { Header } from "./components/Header.jsx";
+import { Keys } from "./components/Keys.jsx";
 import { MetroLine } from "./components/MetroLine.jsx";
 import { NewProject } from "./components/NewProject.jsx";
 import { ProjectList, ago } from "./components/ProjectList.jsx";
@@ -14,11 +15,11 @@ import { signInView } from "./sign-in.js";
 
 const TABS = ["Screenshots", "Plan", "Pages", "Backend"];
 
-// Links to a view: #/new, #/p/<projectId>, #/p/<projectId>/<tab> (handy for bookmarking a demo view).
+// Links to a view: #/new, #/keys, #/p/<projectId>, #/p/<projectId>/<tab> (handy for bookmarking a demo view).
 function readHash() {
   const [, kind, id, tab] = window.location.hash.split("/");
   const named = TABS.find((t) => t.toLowerCase() === (tab ?? "").toLowerCase());
-  return { creating: kind === "new", selectedId: kind === "p" ? id ?? null : null, tab: named ?? "Screenshots" };
+  return { creating: kind === "new", keys: kind === "keys", selectedId: kind === "p" ? id ?? null : null, tab: named ?? "Screenshots" };
 }
 const SETTLED = ["READY", "NEEDS_ATTENTION"];
 
@@ -61,6 +62,7 @@ function Builder({ user, onSignOut }) {
   const initial = readHash();
   const [selectedId, setSelectedId] = useState(initial.selectedId);
   const [creating, setCreating] = useState(initial.creating);
+  const [showKeys, setShowKeys] = useState(initial.keys && Boolean(user)); // Step 31b
   const [project, setProject] = useState(null);
   const [station, setStation] = useState(null); // null = follow the current station
   const [tab, setTab] = useState(initial.tab);
@@ -80,6 +82,7 @@ function Builder({ user, onSignOut }) {
   }, [projects, selectedId, creating]);
 
   const select = useCallback((id) => {
+    setShowKeys(false);
     setCreating(false);
     setSelectedId(id);
     setProject(null);
@@ -89,9 +92,9 @@ function Builder({ user, onSignOut }) {
 
   // Keep the address bar in step with what is shown.
   useEffect(() => {
-    const hash = creating ? "#/new" : selectedId ? `#/p/${selectedId}/${tab.toLowerCase()}` : "";
+    const hash = showKeys ? "#/keys" : creating ? "#/new" : selectedId ? `#/p/${selectedId}/${tab.toLowerCase()}` : "";
     if (hash && window.location.hash !== hash) window.history.replaceState(null, "", hash);
-  }, [creating, selectedId, tab]);
+  }, [showKeys, creating, selectedId, tab]);
 
   const status = project ? pipelineStatus(project) : null;
   const shown = station ?? status?.current;
@@ -99,13 +102,15 @@ function Builder({ user, onSignOut }) {
 
   return (
     <div className="app">
-      <Header health={health} user={user} onSignOut={onSignOut} />
+      <Header health={health} user={user} onSignOut={onSignOut} onKeys={() => setShowKeys(true)} />
       <div className="layout">
-        <ProjectList projects={projects} selectedId={selectedId} onSelect={select} onNew={() => setCreating(true)} creating={showForm} />
+        <ProjectList projects={projects} selectedId={selectedId} onSelect={select} onNew={() => (setShowKeys(false), setCreating(true))} creating={showForm} />
         {/* Scrolls on its own on wide screens, so the sidebar never makes the page taller (styles.css). */}
         <div className="main-scroll">
           <main className="main">
-            {showForm ? (
+            {showKeys ? (
+              <Keys />
+            ) : showForm ? (
               <NewProject onCreated={(id) => (api.projects().then(setProjects), select(id))} />
             ) : !project ? (
               <p className="empty">Loading…</p>

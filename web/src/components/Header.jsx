@@ -11,7 +11,7 @@ function Light({ label, ok, detail }) {
   );
 }
 
-export function Header({ health, user, onSignOut }) {
+export function Header({ health, user, onSignOut, onKeys }) {
   const { ok: gpuReady, detail: gpuDetail } = gatewayLight(health?.gateway);
 
   return (
@@ -34,6 +34,9 @@ export function Header({ health, user, onSignOut }) {
         {user && (
           <span className="account" title={user.email}>
             {user.name ?? user.email}
+            <button type="button" className="sign-out" onClick={onKeys}>
+              Keys
+            </button>
             <button type="button" className="sign-out" onClick={onSignOut}>
               Sign out
             </button>

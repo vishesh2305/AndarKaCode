@@ -23,6 +23,7 @@ x-builder: &builder
     GEMINI_API_KEY: ${GEMINI_API_KEY:-}
     # gateway (Laptop B, development) when GATEWAY_URL is set, else queue: the ui-worker draws the pages
     PAGE_LANE: ${PAGE_LANE:-}
+    KEY_VAULT_SECRET: ${KEY_VAULT_SECRET:-} # Step 31: opens people's own AI keys; the same on every service
   extra_hosts: ["host.docker.internal:host-gateway"]
 
 services:

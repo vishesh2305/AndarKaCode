@@ -5,6 +5,7 @@ import express from "express";
 import mongoose from "mongoose";
 import multer from "multer";
 import { createAuth } from "./auth/index.js";
+import { createKeysRouter } from "./keys/routes.js";
 import { loadConfig } from "./config.js";
 import { connectDb, isDbConnected } from "./db.js";
 import { readiness, webBuildIsStale } from "./health.js";
@@ -97,6 +98,8 @@ app.get("/api/health", async (_req, res) => {
 const auth = createAuth(config.auth);
 app.use(auth.router);
 app.use("/api", auth.requireSignIn);
+// Step 31b: the workspace's own AI keys (BYOK) and its two slots.
+app.use("/api/keys", createKeysRouter(config));
 
 // Lifecycle step 1 (ARCHITECTURE.md §3): hash, shrink, store, create the project.
 // One or more screenshots in "image" fields, in page order; each becomes one page.
@@ -332,7 +335,9 @@ app.use((err, _req, res, _next) => {
     const status = err.code === "LIMIT_FILE_SIZE" ? 413 : 400;
     return res.status(status).json({ error: err.message });
   }
-  console.error(err);
+  // Only the unexpected is logged: a request the API refused (bad JSON, too large) may carry a user's key
+  // in its body, and the error object keeps that body (Step 31b).
+  if (!err.status) console.error(err);
   res.status(err.status ?? 500).json({ error: err.status ? err.message : "Internal error" });
 });
 
