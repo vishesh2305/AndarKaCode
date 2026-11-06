@@ -9,7 +9,7 @@
 | Step | What | Status |
 |---|---|---|
 | 29 | GitHub/Google sign-in, workspaces, invite list, secure cookie sessions | ✅ |
-| 30 | `ownerId`/`workspaceId` on everything; memory per user plus a library scope (M2) | next |
+| 30 | `ownerId`/`workspaceId` on everything; memory per user plus a library scope (M2) | ✅ |
 | 31 | BYOK: key slots, key vault, verified-models list, provider adapters | |
 | 32 | Quotas, fair scheduling, adaptive concurrency per key, helmet/CSP/CORS/rate limits | |
 
@@ -58,3 +58,33 @@
 **Found on the Mac (first real sign-in):** the app was opened at `http://127.0.0.1:4000` while `PUBLIC_URL` was `http://localhost:4000`. To a browser those are two sites: the login cookie was set for 127.0.0.1, the provider sent the person back to localhost, and the cookie stayed behind ("unknown or used state, or another browser"). Now `/auth/<provider>/start` on any other address first moves to `PUBLIC_URL` (once, with `?moved=1`, so a proxy that rewrites the Host header can't make it loop). Test: integration, "a sign-in started on another address of this server moves to PUBLIC_URL first, once" (RED, then GREEN).
 
 **Still to do by hand:** a sign-in with the real GitHub and Google. That needs an OAuth app at each provider, with the callback address allowed (see README, Configuration).
+
+## Step 30: User B never sees or reuses user A's work
+
+- **Projects** (`src/models/project.js`) carry `ownerId` and `workspaceId`, set from the session when a project is made. Every project route finds a project only inside the signed-in person's workspace (`findProject(req)` in `src/app.js`): another workspace's project answers **404**, as if it did not exist, so its id gives nothing away. The list shows only the workspace's projects. With sign-in off nothing changes: one person, every project.
+- **Jobs, Contracts and page jobs** are reached only through their project, so the project's check covers them; they don't carry the owner themselves.
+- **Memory** (`src/memory/index.js`, plan M2) has a `scope`: `ws:<workspaceId>`, `library`, or `local` when sign-in is off. `memoryScope(owner)` is required by every lookup, write, count and forget: a call without a project or person **throws** instead of searching everyone's memory. A lookup sees its own scope, then the library, preferring its own. The same piece is kept once per scope (unique index `scope + kind + key`; the old `kind + key` index is dropped once, before the first write). Rows from before Step 30 have no scope and stay local. Counting and **Clear memory** touch only the asker's scope; the library stays. Blobs are stored by content hash and shared, but a blob is reached only through a row of one's own scope.
+- **The library** is searched by everyone, but nothing is added to it yet: promotion, with the owner's consent, comes in Step 39 (M5).
+
+**Not in Step 30:** the live preview's own port still has no sign-in (Step 34).
+
+### RED
+
+`3bb5cef`: `integration/memory-scope.test.js` (memory per scope, with MongoDB) and a Step 30 block in `integration/auth.test.js` (two signed-in people, A uploads a project). They failed: `memoryScope` did not exist, projects had no owner, and B's list and routes reached A's project. `integration/memory-bands.test.js` now passes the local scope.
+
+### GREEN
+
+| Guarantee | Test |
+|---|---|
+| A new project belongs to its creator and their workspace | integration (auth) |
+| B's list never has A's project | integration (auth) |
+| Every route to A's project (11: project, contract read and edit, page, screenshot, files, file content, check report, preview start and stop, download) answers B 404; A still reaches it | integration (auth) |
+| The same screenshot read in A is not found from B; B keeps its own reading; A's stays A's | integration (memory-scope) |
+| A near copy of A's screenshot finds A's page from A only | integration (memory-scope) |
+| A's verified button code is not offered to B | integration (memory-scope) |
+| Counting and forgetting touch only the asking workspace | integration (memory-scope) |
+| A library piece is found from any workspace, a workspace's own piece first; forgetting leaves the library | integration (memory-scope) |
+| A lookup without a scope throws | integration (memory-scope) |
+| Memory from before Step 30 is still found locally, never from a workspace | integration (memory-scope), memory-bands |
+
+**Suites:** unit 457, integration 174 (was 162), Gateway 15, web 34.

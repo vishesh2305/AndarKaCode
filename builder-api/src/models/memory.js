@@ -5,6 +5,9 @@ import { schemaOptions } from "./common.js";
 // to it; the first project to do a piece of work stays its source.
 const memorySchema = new mongoose.Schema(
   {
+    // Step 30 (M2): whose memory this is. "ws:<workspaceId>" (that workspace's projects only), "library"
+    // (shared, reviewed: Step 39), or "local" when sign-in is off. Rows from before Step 30 have none: local.
+    scope: String,
     kind: { type: String, enum: ["inventory", "page", "custom"], required: true },
     key: { type: String, required: true }, // src/memory/keys.js
     // The content (inventory JSON, page HTML, or code) is a compressed blob named by its hash (Step 21,
@@ -29,9 +32,9 @@ const memorySchema = new mongoose.Schema(
   },
   schemaOptions
 );
-memorySchema.index({ kind: 1, key: 1 }, { unique: true });
-memorySchema.index({ kind: 1, instructionsHash: 1 });
-memorySchema.index({ kind: 1, instructionsHash: 1, dHashBands: 1 });
-memorySchema.index({ kind: 1, button: 1 });
+// Every search is narrowed by scope first (Step 30). The same piece can be remembered once per scope.
+memorySchema.index({ scope: 1, kind: 1, key: 1 }, { unique: true });
+memorySchema.index({ scope: 1, kind: 1, instructionsHash: 1, dHashBands: 1 });
+memorySchema.index({ scope: 1, kind: 1, button: 1 });
 
 export const Memory = mongoose.model("Memory", memorySchema);

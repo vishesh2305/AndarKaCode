@@ -90,7 +90,7 @@ async function contractStage(project) {
     // All screenshots at the same time (Step 23). A screenshot read before, in a project that reached
     // READY, takes its reading from memory (Step 14).
     const { inventories, provider, reused } = await readScreenshots(screenshotsOf(project), {
-      recall: (shot) => (project.useMemory !== false && shot.sha256 ? recall("inventory", inventoryKey(shot.sha256)) : null),
+      recall: (shot) => (project.useMemory !== false && shot.sha256 ? recall("inventory", inventoryKey(shot.sha256), project) : null),
       read: async (shot) => readInventory((await readFile(path.join(REPO_ROOT, shot.path))).toString("base64"), { mode: project.mode }),
     });
     job.provider = provider; // "cloud" if any screenshot needed the backup
@@ -143,8 +143,8 @@ async function frontendBranch(project, contract, n) {
   const instructions = pageInstructions(contract.body, n);
   let reuse = null;
   if (!existing && project.useMemory !== false && shot.sha256) {
-    const same = await recall("page", pageKey(shot.sha256, instructions));
-    const similar = same ? null : await recallSimilarPage(shot.dHash, instructions);
+    const same = await recall("page", pageKey(shot.sha256, instructions), project);
+    const similar = same ? null : await recallSimilarPage(shot.dHash, instructions, project);
     reuse = same ? { memory: same, fromMemory: origin(same) } : similar && { memory: similar.memory, fromMemory: { ...origin(similar.memory), similar: true, distance: similar.distance } };
   }
   if (reuse) {
@@ -222,8 +222,8 @@ async function backendBranch(project, contract) {
       // passes here does the coding AI write new code.
       let result = null;
       if (project.useMemory !== false) {
-        const exact = await recall("custom", customKey(spec, op));
-        const library = (await recallLibrary(spec, op)).filter((m) => m.key !== exact?.key);
+        const exact = await recall("custom", customKey(spec, op), project);
+        const library = (await recallLibrary(spec, op, project)).filter((m) => m.key !== exact?.key);
         const tries = [...(exact ? [{ memory: exact, similar: false }] : []), ...library.map((memory) => ({ memory, similar: true }))];
         for (const { memory, similar } of tries) {
           if (checkCustomCode(memory.payload).ok && !(await test(memory.payload))) {

@@ -32,6 +32,10 @@ const screenshotSchema = new mongoose.Schema(
 const projectSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true, maxlength: 100 },
+    // Step 30: who made it, and the workspace it belongs to (none when sign-in is off). Every project route
+    // finds only the projects of the signed-in person's workspace.
+    ownerId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    workspaceId: { type: mongoose.Schema.Types.ObjectId, ref: "Workspace", index: true },
     screenshots: { type: [screenshotSchema], default: [] },
     // First screenshot, kept for listings and for projects created before multi-screenshot uploads.
     imageHash: { type: String, required: true, index: true },

@@ -317,7 +317,7 @@ Stage 1b is done when a 3-page cloud build on the two laptops is READY in under 
 | Step | What | Done when |
 |---|---|---|
 | **29** | GitHub/Google sign-in, workspaces, invite list, secure cookie sessions | Only invited accounts get in **Done 4 Nov 2026:** `AUTH=on`; PKCE and a state tied to the browser; invited verified emails only; a personal workspace each; MongoDB keeps only the session token's hash; changes from another site refused |
-| **30** | `ownerId`/`workspaceId` on everything; **memory scoped per user, plus a library scope** (M2) | Isolation tests: user B never sees or reuses user A's work |
+| **30** | `ownerId`/`workspaceId` on everything; **memory scoped per user, plus a library scope** (M2) | Isolation tests: user B never sees or reuses user A's work **Done 6 Nov 2026:** projects owned per workspace (another's answers 404 on all 11 routes); memory `scope` per workspace plus `library`, required on every lookup |
 | **31** | **BYOK:** frontend and backend key slots, key vault, verified-models list | A build runs on two user keys; a key never appears in logs or API responses |
 | **32** | Quotas, fair scheduling (paid ahead of free), adaptive concurrency per key, helmet/CSP/CORS/rate limits | The quota limit is refused politely; a "too many requests" answer slows us down instead of failing |
 

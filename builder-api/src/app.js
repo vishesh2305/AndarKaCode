@@ -119,7 +119,13 @@ app.post("/api/projects", upload.array("image", MAX_SCREENSHOTS), async (req, re
 
   const fallbackName = files[0].originalname.replace(/\.[^.]+$/, "") || "Untitled";
   const useMemory = req.body.fresh !== "true"; // "Start fresh" skips memory for this project
-  const project = new Project({ name: (req.body.name ?? "").trim() || fallbackName, imageHash: sha256(files[0].buffer), mode, useMemory });
+  const project = new Project({
+    name: (req.body.name ?? "").trim() || fallbackName,
+    imageHash: sha256(files[0].buffer),
+    mode,
+    useMemory,
+    ...(req.user && { ownerId: req.user.id, workspaceId: req.user.workspaceId }),
+  });
   for (const [i, file] of files.entries()) {
     project.screenshots.push({ ...(await saveScreenshot(project._id, i + 1, shrunk[i])), sha256: sha256(file.buffer), dHash: await dHash(file.buffer) });
   }
@@ -129,15 +135,19 @@ app.post("/api/projects", upload.array("image", MAX_SCREENSHOTS), async (req, re
   res.status(201).json(project);
 });
 
-app.get("/api/projects", async (_req, res) => {
-  const projects = await Project.find().sort({ createdAt: -1 }).limit(50);
+app.get("/api/projects", async (req, res) => {
+  const projects = await Project.find(mine(req)).sort({ createdAt: -1 }).limit(50);
   res.json(projects);
 });
 
-const findProject = (id) => (mongoose.isValidObjectId(id) ? Project.findById(id) : null);
+// Step 30: with sign-in on, a person finds only their workspace's projects; another's answers 404, as if it
+// did not exist. Sign-in off (req.user unset): this computer's single person sees every project.
+const mine = (req) => (req.user ? { workspaceId: req.user.workspaceId } : {});
+const owner = (req) => req.user ?? {}; // whose memory (src/memory/index.js memoryScope)
+const findProject = (req) => (mongoose.isValidObjectId(req.params.id) ? Project.findOne({ _id: req.params.id, ...mine(req) }) : null);
 
 app.get("/api/projects/:id", async (req, res) => {
-  const project = await findProject(req.params.id);
+  const project = await findProject(req);
   if (!project) return res.status(404).json({ error: "No such project" });
   const [contract, jobs] = await Promise.all([
     currentContract(project),
@@ -147,7 +157,7 @@ app.get("/api/projects/:id", async (req, res) => {
 });
 
 app.get("/api/projects/:id/contract", async (req, res) => {
-  const project = await findProject(req.params.id);
+  const project = await findProject(req);
   if (!project) return res.status(404).json({ error: "No such project" });
   const contract = await currentContract(project);
   if (!contract) return res.status(404).json({ error: `No Contract yet (state: ${project.state})` });
@@ -156,7 +166,7 @@ app.get("/api/projects/:id/contract", async (req, res) => {
 
 // An edit is a new Contract version with a new hash; the Barrier then refuses anything built for the old one.
 app.put("/api/projects/:id/contract", async (req, res) => {
-  const project = await findProject(req.params.id);
+  const project = await findProject(req);
   if (!project) return res.status(404).json({ error: "No such project" });
   const current = await currentContract(project);
   if (!current) return res.status(409).json({ error: `No Contract to edit yet (state: ${project.state})` });
@@ -189,7 +199,7 @@ app.put("/api/projects/:id/contract", async (req, res) => {
 
 // A generated page (?page=N, default: the first page) for the current spec version, once Laptop B has built it.
 app.get("/api/projects/:id/frontend", async (req, res) => {
-  const project = await findProject(req.params.id);
+  const project = await findProject(req);
   if (!project) return res.status(404).json({ error: "No such project" });
   const contract = await currentContract(project);
   const page = Number(req.query.page ?? contract?.body.pages?.[0]?.screenshot ?? 1);
@@ -212,7 +222,7 @@ async function currentBuild(project) {
 }
 
 app.get("/api/projects/:id/screenshots/:n", async (req, res) => {
-  const project = await findProject(req.params.id);
+  const project = await findProject(req);
   if (!project) return res.status(404).json({ error: "No such project" });
   const shot = screenshotsOf(project)[Number(req.params.n) - 1];
   if (!Number.isInteger(Number(req.params.n)) || !shot?.path) return res.status(404).json({ error: "No such screenshot" });
@@ -220,7 +230,7 @@ app.get("/api/projects/:id/screenshots/:n", async (req, res) => {
 });
 
 app.get("/api/projects/:id/files", async (req, res) => {
-  const project = await findProject(req.params.id);
+  const project = await findProject(req);
   if (!project) return res.status(404).json({ error: "No such project" });
   const { backendJob } = await currentBuild(project);
   if (!backendJob) return res.status(404).json({ error: `No generated app for the current spec yet (state: ${project.state})` });
@@ -228,7 +238,7 @@ app.get("/api/projects/:id/files", async (req, res) => {
 });
 
 app.get("/api/projects/:id/files/content", async (req, res) => {
-  const project = await findProject(req.params.id);
+  const project = await findProject(req);
   if (!project) return res.status(404).json({ error: "No such project" });
   const { backendJob } = await currentBuild(project);
   if (!backendJob) return res.status(404).json({ error: "No generated app yet" });
@@ -242,7 +252,7 @@ const latestVerify = (project, contract) =>
   contract && Job.findOne({ projectId: project._id, kind: "verify", contractHash: contract.hash, report: { $exists: true } }).sort({ createdAt: -1 });
 
 app.get("/api/projects/:id/verify", async (req, res) => {
-  const project = await findProject(req.params.id);
+  const project = await findProject(req);
   if (!project) return res.status(404).json({ error: "No such project" });
   const contract = await currentContract(project);
   const job = await latestVerify(project, contract);
@@ -250,13 +260,13 @@ app.get("/api/projects/:id/verify", async (req, res) => {
   res.json({ state: project.state, checkedAt: job.finishedAt, seconds: job.report.seconds, report: job.report });
 });
 
-// Memory (Step 14): how much is remembered, and forgetting it all (projects are kept).
-app.get("/api/memory", async (_req, res) => res.json(await memoryCounts()));
-app.delete("/api/memory", async (_req, res) => res.json({ deleted: await forgetAll() }));
+// Memory (Step 14): how much this workspace remembers, and forgetting it (projects and the library are kept).
+app.get("/api/memory", async (req, res) => res.json(await memoryCounts(owner(req))));
+app.delete("/api/memory", async (req, res) => res.json({ deleted: await forgetAll(owner(req)) }));
 
 // The live preview: start (or reuse) it, or stop it. Available once the app is wired (after the Wire stage).
 app.post("/api/projects/:id/preview", async (req, res) => {
-  const project = await findProject(req.params.id);
+  const project = await findProject(req);
   if (!project) return res.status(404).json({ error: "No such project" });
   const { contract, backendJob } = await currentBuild(project);
   const appDir = backendJob && path.join(REPO_ROOT, backendJob.artifactPath);
@@ -288,13 +298,15 @@ app.post("/api/projects/:id/preview", async (req, res) => {
 });
 
 app.delete("/api/projects/:id/preview", async (req, res) => {
-  await stopPreview(String(req.params.id));
+  const project = await findProject(req);
+  if (!project) return res.status(404).json({ error: "No such project" });
+  await stopPreview(project.id);
   res.status(204).end();
 });
 
 // READY: download. Checks failed: only when asked for anyway (?anyway=1), with the report in the zip.
 app.get("/api/projects/:id/download", async (req, res) => {
-  const project = await findProject(req.params.id);
+  const project = await findProject(req);
   if (!project) return res.status(404).json({ error: "No such project" });
   const { contract, backendJob, frontendJobs } = await currentBuild(project);
   const verify = await latestVerify(project, contract);

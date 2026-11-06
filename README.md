@@ -374,7 +374,7 @@ Each service reads its own `.env` (copy it from `.env.example`). `.env` files ar
 ## Security and privacy
 
 - **Secrets stay out of Git.** Only `.env.example` files are committed. Screenshot-to-Code holds no keys; the Gateway passes them per request.
-- **Sign-in (Step 29, `AUTH=on`).** GitHub or Google, with PKCE and a one-time state tied to the browser that started it. Only an invited, provider-verified email gets an account (`npm run invite -- add <email>`; `list`, `remove`). The session cookie is HttpOnly, SameSite=Lax and Secure on https; it holds a random token, and MongoDB keeps only its SHA-256. Changes sent from another site are refused by an Origin check. Until Step 30, everyone signed in sees the same projects.
+- **Sign-in (Step 29, `AUTH=on`).** GitHub or Google, with PKCE and a one-time state tied to the browser that started it. Only an invited, provider-verified email gets an account (`npm run invite -- add <email>`; `list`, `remove`). The session cookie is HttpOnly, SameSite=Lax and Secure on https; it holds a random token, and MongoDB keeps only its SHA-256. Changes sent from another site are refused by an Origin check. Each workspace sees and reaches only its own projects (another's answers 404), and memory is kept per workspace, plus a shared library (Step 30).
 - **Small attack surface.** The Builder API listens on `127.0.0.1` only by default. The Gateway is the only service Laptop B exposes, only on the private Tailscale address, and only with the API key. Ollama and Screenshot-to-Code stay on localhost.
 - **Uploads are checked.** Only PNG / JPEG / WebP, at most 10 MB each, and decoded before anything is stored. Generated-file viewing refuses paths outside the app folder.
 - **Generated apps:**
