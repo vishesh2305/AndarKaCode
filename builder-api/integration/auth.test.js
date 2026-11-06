@@ -10,6 +10,7 @@ import path from "node:path";
 import { after, before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import mongoose from "mongoose";
+import sharp from "sharp";
 import { invite } from "../src/auth/invites.js";
 import { Session } from "../src/models/session.js";
 import { User } from "../src/models/user.js";
@@ -265,5 +266,58 @@ describe("Step 29: only invited accounts get in", () => {
     const res = await get("/api/memory", session, { method: "DELETE", headers: { Origin: "https://evil.example" } });
     assert.equal(res.status, 403);
     assert.equal((await get("/api/memory", session, { method: "DELETE", headers: { Origin: root } })).status, 200);
+  });
+});
+
+// ---- Step 30: each workspace sees and reaches only its own projects ----
+describe("Step 30: user B never sees or reaches user A's projects", () => {
+  let a;
+  let b;
+  let projectA;
+  before(async () => {
+    await Promise.all([invite("owner-a@example.com"), invite("owner-b@example.com")]);
+    a = (await signIn("github", person("owner-a@example.com"))).session;
+    b = (await signIn("github", person("owner-b@example.com"))).session;
+    const png = await sharp({ create: { width: 40, height: 30, channels: 3, background: "#4cc9f0" } }).png().toBuffer();
+    const form = new FormData();
+    form.append("image", new Blob([png], { type: "image/png" }), "a-screen.png");
+    form.append("name", "A's private app");
+    const res = await get("/api/projects", a, { method: "POST", body: form, headers: { Origin: root } });
+    assert.equal(res.status, 201);
+    projectA = await res.json();
+  });
+
+  it("a new project belongs to its creator and their workspace", async () => {
+    const meA = await (await get("/api/me", a)).json();
+    assert.equal(projectA.ownerId, meA.user.id);
+    assert.equal(projectA.workspaceId, meA.workspace.id);
+  });
+
+  it("A sees it; B's list doesn't have it", async () => {
+    const ids = async (session) => (await (await get("/api/projects", session)).json()).map((p) => p.id);
+    assert.ok((await ids(a)).includes(projectA.id));
+    assert.ok(!(await ids(b)).includes(projectA.id));
+  });
+
+  it("every route to A's project answers B as if it did not exist (404)", async () => {
+    const p = `/api/projects/${projectA.id}`;
+    const routes = [
+      ["GET", p],
+      ["GET", `${p}/contract`],
+      ["PUT", `${p}/contract`],
+      ["GET", `${p}/frontend`],
+      ["GET", `${p}/screenshots/1`],
+      ["GET", `${p}/files`],
+      ["GET", `${p}/files/content?path=README.md`],
+      ["GET", `${p}/verify`],
+      ["POST", `${p}/preview`],
+      ["DELETE", `${p}/preview`],
+      ["GET", `${p}/download`],
+    ];
+    for (const [method, route] of routes) {
+      const res = await get(route, b, { method, headers: { Origin: root, "Content-Type": "application/json" }, ...(method === "PUT" && { body: "{}" }) });
+      assert.equal(res.status, 404, `${method} ${route}`);
+    }
+    assert.equal((await get(`${p}/screenshots/1`, a)).status, 200, "A still reaches it");
   });
 });

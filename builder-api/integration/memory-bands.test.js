@@ -14,6 +14,7 @@ import { databaseUri } from "../src/verify/index.js";
 const MONGODB_URI = process.env.TEST_MONGODB_URI;
 if (!MONGODB_URI) throw new Error("Set TEST_MONGODB_URI (a throwaway database; it is dropped)");
 
+const LOCAL = {}; // sign-in off: the local scope, where rows from before Step 30 stay (Step 30)
 const INSTRUCTIONS = "Data: employee (Full Name, Department)";
 const random = () => [...Array(16)].map(() => "0123456789abcdef"[Math.floor(Math.random() * 16)]).join("");
 const flip = (hex, ...bits) => bits.reduce((h, bit) => (BigInt(`0x${h}`) ^ (1n << BigInt(bit))).toString(16).padStart(16, "0"), hex);
@@ -48,7 +49,7 @@ describe("recallSimilarPage among 100,000 remembered pages (Step 28, M3)", () =>
 
     const copy = flip(original, 3, 17, 40, 61); // 4 bits away, like a re-saved screenshot
     const started = performance.now();
-    const found = await recallSimilarPage(copy, INSTRUCTIONS);
+    const found = await recallSimilarPage(copy, INSTRUCTIONS, LOCAL);
     const ms = performance.now() - started;
     assert.equal(found?.memory.key, "page-original");
     assert.equal(found.distance, 4);
@@ -58,6 +59,6 @@ describe("recallSimilarPage among 100,000 remembered pages (Step 28, M3)", () =>
   it("a page remembered before the bands existed is still found", async () => {
     const old = "0f0f0f0f0f0f0f0f";
     await Memory.collection.insertOne(row(old, "before-bands", false));
-    assert.equal((await recallSimilarPage(flip(old, 5, 9), INSTRUCTIONS))?.memory.key, "page-before-bands");
+    assert.equal((await recallSimilarPage(flip(old, 5, 9), INSTRUCTIONS, LOCAL))?.memory.key, "page-before-bands");
   });
 });
