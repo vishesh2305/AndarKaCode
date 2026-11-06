@@ -10,7 +10,7 @@
 |---|---|---|
 | 29 | GitHub/Google sign-in, workspaces, invite list, secure cookie sessions | ✅ |
 | 30 | `ownerId`/`workspaceId` on everything; memory per user plus a library scope (M2) | ✅ |
-| 31 | BYOK: key slots, key vault, verified-models list, provider adapters | |
+| 31 | BYOK: key slots, key vault, verified-models list, provider adapters | ✅ (31a, 31b, 31c) |
 | 32 | Quotas, fair scheduling, adaptive concurrency per key, helmet/CSP/CORS/rate limits | |
 
 ## Step 29: Only invited accounts get in
@@ -88,3 +88,63 @@
 | Memory from before Step 30 is still found locally, never from a workspace | integration (memory-scope), memory-bands |
 
 **Suites:** unit 457, integration 174 (was 162), Gateway 15, web 34.
+
+## Step 31: A build runs on two user keys (BYOK)
+
+Built in three pieces, each test-first.
+
+### 31a: one adapter per provider
+
+- **`shared/providers.mjs`:** `callModel({ provider, apiKey, model, prompt, imageB64?, json?, schema?, purpose })` for **Gemini, OpenAI, Anthropic, Groq and OpenRouter**, each in its own request shape: image + JSON (reading), image + HTML (pages), text (code). Groq and OpenRouter speak OpenAI's chat completions at their own addresses. Anthropic has no JSON mode, so its JSON is taken out of prose or a code fence.
+- **Usage** goes on the meter (Step 25) under the provider's own name, with reasoning tokens apart where the provider counts them.
+- **A busy provider** (429, 5xx) is tried again after 2, 5 and 10 s; a refusal is not.
+- **The key never reaches an error message,** even when the provider repeats it back (OpenAI does): `redactKey` hides the key and anything key-shaped (`sk-…`, `gsk_…`, `AIza…`, including the shortened `sk-abc...wxyz` form).
+- **`checkKey`:** one cheap request that needs the key (a model list, or OpenRouter's `/key`).
+- `<PROVIDER>_BASE_URL` points a provider elsewhere (a proxy, a regional endpoint, the tests).
+
+### 31b: the key vault and the two slots
+
+- **Vault** (`src/keys/vault.js`): AES-256-GCM under `KEY_VAULT_SECRET` (64 hex characters, `openssl rand -hex 32`, checked at start and never printed), with a fresh IV each time and the workspace and key id as additional data: a sealed key copied to another workspace or row, changed, or read with another secret does not open.
+- **`/api/keys`**, for the signed-in workspace owner: list, add, delete; `PUT /api/keys/slots`. A key is checked with its provider **before** it is saved; a refusal gives the provider's reason with the key hidden. Only the last 4 characters are ever answered (`ApiKey`'s JSON drops the sealed form). A key belongs to its workspace: another workspace can't see, delete or use it.
+- **Slots** on the workspace: `frontend` (reading screenshots and drawing pages) and `backend` (custom button code), each a saved key plus a model from **the verified-models list** (`shared/models.mjs`) for that provider and slot. Deleting a key empties the slots that used it.
+- **The verified list today:** Gemini 3.5 Flash (verified: pages, and 5/5 custom code), and Claude Sonnet 5.5, Opus 5.5 and Haiku 5.5 (listed, not yet examined). No OpenAI, Groq or OpenRouter model is listed yet: a model is added once it is known to exist and can do the job, and marked verified once it passes our page and code exams with a real key.
+- **The log:** a request the API refuses (bad JSON, too large) is no longer logged, since its body may carry a key.
+- **The UI:** a **Keys** screen (header, `#/keys`): the two slots, saved keys (provider, name, last 4) with Delete, and "Check and save". The key field is a password field and is emptied once saved.
+
+### 31c: builds on the workspace's keys
+
+- **A new project keeps its workspace's slots** (`project.keys`: key id, provider, model, last 4; never the key). An empty slot uses the server's models by mode, as before.
+- **Frontend slot:** reads every screenshot and draws every page with that key and model. The page is drawn by the orchestrator itself (two tries): **a user's key never goes to Laptop B's Gateway**, which is for development only, and needs no ui-worker (the call is a plain HTTPS request).
+- **Backend slot:** writes the custom buttons' code (the same write, test and repair loop as before).
+- **The key is opened from the vault at the first call** (`src/keys/slots.js`) and kept only in memory. A key deleted since the project was made **stops the build with a plain reason**, and never falls back to models the person did not choose.
+- Jobs and memory name the provider that did the work (`anthropic`, `gemini`, …) beside `local` and `cloud`.
+
+### RED
+
+- 31a `62d4742`: `test/providers.test.js` (fetch faked). Failed: `shared/providers.mjs` did not exist.
+- 31b `4c47441`: `test/vault.test.js`, `integration/keys.test.js` (the real API with fake OpenAI and Anthropic key checks), `web/test/keys.test.js`, and `integration/helpers/signed-in-api.js`. Failed: no vault, models list or keys API.
+- 31c `7e73393`: `integration/byok-build.test.js` (a whole build with a fake Anthropic for the frontend key and a fake Gemini for the backend key, and **no server model reachable**: no Ollama, no Gateway), `test/slot-keys.test.js`. Failed: projects did not use the slots.
+
+### GREEN
+
+| Guarantee | Test |
+|---|---|
+| Each provider's request shape for image + JSON, image + HTML and text; usage metered per provider | unit (providers) |
+| A busy provider is tried again, a refusal is not | unit (providers) |
+| The key is never in an error, even when the provider repeats it back | unit (providers), integration (keys) |
+| The vault opens nothing for another workspace, key id or secret, or a changed ciphertext | unit (vault) |
+| A key is checked before saving; refused keys are not saved | integration (keys) |
+| Only the last 4 characters are ever answered; the database holds the key only encrypted | integration (keys) |
+| A slot takes only a saved key of the workspace and a verified model of that provider for that slot | integration (keys) |
+| Deleting a key empties its slots | integration (keys) |
+| Another workspace can't see, delete or use a key | integration (keys) |
+| A key in a request the API can't read (bad JSON) is not logged | integration (keys) |
+| **A build on two user keys reaches READY:** the frontend key read and drew, the backend key wrote the code, with no server model reachable | integration (byok-build) |
+| The project keeps which key and model each slot used, never the key; jobs name and meter the provider | integration (byok-build) |
+| No key in any answer or in the log during a whole build | integration (byok-build) |
+| A deleted slot key stops the build with a plain reason; no fallback | unit (slot-keys) |
+
+**Suites:** unit 489 (was 457), integration 191 (was 174), Gateway 15, web 37 (was 34).
+
+**Still to do with real keys:** a build on a real Anthropic or Gemini key, and running the page and code exams on the listed Claude models to mark them verified.
+

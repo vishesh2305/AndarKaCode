@@ -357,6 +357,8 @@ Each service reads its own `.env` (copy it from `.env.example`). `.env` files ar
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | GitHub sign-in (an OAuth App under GitHub's Developer settings) |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google sign-in (an OAuth client in Google Cloud Console) |
 | `SESSION_DAYS` | How long a sign-in lasts (1-90, default 14) |
+| `KEY_VAULT_SECRET` | With sign-in on: the secret people's own AI keys are encrypted with (64 hex characters: `openssl rand -hex 32`). The same on every service that builds; without it nobody can save keys (Step 31) |
+| `<PROVIDER>_BASE_URL` | Optional: another address for `GEMINI`, `OPENAI`, `ANTHROPIC`, `GROQ` or `OPENROUTER` (a proxy or regional endpoint) |
 
 **`gateway/.env` (Laptop B)**
 
@@ -375,6 +377,7 @@ Each service reads its own `.env` (copy it from `.env.example`). `.env` files ar
 
 - **Secrets stay out of Git.** Only `.env.example` files are committed. Screenshot-to-Code holds no keys; the Gateway passes them per request.
 - **Sign-in (Step 29, `AUTH=on`).** GitHub or Google, with PKCE and a one-time state tied to the browser that started it. Only an invited, provider-verified email gets an account (`npm run invite -- add <email>`; `list`, `remove`). The session cookie is HttpOnly, SameSite=Lax and Secure on https; it holds a random token, and MongoDB keeps only its SHA-256. Changes sent from another site are refused by an Origin check. Each workspace sees and reaches only its own projects (another's answers 404), and memory is kept per workspace, plus a shared library (Step 30).
+- **People's own AI keys (Step 31).** Checked with the provider before they are saved, stored only encrypted (AES-256-GCM, bound to the workspace), shown only by their last 4 characters, and never written to a log or an answer; errors from a provider have the key removed. A build opens its key only for the call. User keys never go to Laptop B's Gateway.
 - **Small attack surface.** The Builder API listens on `127.0.0.1` only by default. The Gateway is the only service Laptop B exposes, only on the private Tailscale address, and only with the API key. Ollama and Screenshot-to-Code stay on localhost.
 - **Uploads are checked.** Only PNG / JPEG / WebP, at most 10 MB each, and decoded before anything is stored. Generated-file viewing refuses paths outside the app folder.
 - **Generated apps:**

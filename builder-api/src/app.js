@@ -6,6 +6,8 @@ import mongoose from "mongoose";
 import multer from "multer";
 import { createAuth } from "./auth/index.js";
 import { createKeysRouter } from "./keys/routes.js";
+import { slotsOf } from "./keys/slots.js";
+import { Workspace } from "./models/workspace.js";
 import { loadConfig } from "./config.js";
 import { connectDb, isDbConnected } from "./db.js";
 import { readiness, webBuildIsStale } from "./health.js";
@@ -127,7 +129,7 @@ app.post("/api/projects", upload.array("image", MAX_SCREENSHOTS), async (req, re
     imageHash: sha256(files[0].buffer),
     mode,
     useMemory,
-    ...(req.user && { ownerId: req.user.id, workspaceId: req.user.workspaceId }),
+    ...(req.user && { ownerId: req.user.id, workspaceId: req.user.workspaceId, keys: await slotsOf(await Workspace.findById(req.user.workspaceId)) }),
   });
   for (const [i, file] of files.entries()) {
     project.screenshots.push({ ...(await saveScreenshot(project._id, i + 1, shrunk[i])), sha256: sha256(file.buffer), dHash: await dHash(file.buffer) });

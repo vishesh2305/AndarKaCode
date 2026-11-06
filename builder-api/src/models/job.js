@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
-import { schemaOptions } from "./common.js";
+import { PROVIDERS } from "../../../shared/providers.mjs";
+import { schemaOptions, SERVER_MODELS } from "./common.js";
 
 // One piece of work for a project, on either laptop (ARCHITECTURE.md §11).
 const jobSchema = new mongoose.Schema(
@@ -11,7 +12,7 @@ const jobSchema = new mongoose.Schema(
       required: true,
     },
     status: { type: String, enum: ["queued", "running", "done", "failed", "cancelled"], default: "queued" },
-    provider: { type: String, enum: ["local", "cloud", null], default: null },
+    provider: { type: String, enum: [...SERVER_MODELS, ...PROVIDERS, null], default: null },
     contractHash: String, // which Contract version this job was built for
     page: Number, // frontend jobs: which screenshot (1-based) this page is built from
     remoteJobId: String, // the Gateway's jobId for frontend jobs

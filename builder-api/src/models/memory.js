@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
-import { schemaOptions } from "./common.js";
+import { PROVIDERS } from "../../../shared/providers.mjs";
+import { schemaOptions, SERVER_MODELS } from "./common.js";
 
 // One piece of verified work, kept for reuse (ARCHITECTURE.md §9). Only projects that reached READY add
 // to it; the first project to do a piece of work stays its source.
@@ -15,7 +16,7 @@ const memorySchema = new mongoose.Schema(
     payloadKey: String,
     payloadBytes: Number,
     payload: mongoose.Schema.Types.Mixed,
-    provider: { type: String, enum: ["local", "cloud", null], default: null }, // which AI did the work
+    provider: { type: String, enum: [...SERVER_MODELS, ...PROVIDERS, null], default: null }, // which AI did the work
     seconds: Number, // how long the work took the first time (the time a reuse saves)
     sourceProjectId: { type: mongoose.Schema.Types.ObjectId, ref: "Project" },
     sourceName: String,

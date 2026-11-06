@@ -17,6 +17,9 @@ import { getFrontend, submitFrontend } from "./gateway-client.js";
 import { getPage, submitPage } from "./page-queue.js";
 import { Contract } from "./models/contract.js";
 import { withUsage } from "../../shared/meter.mjs";
+import { buildPage } from "../../shared/page.mjs";
+import { callModel } from "../../shared/providers.mjs";
+import { openSlotKey } from "./keys/slots.js";
 import { askRerun, claimProject, freeProjects, releaseAll, releaseProject, renewLease } from "./lease.js";
 import { log } from "./log.js";
 import { Job } from "./models/job.js";
@@ -81,6 +84,21 @@ async function runJob(project, kind, work) {
   }
 }
 
+// Step 31c: a model call on the workspace's own key in this slot, or null when the slot is empty (the server's
+// models, by mode). The key is opened from the vault at the first call, and only kept in memory.
+function slotModel(project, slot) {
+  const chosen = project.keys?.[slot];
+  if (!chosen?.keyId) return null;
+  let opened = null;
+  return {
+    provider: chosen.provider,
+    call: async (request) => {
+      const key = await (opened ??= openSlotKey(project, slot));
+      return callModel({ ...request, provider: key.provider, model: key.model, apiKey: key.apiKey });
+    },
+  };
+}
+
 // Projects created before multi-screenshot uploads have only imagePath.
 const screenshotsOf = (project) => (project.screenshots?.length ? project.screenshots : [{ path: project.imagePath }]);
 
@@ -89,9 +107,15 @@ async function contractStage(project) {
   const { body, hash } = await runJob(project, "contract", async (job) => {
     // All screenshots at the same time (Step 23). A screenshot read before, in a project that reached
     // READY, takes its reading from memory (Step 14).
+    const own = slotModel(project, "frontend");
+    const ownReader = own && { byok: ({ prompt, schema, imageB64 }) => own.call({ prompt, schema, imageB64, json: true, temperature: 0, purpose: "read" }) };
     const { inventories, provider, reused } = await readScreenshots(screenshotsOf(project), {
       recall: (shot) => (project.useMemory !== false && shot.sha256 ? recall("inventory", inventoryKey(shot.sha256), project) : null),
-      read: async (shot) => readInventory((await readFile(path.join(REPO_ROOT, shot.path))).toString("base64"), { mode: project.mode }),
+      read: async (shot) => {
+        const imageB64 = (await readFile(path.join(REPO_ROOT, shot.path))).toString("base64");
+        if (!own) return readInventory(imageB64, { mode: project.mode });
+        return { ...(await readInventory(imageB64, { mode: "byok", providers: ownReader })), provider: own.provider };
+      },
     });
     job.provider = provider; // "cloud" if any screenshot needed the backup
     if (reused.length) {
@@ -153,6 +177,27 @@ async function frontendBranch(project, contract, n) {
     return Job.create({ ...query, status: "done", provider: reuse.memory.provider, artifactPath, fromMemory: reuse.fromMemory, startedAt: now, finishedAt: now });
   }
 
+  // Step 31c: the workspace's own frontend key draws the page right here, twice at most: a user's key never
+  // goes to Laptop B's Gateway (development only), and needs no ui-worker.
+  const own = slotModel(project, "frontend");
+  if (own) {
+    return runJob(project, "frontend", async (job) => {
+      Object.assign(job, { contractHash: contract.hash, page: n, provider: own.provider });
+      const imageB64 = (await readFile(path.join(REPO_ROOT, shot.path))).toString("base64");
+      const draw = ({ prompt }) => own.call({ prompt, imageB64, purpose: "page" });
+      let html;
+      for (let attempt = 1; !html; attempt++) {
+        try {
+          ({ html } = await buildPage({ imageB64, instructions, mode: "byok", providers: { byok: draw } }));
+        } catch (err) {
+          if (attempt >= 2 || /was deleted|KEY_VAULT_SECRET/.test(err.message)) throw err;
+        }
+      }
+      job.artifactPath = await saveArtifact(project._id, `frontend/v${contract.version}/page-${n}.html`, html);
+      return job;
+    });
+  }
+
   const job = existing ?? (await Job.create({ ...query, status: "running", startedAt: new Date() }));
 
   try {
@@ -212,6 +257,7 @@ async function backendBranch(project, contract) {
 
     const customOps = spec.operations.filter((op) => op.kind === "custom");
     if (!customOps.length) return job;
+    const own = slotModel(project, "backend"); // Step 31c: the workspace's own backend key writes the code
     // Every button at the same time (Step 23c), each pressed on its own throwaway database.
     job.custom = await writeButtons(customOps, { writeOne: async (op, i) => {
       const started = Date.now();
@@ -232,7 +278,9 @@ async function backendBranch(project, contract) {
           }
         }
       }
-      result ??= await writeCustomCode({ spec, op, mode: project.mode, test });
+      result ??= own
+        ? { ...(await writeCustomCode({ spec, op, mode: "byok", test, providers: { byok: (prompt) => own.call({ prompt, purpose: "code" }) } })), provider: own.provider }
+        : await writeCustomCode({ spec, op, mode: project.mode, test });
       if (!result.ok) await rm(path.join(dir, "backend", "custom", `${op.name}.js`), { force: true });
       return {
         operation: op.name,
@@ -247,7 +295,7 @@ async function backendBranch(project, contract) {
     } });
     const written = job.custom.filter((c) => c.ok);
     if (written.length) {
-      job.provider = written.some((c) => c.provider === "cloud") ? "cloud" : "local";
+      job.provider = own ? own.provider : written.some((c) => c.provider === "cloud") ? "cloud" : "local";
       const tests = generateBackend(spec, { name: project.name, customWritten: written.map((c) => c.operation) })["tests/api.test.js"];
       await writeBackend(dir, { "tests/api.test.js": tests });
     }

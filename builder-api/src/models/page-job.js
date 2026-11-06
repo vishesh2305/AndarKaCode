@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
-import { schemaOptions } from "./common.js";
+import { PROVIDERS } from "../../../shared/providers.mjs";
+import { schemaOptions, SERVER_MODELS } from "./common.js";
 
 // Step 26: one page to draw, in the page queue (PAGE_LANE=queue). The orchestrator submits it; a ui-worker
 // claims it with a lease, draws it and hands it back. The screenshot and the page are kept in the job itself
@@ -15,7 +16,7 @@ const pageJobSchema = new mongoose.Schema(
     mode: { type: String, enum: ["local", "cloud", "auto"], required: true },
     worker: String, // which ui-worker holds it
     leaseUntil: Date,
-    provider: { type: String, enum: ["local", "cloud", null], default: null },
+    provider: { type: String, enum: [...SERVER_MODELS, ...PROVIDERS, null], default: null },
     html: String,
     htmlKey: String, // a page drawn before Step 28: in the blob store
     usage: { type: [mongoose.Schema.Types.Mixed], default: undefined },
