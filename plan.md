@@ -3,7 +3,7 @@
 > **Design:** see [ARCHITECTURE.md](ARCHITECTURE.md) (v3.1, approved 16 Oct: Phase 1 builds exactly what the screenshots show; every backend part has visible evidence). This file is our **step-by-step to-do list**.
 > **Rule:** do one step, report back, then move on. Tick the box when its "Done when" is true.
 
-**Current step:** Stage 4 (users and keys, Steps 29–32). Step 29 built: GitHub/Google sign-in, invite list, personal workspaces, cookie sessions (`AUTH=on`). Next: Step 30, every record kept per user and workspace. See [docs/production-architecture.md](docs/production-architecture.md) §7 and [docs/tdd/stage4-users.tdd.md](docs/tdd/stage4-users.tdd.md).
+**Current step:** Stage 4 (users and keys, Steps 29–32). Step 29 built: GitHub/Google sign-in, invite list, personal workspaces, cookie sessions (`AUTH=on`). Open: (1) the first real GitHub/Google sign-in on the Mac (OAuth apps made; last try failed on 127.0.0.1 vs localhost, fixed in `09461b0`, to retry after `git pull`); (2) one integration test failed once in 162 on 4 Nov and passed on the rerun: find which one (flaky). Next: Step 30, every record kept per user and workspace. See [docs/production-architecture.md](docs/production-architecture.md) §7 and [docs/tdd/stage4-users.tdd.md](docs/tdd/stage4-users.tdd.md).
 
 > **28 Oct 2026:** the production plan replaces the old Steps 18–20 below. The old Step 18 (Sandbox) is now Step 33, the old Step 19 (GitHub) is now Step 48, and the rest of Step 17 (editing the spec in the UI) is now Step 38. The demo rehearsal (old Step 20) can still be done at any time.
 
