@@ -81,10 +81,10 @@ describe("Step 32a: changes only from our own site", () => {
 
 describe("Step 32a: rate limits answer politely", () => {
   it("starting sign-ins: 20 a minute from one address, then 429 with when to try again", async () => {
-    const answers = [];
-    for (let i = 0; i < 21; i++) answers.push(await on.get("/auth/github/start"));
-    assert.ok(answers.slice(0, 20).every((r) => r.status === 302));
-    const limited = answers[20];
+    const answers = []; // the sign-in before these tests was the first of the 20
+    for (let i = 0; i < 20; i++) answers.push(await on.get("/auth/github/start"));
+    assert.ok(answers.slice(0, 19).every((r) => r.status === 302));
+    const limited = answers[19];
     assert.equal(limited.status, 429);
     assert.ok(Number(limited.headers.get("retry-after")) > 0);
     assert.match((await limited.json()).error, /Too many sign-in attempts.*try again in \d+ s/);

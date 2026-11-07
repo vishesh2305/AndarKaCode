@@ -6,6 +6,7 @@ import mongoose from "mongoose";
 import { MODELS, modelFor } from "../../../shared/models.mjs";
 import { checkKey, PROVIDER_LABELS, PROVIDERS } from "../../../shared/providers.mjs";
 import { ApiKey } from "../models/api-key.js";
+import { rateLimit } from "../security.js";
 import { Workspace } from "../models/workspace.js";
 import { createVault, lastFour } from "./vault.js";
 
@@ -37,7 +38,9 @@ export function createKeysRouter({ keyVaultSecret }) {
 
   router.get("/", async (req, res) => res.json(await view(req.workspace)));
 
-  router.post("/", async (req, res) => {
+  // Each new key asks its provider: at most 10 an hour per workspace (Step 32a).
+  const addLimit = rateLimit({ name: "keys", limit: 10, windowMs: 3_600_000, key: (req) => String(req.workspace._id), message: "Too many keys added in this workspace" });
+  router.post("/", addLimit, async (req, res) => {
     if (!vault) return res.status(503).json({ error: "Saving keys needs KEY_VAULT_SECRET in builder-api/.env (make one with: openssl rand -hex 32)" });
     const { provider, apiKey, label } = req.body ?? {};
     if (!PROVIDERS.includes(provider)) return res.status(400).json({ error: `provider must be one of ${PROVIDERS.join(", ")}` });

@@ -6,6 +6,7 @@ import mongoose from "mongoose";
 import multer from "multer";
 import { createAuth } from "./auth/index.js";
 import { createKeysRouter } from "./keys/routes.js";
+import { generatedPageHeaders, rateLimit, sameSiteChanges, securityHeaders } from "./security.js";
 import { slotsOf } from "./keys/slots.js";
 import { Workspace } from "./models/workspace.js";
 import { loadConfig } from "./config.js";
@@ -83,6 +84,10 @@ previewSite.use("/preview/:id", (req, res) => {
   req.pipe(upstream);
 });
 
+// Step 32a: security headers and the UI's Content Security Policy on every answer; changes only from our own
+// site (with sign-in off too); no CORS.
+app.use(securityHeaders({ previewOrigin: () => previewOrigin }));
+app.use(sameSiteChanges(config.auth));
 app.use(express.json({ limit: "1mb" }));
 
 // Step 20: the servers' health checks. /healthz: the process is alive. /readyz: it can take work.
@@ -98,8 +103,11 @@ app.get("/api/health", async (_req, res) => {
 
 // Step 29: sign-in. With AUTH=on every /api route below needs a session; with AUTH=off nothing changes.
 const auth = createAuth(config.auth);
+const MINUTE = 60_000;
+app.get("/auth/:provider/start", rateLimit({ name: "sign-in", limit: 20, windowMs: MINUTE, key: (req) => req.ip, message: "Too many sign-in attempts from this address" }));
 app.use(auth.router);
 app.use("/api", auth.requireSignIn);
+app.use("/api", rateLimit({ name: "api", limit: 600, windowMs: MINUTE, key: (req) => (req.user ? `user:${req.user.id}` : `ip:${req.ip}`), message: "Too many requests" }));
 // Step 31b: the workspace's own AI keys (BYOK) and its two slots.
 app.use("/api/keys", createKeysRouter(config));
 
@@ -210,6 +218,7 @@ app.get("/api/projects/:id/frontend", async (req, res) => {
   const page = Number(req.query.page ?? contract?.body.pages?.[0]?.screenshot ?? 1);
   const job = contract && (await Job.findOne({ projectId: project._id, kind: "frontend", contractHash: contract.hash, page, status: "done" }));
   if (!job) return res.status(404).json({ error: `No page ${page} for the current spec yet (state: ${project.state})` });
+  res.set(generatedPageHeaders()); // its own sandbox, even when opened directly (Step 32a)
   res.sendFile(path.join(REPO_ROOT, job.artifactPath));
 });
 
