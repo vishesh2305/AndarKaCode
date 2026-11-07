@@ -6,6 +6,7 @@ import mongoose from "mongoose";
 import multer from "multer";
 import { createAuth } from "./auth/index.js";
 import { createKeysRouter } from "./keys/routes.js";
+import { priorityOf, quotaMessage, quotaOf } from "./quotas.js";
 import { generatedPageHeaders, rateLimit, sameSiteChanges, securityHeaders } from "./security.js";
 import { slotsOf } from "./keys/slots.js";
 import { Workspace } from "./models/workspace.js";
@@ -102,7 +103,7 @@ app.get("/api/health", async (_req, res) => {
 });
 
 // Step 29: sign-in. With AUTH=on every /api route below needs a session; with AUTH=off nothing changes.
-const auth = createAuth(config.auth);
+const auth = createAuth(config.auth, { quotas: config.quotas });
 const MINUTE = 60_000;
 app.get("/auth/:provider/start", rateLimit({ name: "sign-in", limit: 20, windowMs: MINUTE, key: (req) => req.ip, message: "Too many sign-in attempts from this address" }));
 app.use(auth.router);
@@ -119,6 +120,16 @@ app.post("/api/projects", upload.array("image", MAX_SCREENSHOTS), async (req, re
 
   const mode = req.body.mode ?? DEFAULT_MODE;
   if (!MODES.includes(mode)) return res.status(400).json({ error: 'mode must be "local", "cloud" or "auto"' });
+
+  // Step 32b: the workspace's plan allows a number of builds; past it, a polite refusal, before anything is kept.
+  const workspace = req.user && (await Workspace.findById(req.user.workspaceId));
+  if (workspace) {
+    const quota = await quotaOf(workspace, config.quotas);
+    if (quota.used >= quota.limit) {
+      if (quota.resetsAt) res.setHeader("Retry-After", String(Math.max(1, Math.ceil((quota.resetsAt - Date.now()) / 1000))));
+      return res.status(429).json({ error: quotaMessage(quota), quota });
+    }
+  }
 
   // Check every file before writing any, so a bad file leaves nothing behind.
   const shrunk = [];
@@ -137,7 +148,7 @@ app.post("/api/projects", upload.array("image", MAX_SCREENSHOTS), async (req, re
     imageHash: sha256(files[0].buffer),
     mode,
     useMemory,
-    ...(req.user && { ownerId: req.user.id, workspaceId: req.user.workspaceId, keys: await slotsOf(await Workspace.findById(req.user.workspaceId)) }),
+    ...(workspace && { ownerId: req.user.id, workspaceId: workspace._id, keys: await slotsOf(workspace), priority: priorityOf(workspace.plan) }),
   });
   for (const [i, file] of files.entries()) {
     project.screenshots.push({ ...(await saveScreenshot(project._id, i + 1, shrunk[i])), sha256: sha256(file.buffer), dHash: await dHash(file.buffer) });

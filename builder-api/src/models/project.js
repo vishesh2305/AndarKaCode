@@ -38,6 +38,7 @@ const projectSchema = new mongoose.Schema(
     workspaceId: { type: mongoose.Schema.Types.ObjectId, ref: "Workspace", index: true },
     // Step 31c: the workspace's own keys this project is built with, per slot (src/keys/slots.js): which key
     // and model, never the key. An empty slot uses the server's models (mode).
+    priority: { type: Number, default: 0 }, // Step 32b: 1 for a pro workspace's project, picked up first
     keys: { frontend: { keyId: mongoose.Schema.Types.ObjectId, provider: String, model: String, lastFour: String }, backend: { keyId: mongoose.Schema.Types.ObjectId, provider: String, model: String, lastFour: String } },
     screenshots: { type: [screenshotSchema], default: [] },
     // First screenshot, kept for listings and for projects created before multi-screenshot uploads.

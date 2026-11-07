@@ -14,6 +14,7 @@ const pageJobSchema = new mongoose.Schema(
     instructions: { type: String, required: true },
     contractHash: { type: String, required: true },
     mode: { type: String, enum: ["local", "cloud", "auto"], required: true },
+    priority: { type: Number, default: 0 }, // Step 32b: 1 for a pro workspace's page
     worker: String, // which ui-worker holds it
     leaseUntil: Date,
     provider: { type: String, enum: [...SERVER_MODELS, ...PROVIDERS, null], default: null },
@@ -26,6 +27,7 @@ const pageJobSchema = new mongoose.Schema(
   },
   schemaOptions
 );
+pageJobSchema.index({ status: 1, priority: -1, createdAt: 1 }); // Step 32b: pro pages first, then oldest
 pageJobSchema.index({ status: 1, createdAt: 1 });
 pageJobSchema.index({ key: 1, status: 1 });
 

@@ -21,6 +21,7 @@ import { buildPage } from "../../shared/page.mjs";
 import { callModel } from "../../shared/providers.mjs";
 import { openSlotKey } from "./keys/slots.js";
 import { askRerun, claimProject, freeProjects, releaseAll, releaseProject, renewLease } from "./lease.js";
+import { toStart } from "./quotas.js";
 import { log } from "./log.js";
 import { Job } from "./models/job.js";
 import { Project } from "./models/project.js";
@@ -48,7 +49,7 @@ const ROLE = process.env.ROLE ?? "all";
 const PICKUP_MS = Number(process.env.PICKUP_MS ?? (ROLE === "orchestrator" ? 1000 : LEASE_MS / 3));
 // Step 26: pages go to Laptop B's Gateway (development) or into the page queue for ui-workers (production).
 // Both lanes answer the same two calls, so the frontend branch below doesn't change.
-const PAGE_LANE = loadConfig(process.env).pageLane;
+const { pageLane: PAGE_LANE, buildParallel: BUILD_PARALLEL } = loadConfig(process.env);
 const pages = PAGE_LANE === "queue" ? { submit: submitPage, get: getPage } : { submit: submitFrontend, get: getFrontend };
 const active = new Set(); // projects this process is building now (its own second request becomes a rerun)
 
@@ -210,6 +211,7 @@ async function frontendBranch(project, contract, n) {
           instructions: pageInstructions(contract.body, n),
           contractHash: contract.hash,
           mode: project.mode,
+          priority: project.priority ?? 0, // the page queue draws pro pages first (Step 32b)
         });
         job.remoteJobId = submitted.jobId;
         await job.save(); // saved before polling, so a restart resumes this exact Gateway job
@@ -393,7 +395,11 @@ export function startPipeline(projectId) {
   // The API service never builds: an orchestrator picks the project up from MongoDB within PICKUP_MS
   // (an unfinished project nobody holds), and one already building it looks again when it is done.
   if (ROLE === "api") return void askRerun(projectId).catch((err) => log.error(`asking for a build failed: ${err.message}`, { project: projectId.toString() }));
-  buildWithLease(projectId.toString()).catch((err) => log.error(`pipeline crashed: ${err.stack ?? err.message}`, { project: projectId.toString() }));
+  const id = projectId.toString();
+  // Step 32b: at most BUILD_PARALLEL projects at once; the rest wait in MongoDB and are picked up, pro first,
+  // when a build ends.
+  if (!active.has(id) && active.size >= BUILD_PARALLEL) return;
+  buildWithLease(id).catch((err) => log.error(`pipeline crashed: ${err.stack ?? err.message}`, { project: id }));
 }
 
 async function buildWithLease(id) {
@@ -422,6 +428,7 @@ async function buildWithLease(id) {
     active.delete(id);
   }
   if (again) await buildWithLease(id);
+  else pickUpFree().catch((err) => log.error(`looking for waiting projects failed: ${err.message}`)); // a slot is free
 }
 
 // Unfinished projects nobody holds: at start (a restart cut them off) and every lease period (a Builder
@@ -435,8 +442,9 @@ async function pickUpFree() {
         { status: "failed", error: "Interrupted: its Builder API stopped", finishedAt: new Date() }
       )
     : { modifiedCount: 0 };
-  ids.forEach((id) => startPipeline(id));
-  return { projects: ids.length, interrupted: interrupted.modifiedCount };
+  const starting = toStart(ids, { active, parallel: BUILD_PARALLEL });
+  starting.forEach((id) => startPipeline(id));
+  return { projects: starting.length, interrupted: interrupted.modifiedCount };
 }
 
 /** On startup: finish what was cut off, then keep looking for projects a stopped Builder API left behind. */

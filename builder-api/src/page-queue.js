@@ -13,12 +13,12 @@ const sha256 = (text) => createHash("sha256").update(text).digest("hex");
 const notFound = () => Object.assign(new Error("No such page job"), { status: 404 });
 
 /** Queues a page (the same screenshot and spec give the same job, unless it failed). Like submitFrontend. */
-export async function submitPage({ imageDataUrl, instructions, contractHash, mode }) {
+export async function submitPage({ imageDataUrl, instructions, contractHash, mode, priority = 0 }) {
   const key = sha256(`${sha256(imageDataUrl)}|${contractHash}`);
   const existing = await PageJob.findOne({ key, status: { $ne: "failed" } }).sort({ createdAt: -1 });
   if (existing) return { jobId: existing.id, status: existing.status };
   const image = Buffer.from(imageDataUrl.replace(/^data:image\/[a-z]+;base64,/, ""), "base64");
-  const job = await PageJob.create({ key, image, instructions, contractHash, mode });
+  const job = await PageJob.create({ key, image, instructions, contractHash, mode, priority });
   return { jobId: job.id, status: job.status };
 }
 
@@ -37,12 +37,12 @@ export async function getPage(jobId) {
   };
 }
 
-/** The oldest waiting page (or one whose worker's lease ran out) for this worker, with its screenshot; or null. */
+/** The waiting page of highest priority, then oldest (or one whose worker's lease ran out) for this worker, with its screenshot; or null. */
 export async function claimPageJob({ worker, now = Date.now(), ms }) {
   const job = await PageJob.findOneAndUpdate(
     { $or: [{ status: "queued" }, { status: "running", leaseUntil: { $lt: new Date(now) } }] },
     { $set: { status: "running", worker, leaseUntil: new Date(now + ms), startedAt: new Date(now) } },
-    { sort: { createdAt: 1 }, returnDocument: "after" }
+    { sort: { priority: -1, createdAt: 1 }, returnDocument: "after" } // pro pages first, then oldest (Step 32b)
   ).lean();
   if (!job) return null;
   const image = job.image ? Buffer.from(job.image.buffer) : await blobs.get(job.imageKey); // imageKey: queued before Step 28

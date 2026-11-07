@@ -35,7 +35,8 @@ export const askRerun = (id) => Project.updateOne({ _id: id }, { $set: { rerun: 
 
 /** Unfinished projects nobody holds (or whose lease ran out): what a Builder API may pick up. */
 export async function freeProjects({ now = Date.now() } = {}) {
-  const rows = await Project.find({ state: { $in: UNFINISHED }, ...free(now) }, { _id: 1 }).lean();
+  // Pro first, then oldest (Step 32b).
+  const rows = await Project.find({ state: { $in: UNFINISHED }, ...free(now) }, { _id: 1 }).sort({ priority: -1, createdAt: 1 }).lean();
   return rows.map((r) => r._id);
 }
 

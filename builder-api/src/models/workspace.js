@@ -10,6 +10,7 @@ const workspaceSchema = new mongoose.Schema(
     name: { type: String, required: true, trim: true, maxlength: 200 },
     ownerId: { type: mongoose.Schema.Types.ObjectId, required: true, index: true },
     personal: { type: Boolean, default: false },
+    plan: { type: String, enum: ["free", "pro"], default: "free" }, // Step 32b: its quota, and whether it goes first
     members: { type: [memberSchema], default: [] },
     // Step 31b: which saved key and model each slot uses with the workspace's own keys (BYOK).
     // frontend: reading screenshots and drawing pages; backend: writing custom button code.

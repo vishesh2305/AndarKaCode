@@ -6,6 +6,7 @@ import { log } from "../log.js";
 import { Login, Session } from "../models/session.js";
 import { User } from "../models/user.js";
 import { Workspace } from "../models/workspace.js";
+import { quotaOf } from "../quotas.js";
 import { accountFor } from "./accounts.js";
 import { pkce, providersFrom } from "./providers.js";
 import { clearLoginCookie, clearSessionCookie, hashToken, LOGIN_COOKIE, loginCookie, newToken, readCookie, SESSION_COOKIE, sessionCookie } from "./sessions.js";
@@ -13,7 +14,7 @@ import { clearLoginCookie, clearSessionCookie, hashToken, LOGIN_COOKIE, loginCoo
 const LOGIN_MINUTES = 10;
 const SAFE = new Set(["GET", "HEAD", "OPTIONS"]);
 
-export function createAuth(auth) {
+export function createAuth(auth, { quotas } = {}) {
   const providers = auth.on ? providersFrom(auth) : {};
   const names = Object.keys(providers);
   const secure = auth.secureCookie;
@@ -46,7 +47,8 @@ export function createAuth(auth) {
     res.json({
       auth: true,
       user: { id: user.id, email: user.email, name: user.name ?? null, avatarUrl: user.avatarUrl ?? null },
-      workspace: workspace && { id: workspace.id, name: workspace.name, role },
+      workspace: workspace && { id: workspace.id, name: workspace.name, role, plan: workspace.plan ?? "free" },
+      ...(workspace && quotas && { quota: await quotaOf(workspace, quotas) }), // Step 32b
       providers: names,
     });
   });

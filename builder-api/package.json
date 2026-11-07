@@ -17,6 +17,7 @@
     "eval:pages": "node --env-file-if-exists=.env scripts/eval-pages.mjs",
     "eval:custom": "node --env-file-if-exists=.env scripts/custom-model-test.mjs",
     "invite": "node --env-file-if-exists=.env scripts/invite.mjs",
+    "plan": "node --env-file-if-exists=.env scripts/plan.mjs",
     "test:integration": "node --test --test-concurrency=1 \"integration/**/*.test.js\""
   },
   "dependencies": {
