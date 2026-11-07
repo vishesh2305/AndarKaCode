@@ -148,3 +148,7 @@ Built in three pieces, each test-first.
 
 **Still to do with real keys:** a build on a real Anthropic or Gemini key, and running the page and code exams on the listed Claude models to mark them verified.
 
+
+### Real run on the Mac (7 Nov 2026)
+
+Sign-in on, the Mac's Builder API, the workspace's own Gemini key in both slots (`gemini-3.5-flash`), m1 with **Start fresh**: **READY in 50 s**. Every job names `gemini` as its provider, and Laptop B's Gateway got no job. This was the first build on a real user key; the first real sign-in worked on the way.
