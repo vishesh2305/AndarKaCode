@@ -137,6 +137,7 @@ before(async () => {
       GEMINI_API_KEY: "",
       PREVIEW_IDLE_MS: "2500", // the live preview stops after 2.5 s without use (15 min normally)
       PREVIEW_PORT: "0", // any free port (normally the API's port + 1)
+      PICKUP_MS: "300", // Step 35: a released project is picked up again within 0.3 s (20 s normally)
     },
   });
   api.stdout.on("data", (d) => (apiLog += d));
@@ -753,5 +754,68 @@ describe("Memory (Step 14): work from a Ready project is reused", () => {
     const other = await waitFor(await upload(["m1-edit-delete.png"], [departmentsScreen], { fresh: false }), settled);
     assert.equal(submissions.length, sent + 1, "m1 is 11 bits away from m5b: not a copy");
     assert.equal(jobOf(other, "frontend").fromMemory, undefined);
+  });
+});
+
+// ---- Step 35: trust & safety. A famous brand's name with a login or payment form looks like a phishing
+// clone: the project is held after reading, before any page is drawn, until a person reviews it ----
+describe("Step 35: a bank-login mock is held for review", () => {
+  const bankLogin = {
+    ...loginScreen,
+    title: "HDFC Bank NetBanking",
+    forms: [{ inputs: [{ label: "Customer ID", kind: "text", required: true }, { label: "Password", kind: "password", required: true }], submitLabel: "Login" }],
+  };
+  let id;
+  let sent;
+  before(async () => {
+    sent = submissions.length;
+    id = await upload(["m4-login.png", "m1-edit-delete.png"], [bankLogin, employeesScreen]);
+  });
+
+  it("is held after reading, before any page is drawn, saying why", async () => {
+    const project = await waitFor(id, (p) => p.state === "HELD");
+    assert.match(project.error, /held for review/i);
+    assert.match(project.error, /HDFC Bank/);
+    assert.equal(project.review.status, "held");
+    assert.deepEqual(project.review.flags.map((f) => [f.brand, f.form]), [["HDFC Bank", "login"]]);
+    assert.equal(submissions.length, sent, "no page was sent to be drawn");
+  });
+
+  it("while held: no spec edit, no preview, no download", async () => {
+    const contract = await (await fetch(`${base}/projects/${id}/contract`)).json();
+    const edit = await fetch(`${base}/projects/${id}/contract`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(contract.body) });
+    assert.equal(edit.status, 409);
+    assert.match((await edit.json()).error, /held for review/);
+    assert.equal((await fetch(`${base}/projects/${id}/preview`, { method: "POST" })).status, 409);
+    assert.equal((await fetch(`${base}/projects/${id}/download`)).status, 409);
+  });
+
+  it("released by a reviewer, it is built like any other project and reaches READY", async () => {
+    const { releaseProject } = await import("../src/safety/review.js");
+    await releaseProject(id, { by: "reviewer@example.com", note: "the bank's own staff demo" });
+    const project = await waitFor(id, settled);
+    assert.equal(project.state, "READY", project.error);
+    assert.equal(project.review.status, "released");
+    assert.ok(submissions.length > sent, "its pages were drawn after the release");
+  });
+
+  it("blocked by a reviewer (after a report, say): no preview, no download", async () => {
+    const { blockProject } = await import("../src/safety/review.js");
+    await blockProject(id, { by: "reviewer@example.com", note: "reported: used to collect real passwords" });
+    const project = await (await fetch(`${base}/projects/${id}`)).json();
+    assert.equal(project.state, "BLOCKED");
+    for (const res of [await fetch(`${base}/projects/${id}/preview`, { method: "POST" }), await fetch(`${base}/projects/${id}/download`)]) {
+      assert.equal(res.status, 403);
+      assert.match((await res.json()).error, /blocked/);
+    }
+  });
+
+  it("the audit log has each step: held, released, blocked, with who and why", async () => {
+    const { AuditEvent } = await import("../src/models/audit-event.js");
+    const events = await AuditEvent.find({ "target.id": id }).sort({ at: 1 }).lean();
+    assert.deepEqual(events.map((e) => e.action).filter((a) => a.startsWith("review.")), ["review.held", "review.released", "review.blocked"]);
+    const released = events.find((e) => e.action === "review.released");
+    assert.equal(released.actor.email, "reviewer@example.com");
+    assert.equal(released.details.note, "the bank's own staff demo");
   });
 });

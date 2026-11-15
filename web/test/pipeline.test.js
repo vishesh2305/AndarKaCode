@@ -267,3 +267,21 @@ describe("pipelineStatus: build time (Step 23d)", () => {
     assert.match(facts["Waited for"], /pages/);
   });
 });
+
+describe("pipelineStatus: held for review (Step 35)", () => {
+  const flags = [{ brand: "HDFC Bank", form: "login", screenshot: 1, reason: "HDFC Bank with a login form" }];
+
+  it("a held project: Plan is held (not failed), nothing after it runs, and the review says why", () => {
+    const p = withSpec({ state: "HELD", error: "Held for review: HDFC Bank with a login form", review: { status: "held", flags }, jobs: [job("contract", "done", { contractHash: HASH })] });
+    const status = pipelineStatus(p);
+    assert.equal(status.stations.plan.status, "held");
+    assert.equal(status.current, "plan");
+    assert.deepEqual(status.review, { status: "held", reasons: ["HDFC Bank with a login form"] });
+    for (const id of ["pages", "backend", "sync", "wire", "verify"]) assert.equal(status.stations[id].status, "waiting", id);
+  });
+
+  it("a blocked project says so; one released and built is an ordinary project", () => {
+    assert.equal(pipelineStatus(withSpec({ state: "BLOCKED", review: { status: "blocked", flags } })).review.status, "blocked");
+    assert.equal(pipelineStatus(withSpec({ state: "BUILDING", review: { status: "released", flags } })).review, null);
+  });
+});
