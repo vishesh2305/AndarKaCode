@@ -158,3 +158,29 @@ describe("loadConfig: start, or stop with every problem", () => {
     }
   });
 });
+
+describe("checkConfig: where generated apps run (Step 33b)", () => {
+  const signIn = { AUTH: "on", PUBLIC_URL: "https://andarkacode.com", GITHUB_CLIENT_ID: "id", GITHUB_CLIENT_SECRET: "secret" };
+
+  it("defaults to a process on this computer (development), with Docker's default runtime", () => {
+    assert.deepEqual(checkConfig({}).config.sandbox, { mode: "process", runtime: null });
+  });
+
+  it("SANDBOX=docker puts each app in its own sandbox; SANDBOX_RUNTIME=runsc makes it gVisor", () => {
+    const { config, problems } = checkConfig({ SANDBOX: "docker", SANDBOX_RUNTIME: "runsc" });
+    assert.deepEqual(problems, []);
+    assert.deepEqual(config.sandbox, { mode: "docker", runtime: "runsc" });
+  });
+
+  it("refuses an unknown SANDBOX, and a runtime without Docker or with a strange name", () => {
+    assert.match(problemsOf({ SANDBOX: "vm" })[0], /SANDBOX in builder-api\/\.env must be one of process, docker \(it is "vm"\)/);
+    assert.match(problemsOf({ SANDBOX_RUNTIME: "runsc" })[0], /SANDBOX_RUNTIME.*needs SANDBOX=docker/);
+    assert.match(problemsOf({ SANDBOX: "docker", SANDBOX_RUNTIME: "runsc; rm -rf /" })[0], /SANDBOX_RUNTIME.*name of a Docker runtime/);
+  });
+
+  it("outside users (NODE_ENV=production with sign-in on) only with the sandbox", () => {
+    assert.deepEqual(problemsOf({ ...signIn }), [], "sign-in on this computer (development): allowed, with a warning at start");
+    assert.match(problemsOf({ ...signIn, NODE_ENV: "production" }).join("\n"), /SANDBOX=docker is needed.*outside users/);
+    assert.deepEqual(problemsOf({ ...signIn, NODE_ENV: "production", SANDBOX: "docker" }), []);
+  });
+});
