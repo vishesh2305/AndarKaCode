@@ -11,7 +11,7 @@
 | 29 | GitHub/Google sign-in, workspaces, invite list, secure cookie sessions | ✅ |
 | 30 | `ownerId`/`workspaceId` on everything; memory per user plus a library scope (M2) | ✅ |
 | 31 | BYOK: key slots, key vault, verified-models list, provider adapters | ✅ (31a, 31b, 31c) |
-| 32 | Quotas, fair scheduling, adaptive concurrency per key, helmet/CSP/CORS/rate limits | |
+| 32 | Quotas, fair scheduling, adaptive concurrency per key, helmet/CSP/CORS/rate limits | ✅ (32a, 32b, 32c) |
 
 ## Step 29: Only invited accounts get in
 
@@ -152,3 +152,69 @@ Built in three pieces, each test-first.
 ### Real run on the Mac (7 Nov 2026)
 
 Sign-in on, the Mac's Builder API, the workspace's own Gemini key in both slots (`gemini-3.5-flash`), m1 with **Start fresh**: **READY in 50 s**. Every job names `gemini` as its provider, and Laptop B's Gateway got no job. This was the first build on a real user key; the first real sign-in worked on the way.
+
+## Step 32: Quotas, fair scheduling, slowing down per key, and the outer layer
+
+Built in three pieces, each test-first.
+
+### 32a: the outer layer (`src/security.js`)
+
+- **Security headers on every answer** (helmet 8.3): `nosniff`, `Referrer-Policy: no-referrer`, `X-Frame-Options: SAMEORIGIN`, no `X-Powered-By`.
+- **A Content Security Policy for the UI:** scripts only from our own address; framed only by us; `object-src 'none'`; the live preview's own port is the one other frame allowed. Checked against the real built UI: one script and one stylesheet from our address, a `data:` icon, no outside address, no `eval`.
+- **Generated pages are served as their own sandbox** (`Content-Security-Policy: sandbox allow-scripts`, `connect-src 'none'`): their scripts and Tailwind run, but even opened directly in a tab they are not our site, so they can't use our cookies or call our API. (The UI already showed them in a sandboxed frame; this covers a page opened on its own.)
+- **Changes only from our own site,** with sign-in on or off: a POST, PUT or DELETE whose `Origin` is another site gets 403. With sign-in off this stops any website from changing this computer's Builder API (for example clearing its memory).
+- **No CORS:** other sites' pages get no `Access-Control-Allow-Origin`, so they can't read our answers.
+- **Rate limits**, counted in MongoDB (`rate_hits`, deleted when their window ends) so every API instance shares them, answered with **429, `Retry-After` and a plain sentence**: starting a sign-in 20 a minute per address, the API 600 a minute per person (or address), adding a key 10 an hour per workspace (each one asks its provider). If MongoDB can't count, the request goes on.
+
+### 32b: quotas and fair scheduling (`src/quotas.js`)
+
+- **A plan per workspace:** `free` (default) or `pro`, set with `npm run plan -- set <email> pro` until payments do it (Stage 7).
+- **Builds per plan in a window of days** (a new project is a build): free 5 every 30 days ("a few builds a month"), pro 50 a day (fair use); `FREE_BUILDS`, `FREE_BUILDS_DAYS`, `PRO_BUILDS`, `PRO_BUILDS_DAYS`.
+- **Past the quota, refused politely before anything is kept:** 429, `Retry-After`, and e.g. "The free plan builds 5 apps every 30 days, and this workspace has built 5. The next build is possible on 14 Dec 2026 10:30 UTC." `/api/me` shows the quota (plan, used, limit, window, when it frees up). Sign-in off: no quota.
+- **Fair scheduling, pro first, then oldest:** a pro workspace's projects and pages carry priority 1. The orchestrator picks up waiting projects, and ui-workers claim waiting pages, in that order.
+- **`BUILD_PARALLEL`** (default 4): one orchestrator builds at most that many projects at once; the rest wait in MongoDB and the next one starts when a build ends. Without such a cap, "pro first" would mean nothing.
+
+### 32c: slowing down per key (`shared/limiter.mjs`)
+
+- **Each user key runs at most 4 model calls at once** (limiters are kept by a hash of the key, never the key).
+- **A 429 halves that key's limit** (never below 1) **and pauses it** for the `Retry-After` the provider asked (or Gemini's RetryInfo; else 2, 4, 8 … up to 30 s). Calls that go through raise the limit again, one step at a time.
+- `callModel` therefore **slows down instead of failing** (up to 8 slower tries, a few minutes in all). A wait of **more than 5 minutes** is a daily or monthly limit: that fails at once with "this key's limit is reached …; try again in about N h".
+- Per process: two services sharing a key each slow down on their own.
+
+### Found on the way
+
+- **The rare flaky integration test** (seen on 4 Nov and 6 Nov) showed itself once: `pressOnce` in `custom-writer.test.js` got "fetch failed" pressing a button in a generated app, and six runs of that file alone all passed. The press now reports fetch's cause (a refused or reset connection), so the next occurrence says why. Suspected, not proven: a kept-alive connection reused after a later generated app got the same port.
+- **Line endings:** edit scripts run on Windows had written some files with CRLF; they are LF again (`25d24d7`, and this report).
+- **MongoDB's Windows service on Laptop B was stopped** on 15 Nov and can only be started as administrator; the suites ran on a throwaway `mongod` in a scratch folder (the tests drop their database anyway).
+
+### RED
+
+- 32a `e24d188`: `integration/security.test.js` (an API with sign-in on and one with it off). One test was corrected while making it pass: the sign-in done before the tests is the first of the 20 a minute.
+- 32b `5e00733`: `test/quotas.test.js`, `integration/quotas.test.js`.
+- 32c `27c9238`: `test/limiter.test.js` (a fake provider that takes 2 calls at once and answers 429 to more). One check was corrected while making it pass: the limit is raised again as calls go through, so the test checks that the key slowed down, not where its limit ends.
+
+### GREEN
+
+| Guarantee | Test |
+|---|---|
+| Security headers on every answer; nothing about the server | integration (security) |
+| The CSP: own scripts only, framed only by us, the live preview allowed | integration (security) |
+| No CORS for other sites, also on a preflight | integration (security) |
+| Generated pages in their own sandbox: scripts and Tailwind, no cookies, no API | integration (security) |
+| A change from another site is refused with sign-in off too | integration (security) |
+| Rate limits answer 429 with `Retry-After` and a sentence; counted in MongoDB | integration (security) |
+| **The quota limit is refused politely:** 429, how many were used, when the next build is possible, nothing kept | integration (quotas) |
+| A pro workspace has its own limit, and its projects go first | integration (quotas) |
+| Waiting projects and pages are picked up pro first, then oldest | integration (quotas) |
+| An orchestrator starts only as many projects as `BUILD_PARALLEL` allows | unit (quotas) |
+| The quota settings, within bounds | unit (quotas) |
+| **A "too many requests" answer slows us down instead of failing:** 10 calls at once against a provider that takes 2 all succeed | unit (limiter) |
+| A throttle halves the limit and pauses; calls that go through raise it again; one limiter per key | unit (limiter) |
+| A wait of hours fails at once and says when to try again | unit (limiter) |
+
+**Suites:** unit 500 (was 489), integration 206 (was 191), Gateway 15, web 37.
+
+## Stage 4 done on Laptop B
+
+Steps 29–32 are built and merged into `main`. Real runs on the Mac so far: a real GitHub/Google sign-in, and m1 READY in 50 s on the workspace's own Gemini key. Waiting for the Mac check of Stage 4 (once per stage).
+
