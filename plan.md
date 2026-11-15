@@ -3,7 +3,7 @@
 > **Design:** see [ARCHITECTURE.md](ARCHITECTURE.md) (v3.1, approved 16 Oct: Phase 1 builds exactly what the screenshots show; every backend part has visible evidence). This file is our **step-by-step to-do list**.
 > **Rule:** do one step, report back, then move on. Tick the box when its "Done when" is true.
 
-**Current step:** Stage 5 built on Laptop B (Steps 33–35: every generated app in a sandbox, with the verifier and the live preview as services of their own; the preview on another site; brand + login/payment held for review, reports, the audit log); waiting for the Mac check of Stages 4 and 5. Not yet: gVisor itself (needs Linux). Next: Stage 6, complete apps (the coverage ladder). See [docs/production-architecture.md](docs/production-architecture.md) §7 and [docs/tdd/stage5-safety.tdd.md](docs/tdd/stage5-safety.tdd.md).
+**Current step:** Stage 5 built on Laptop B (Steps 33–35: every generated app in a sandbox, with the verifier and the live preview as services of their own; the preview on another site; brand + login/payment held for review, reports, the audit log); Stage 4's suites passed on the Mac (16 Nov); waiting for the Mac check of Stage 5. Not yet: gVisor itself (needs Linux). Next: Stage 6, complete apps (the coverage ladder). See [docs/production-architecture.md](docs/production-architecture.md) §7 and [docs/tdd/stage5-safety.tdd.md](docs/tdd/stage5-safety.tdd.md).
 
 > **28 Oct 2026:** the production plan replaces the old Steps 18–20 below. The old Step 18 (Sandbox) is now Step 33, the old Step 19 (GitHub) is now Step 48, and the rest of Step 17 (editing the spec in the UI) is now Step 38. The demo rehearsal (old Step 20) can still be done at any time.
 
