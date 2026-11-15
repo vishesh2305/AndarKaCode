@@ -324,9 +324,9 @@ Stage 1b is done when a 3-page cloud build on the two laptops is READY in under 
 ### Stage 5: Safety (≈1.5 weeks). Required before any outside user
 | Step | What | Done when |
 |---|---|---|
-| **33** | Sandbox: gVisor containers, no network, limits, a database inside the sandbox; the `verifier` becomes its own service with it (from Step 27) | Attack tests are blocked; the employees sample reaches READY 8/8 |
-| **34** | Preview on its own domain, auto-stop | A preview can't read the main site's cookies |
-| **35** | Trust & safety: a famous brand's name together with a login or payment form is flagged; report button; audit log | A bank-login mock is held for review |
+| **33** | Sandbox: gVisor containers, no network, limits, a database inside the sandbox; the `verifier` becomes its own service with it (from Step 27) | Attack tests are blocked; the employees sample reaches READY 8/8 **Done 16 Nov 2026** (gVisor itself on the first Linux server): a container per app on an internal network, a plain user, read-only, limits, its own MongoDB; `ROLE=verifier` with a box queue; READY 8/8 through Compose |
+| **34** | Preview on its own domain, auto-stop | A preview can't read the main site's cookies **Done 16 Nov 2026:** `ROLE=preview` asked through MongoDB, a secret token per preview, another site than `PUBLIC_URL` (refused otherwise), no cookie or Referer through it |
+| **35** | Trust & safety: a famous brand's name together with a login or payment form is flagged; report button; audit log | A bank-login mock is held for review **Done 16 Nov 2026:** held after reading, before any page is drawn; `npm run review`; reports; an audit log with no API route |
 
 ### Stage 6: Complete apps, the coverage ladder (≈3 weeks)
 | Step | What | Done when |

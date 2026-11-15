@@ -344,6 +344,11 @@ Each service reads its own `.env` (copy it from `.env.example`). `.env` files ar
 | `PORT`, `HOST` | Where the Builder API and UI listen (default `127.0.0.1:4000`: this computer only) |
 | `PREVIEW_PORT` | The live preview's own local port (default: `PORT` + 1, e.g. 4001) |
 | `PREVIEW_IDLE_MS` | How long a live preview runs without use before it stops (default 15 minutes) |
+| `PREVIEW_ORIGIN` | Where browsers reach the live preview: another site than `PUBLIC_URL` (refused otherwise with sign-in on). Worked out on one computer (`127.0.0.1` when people open `localhost`); needed by `ROLE=api` (Step 34) |
+| `PREVIEW_MAX_MS` | A sandboxed preview stops after this long even if in use (default 4 hours, Step 33) |
+| `SANDBOX` | `process` (default, development): generated apps run as processes here. `docker`: each in its own sandbox (Step 33); required with `NODE_ENV=production` and sign-in on |
+| `SANDBOX_RUNTIME` | `runsc` runs the sandboxes in gVisor (Linux, installed and registered with Docker) |
+| `VERIFY_LANE`, `SANDBOX_REACH`, `VERIFY_PARALLEL` | `queue`: the verifier service (`ROLE=verifier`) runs verify and press jobs; `network`: a verifier in a container joins each sandbox's network (Step 33) |
 | `MONGODB_URI` | Our own database (default `mongodb://127.0.0.1:27017/builder_db`) |
 | `DEFAULT_MODE` | `local`, `cloud` or `auto` for new projects |
 | `GATEWAY_URL` | Laptop B's Gateway on its Tailscale address, e.g. `http://100.x.y.z:8787` |
@@ -381,6 +386,9 @@ Each service reads its own `.env` (copy it from `.env.example`). `.env` files ar
 - **Sign-in (Step 29, `AUTH=on`).** GitHub or Google, with PKCE and a one-time state tied to the browser that started it. Only an invited, provider-verified email gets an account (`npm run invite -- add <email>`; `list`, `remove`). The session cookie is HttpOnly, SameSite=Lax and Secure on https; it holds a random token, and MongoDB keeps only its SHA-256. Changes sent from another site are refused by an Origin check. Each workspace sees and reaches only its own projects (another's answers 404), and memory is kept per workspace, plus a shared library (Step 30).
 - **People's own AI keys (Step 31).** Checked with the provider before they are saved, stored only encrypted (AES-256-GCM, bound to the workspace), shown only by their last 4 characters, and never written to a log or an answer; errors from a provider have the key removed. A build opens its key only for the call. User keys never go to Laptop B's Gateway.
 - **The outer layer (Step 32).** Security headers and a Content Security Policy on every answer; generated pages are served as their own sandbox, so even opened directly they can't use our cookies or API; changes are accepted only from our own site (with sign-in on or off); no CORS; rate limits (sign-in starts, the API, adding keys) shared by every API instance through MongoDB; a polite 429 with `Retry-After`. A provider's "too many requests" slows that key down instead of failing the build.
+- **Generated apps in a sandbox (Step 33).** With `SANDBOX=docker` every generated app runs in a container on a network with no way out, as a plain user with no capabilities, on a read-only image, with memory, CPU, process and time limits, none of our folders or settings, and its own database inside. Only the verifier and preview services hold the Docker socket. Attack tests: `npm run test:sandbox`.
+- **The live preview on another site (Step 34).** Its own service, at a secret address per preview, on another site than the UI so the browser never sends it the session cookie; no cookie or Referer passes through it.
+- **Trust & safety (Step 35).** A famous brand's name with a login or payment form holds the project for a person before it is built (`npm run review`); "Report a problem" in the header; an audit log of the moments that matter (`npm run audit`), with no API route.
 - **Small attack surface.** The Builder API listens on `127.0.0.1` only by default. The Gateway is the only service Laptop B exposes, only on the private Tailscale address, and only with the API key. Ollama and Screenshot-to-Code stay on localhost.
 - **Uploads are checked.** Only PNG / JPEG / WebP, at most 10 MB each, and decoded before anything is stored. Generated-file viewing refuses paths outside the app folder.
 - **Generated apps:**
