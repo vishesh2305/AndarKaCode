@@ -52,7 +52,9 @@ export async function pressOnce({ spec, op, appDir, mongoUri, code }) {
     }
     return null;
   } catch (err) {
-    return `pressing "${op.button}" failed: ${err.message}`;
+    // fetch says only "fetch failed"; the reason (a refused or reset connection) is in its cause.
+    const cause = err.cause?.code ?? err.cause?.message;
+    return `pressing "${op.button}" failed: ${err.message}${cause ? ` (${cause})` : ""}`;
   } finally {
     await app?.stop().catch(() => {});
     await db?.dropDatabase().catch(() => {});
