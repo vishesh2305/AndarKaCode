@@ -102,7 +102,7 @@ before(async () => {
       PORT: String(port),
       HOST: "127.0.0.1",
       PREVIEW_PORT: "0",
-      PREVIEW_ORIGIN: "http://127.0.0.1:4999", // Step 34a: an api service names the preview service (none runs here)
+      PREVIEW_ORIGIN: "http://localhost:4999", // Step 34a: an api service names the preview service (none runs here); 34b: another site than PUBLIC_URL
       MONGODB_URI,
       GATEWAY_URL: "",
       GATEWAY_API_KEY: "",
@@ -176,6 +176,7 @@ describe("Step 29: only invited accounts get in", () => {
     const raw = res.headers.getSetCookie().find((c) => c.startsWith("ak_session="));
     assert.match(raw, /HttpOnly/);
     assert.match(raw, /SameSite=Lax/);
+    assert.doesNotMatch(raw, /Domain=/i, "Step 34b: for this host only, so never sent to another site (such as the live preview's)");
 
     const me = await (await get("/api/me", session)).json();
     assert.equal(me.user.email, "asha@example.com");

@@ -48,7 +48,7 @@ describe("Step 32a: security headers", () => {
     assert.match(csp, /script-src 'self'(;|$)/);
     assert.match(csp, /frame-ancestors 'self'/);
     assert.match(csp, /object-src 'none'/);
-    assert.match(csp, /frame-src 'self' http:\/\/127\.0\.0\.1:\d+/, "the live preview runs on its own port");
+    assert.match(csp, /frame-src 'self' http:\/\/localhost:4999/, "the live preview, on its own site");
   });
 
   it("no CORS: another site's page can't read our answers", async () => {
@@ -76,6 +76,21 @@ describe("Step 32a: changes only from our own site", () => {
     assert.equal(evil.status, 403);
     assert.match((await evil.json()).error, /another site/);
     assert.equal((await off.get("/api/memory", null, { method: "DELETE" })).status, 200, "from our own page it works");
+  });
+});
+
+describe("Step 34b: the live preview is another site, which our session never reaches", () => {
+  const PREVIEW = "http://localhost:4999"; // PREVIEW_ORIGIN of these tests; the UI is opened on 127.0.0.1
+
+  it("a page on the preview's site can't change anything through our API, even with the session cookie", async () => {
+    const res = await on.get("/api/projects", session, { method: "POST", headers: { Origin: PREVIEW } });
+    assert.equal(res.status, 403);
+    assert.match((await res.json()).error, /another site/);
+  });
+
+  it("and can't read our answers: there is no CORS for it", async () => {
+    const res = await on.get("/api/me", session, { headers: { Origin: PREVIEW } });
+    assert.equal(res.headers.get("access-control-allow-origin"), null);
   });
 });
 

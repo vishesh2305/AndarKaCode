@@ -130,3 +130,40 @@ describe("the preview service (ROLE=preview)", () => {
     assert.equal(res.status, 404);
   });
 });
+
+describe("Step 34b: what passes through the preview's address", () => {
+  // A tiny app that answers with the headers it was sent, and tries to set a cookie.
+  let echo;
+  before(async () => {
+    const dir = path.join(OUT, "echo");
+    const { mkdir, writeFile } = await import("node:fs/promises");
+    await mkdir(path.join(dir, "backend"), { recursive: true });
+    await writeFile(path.join(dir, "package.json"), JSON.stringify({ name: "echo", type: "module" }));
+    await writeFile(
+      path.join(dir, "backend", "server.js"),
+      `import express from "express";\nexport const app = express();\napp.get("/echo", (req, res) => { res.setHeader("Set-Cookie", "app_cookie=1; Path=/"); res.json(req.headers); });\n`
+    );
+    const echoFiles = await tarOf(dir);
+    await rm(dir, { recursive: true, force: true });
+    await requestPreview({ projectId: "echo", hash: "e1", files: echoFiles, seed: {}, auth: false });
+    echo = `${home("echo", (await waitPreview("echo")).token)}echo`;
+  });
+  after(() => requestStop("echo"));
+
+  it("never a cookie: the browser's goes no further, and the app can't set one", async () => {
+    const res = await fetch(echo, { headers: { Cookie: "ak_session=a-session-of-ours", Authorization: "Bearer the-apps-own-sign-in" } });
+    const seen = await res.json();
+    assert.equal(seen.cookie, undefined, "the app never sees a cookie");
+    assert.equal(seen.authorization, "Bearer the-apps-own-sign-in", "its own sign-in header passes");
+    assert.equal(res.headers.get("set-cookie"), null, "and no cookie comes back");
+  });
+
+  it("sends no Referer onwards (the address's secret stays put), and is kept by no cache or search engine", async () => {
+    for (const url of [echo, `http://127.0.0.1:${service.port}/preview/echo/${"b".repeat(32)}/echo`]) {
+      const res = await fetch(url);
+      assert.equal(res.headers.get("referrer-policy"), "no-referrer", url);
+      assert.equal(res.headers.get("cache-control"), "no-store", url);
+      assert.equal(res.headers.get("x-robots-tag"), "noindex, nofollow", url);
+    }
+  });
+});

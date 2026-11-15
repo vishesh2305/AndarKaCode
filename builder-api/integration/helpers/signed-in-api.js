@@ -65,7 +65,7 @@ export async function startSignedInApi(env = {}) {
       PORT: String(port),
       HOST: "127.0.0.1",
       PREVIEW_PORT: "0",
-      PREVIEW_ORIGIN: "http://127.0.0.1:4999", // Step 34a: an api service names the preview service (none runs here)
+      PREVIEW_ORIGIN: "http://localhost:4999", // Step 34a: an api service names the preview service (none runs here); 34b: another site than PUBLIC_URL
       GATEWAY_URL: "",
       GATEWAY_API_KEY: "",
       GEMINI_API_KEY: "",

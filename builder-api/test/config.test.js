@@ -223,3 +223,18 @@ describe("checkConfig: the preview service (Step 34a)", () => {
     assert.deepEqual(problemsOf({ ...outside, ROLE: "api", PREVIEW_ORIGIN: "https://andarkacode-preview.app" }), []);
   });
 });
+
+describe("checkConfig: the preview on a site of its own (Step 34b)", () => {
+  const signIn = { AUTH: "on", PUBLIC_URL: "https://andarkacode.com", GITHUB_CLIENT_ID: "id", GITHUB_CLIENT_SECRET: "secret" };
+
+  it("with sign-in on, PREVIEW_ORIGIN on the same site as PUBLIC_URL is refused: the browser would send it the session cookie", () => {
+    for (const same of ["https://andarkacode.com:4001", "https://preview.andarkacode.com"]) {
+      assert.match(problemsOf({ ...signIn, PREVIEW_ORIGIN: same }).join("\n"), /PREVIEW_ORIGIN.*another site than PUBLIC_URL/, same);
+    }
+    assert.deepEqual(problemsOf({ ...signIn, PREVIEW_ORIGIN: "https://andarkacode-preview.app" }), []);
+  });
+
+  it("with sign-in off there is no session cookie to keep apart", () => {
+    assert.deepEqual(problemsOf({ PREVIEW_ORIGIN: "http://127.0.0.1:4001" }), []);
+  });
+});
