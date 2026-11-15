@@ -163,13 +163,13 @@ describe("checkConfig: where generated apps run (Step 33b)", () => {
   const signIn = { AUTH: "on", PUBLIC_URL: "https://andarkacode.com", GITHUB_CLIENT_ID: "id", GITHUB_CLIENT_SECRET: "secret" };
 
   it("defaults to a process on this computer (development), with Docker's default runtime", () => {
-    assert.deepEqual(checkConfig({}).config.sandbox, { mode: "process", runtime: null });
+    assert.deepEqual(checkConfig({}).config.sandbox, { mode: "process", runtime: null, reach: "door" });
   });
 
   it("SANDBOX=docker puts each app in its own sandbox; SANDBOX_RUNTIME=runsc makes it gVisor", () => {
     const { config, problems } = checkConfig({ SANDBOX: "docker", SANDBOX_RUNTIME: "runsc" });
     assert.deepEqual(problems, []);
-    assert.deepEqual(config.sandbox, { mode: "docker", runtime: "runsc" });
+    assert.deepEqual(config.sandbox, { mode: "docker", runtime: "runsc", reach: "door" });
   });
 
   it("refuses an unknown SANDBOX, and a runtime without Docker or with a strange name", () => {
@@ -182,5 +182,29 @@ describe("checkConfig: where generated apps run (Step 33b)", () => {
     assert.deepEqual(problemsOf({ ...signIn }), [], "sign-in on this computer (development): allowed, with a warning at start");
     assert.match(problemsOf({ ...signIn, NODE_ENV: "production" }).join("\n"), /SANDBOX=docker is needed.*outside users/);
     assert.deepEqual(problemsOf({ ...signIn, NODE_ENV: "production", SANDBOX: "docker" }), []);
+  });
+});
+
+describe("checkConfig: the verifier service (Step 33c)", () => {
+  const outside = { AUTH: "on", PUBLIC_URL: "https://andarkacode.com", GITHUB_CLIENT_ID: "id", GITHUB_CLIENT_SECRET: "secret", NODE_ENV: "production" };
+
+  it("ROLE=verifier is a service; VERIFY_LANE is inline (in the orchestrator) unless set to queue", () => {
+    assert.deepEqual(problemsOf({ ROLE: "verifier" }), []);
+    assert.equal(checkConfig({}).config.verifyLane, "inline");
+    assert.equal(checkConfig({ VERIFY_LANE: "queue" }).config.verifyLane, "queue");
+    assert.match(problemsOf({ VERIFY_LANE: "later" })[0], /VERIFY_LANE in builder-api\/\.env must be one of inline, queue \(it is "later"\)/);
+  });
+
+  it("SANDBOX_REACH: door (a service on this computer) or network (a service in a container joins each sandbox's network)", () => {
+    assert.equal(checkConfig({ SANDBOX: "docker" }).config.sandbox.reach, "door");
+    assert.equal(checkConfig({ SANDBOX: "docker", SANDBOX_REACH: "network" }).config.sandbox.reach, "network");
+    assert.match(problemsOf({ SANDBOX: "docker", SANDBOX_REACH: "wall" })[0], /SANDBOX_REACH.*door, network/);
+  });
+
+  it("outside users need the sandbox only where generated apps run: not in an orchestrator that hands them to the verifier, nor in a ui-worker", () => {
+    assert.match(problemsOf({ ...outside, ROLE: "verifier" }).join("\n"), /SANDBOX=docker is needed/);
+    assert.match(problemsOf({ ...outside, ROLE: "orchestrator" }).join("\n"), /SANDBOX=docker is needed/, "an orchestrator verifying inline runs apps");
+    assert.deepEqual(problemsOf({ ...outside, ROLE: "orchestrator", VERIFY_LANE: "queue" }), []);
+    assert.deepEqual(problemsOf({ ...outside, ROLE: "ui-worker" }), []);
   });
 });
