@@ -5,6 +5,7 @@ const MODES = ["local", "cloud", "auto"];
 const ROLES = ["all", "api", "orchestrator", "ui-worker"]; // Step 24: one process, or the services (ui-worker: Step 26)
 const PAGE_LANES = ["gateway", "queue"];
 const MIN_GATEWAY_KEY = 16; // what the Gateway itself accepts (gateway/src/server.js)
+const SANDBOXES = ["process", "docker"]; // Step 33b: where generated apps run
 
 /** { config, problems }: the settings read from env, and what is wrong with them (plain sentences). */
 export function checkConfig(env) {
@@ -53,6 +54,7 @@ export function checkConfig(env) {
   wholeNumber("CUSTOM_PARALLEL", 3, { min: 1, max: 20 });
   wholeNumber("GATEWAY_POLL_MS", 2000, { min: 100 });
   wholeNumber("PREVIEW_IDLE_MS", 15 * 60_000, { min: 1000 });
+  wholeNumber("PREVIEW_MAX_MS", 4 * 60 * 60_000, { min: 60_000 }); // Step 33b: a sandboxed preview's time limit
   wholeNumber("LEASE_MS", 60_000, { min: 1000 }); // how long a project's lease lasts without renewal (Step 22)
   wholeNumber("PICKUP_MS", 20_000, { min: 100 }); // how often the orchestrator looks for new work (Step 24)
   wholeNumber("UI_PARALLEL", 4, { min: 1, max: 20 }); // pages one ui-worker draws at the same time (Step 26)
@@ -105,7 +107,16 @@ export function checkConfig(env) {
   };
   const buildParallel = wholeNumber("BUILD_PARALLEL", 4, { min: 1, max: 50 });
 
-  const config = { port, host: has("HOST") ? env.HOST : "127.0.0.1", previewPort, mongodbUri, defaultMode, gateway, storage, role, previewOrigin, pageLane, placementMs, auth, keyVaultSecret, quotas, buildParallel, modes: MODES };
+  // Step 33b: where generated apps run (the Verifier, the button tester, the live preview). docker: each in
+  // its own sandbox (Step 33a; SANDBOX_RUNTIME=runsc for gVisor). process: on this computer, for development.
+  // Outside users (NODE_ENV=production with sign-in on) only with the sandbox.
+  const sandbox = { mode: has("SANDBOX") ? env.SANDBOX : "process", runtime: has("SANDBOX_RUNTIME") ? env.SANDBOX_RUNTIME : null };
+  if (!SANDBOXES.includes(sandbox.mode)) problems.push(`SANDBOX in ${FILE} must be one of ${SANDBOXES.join(", ")} (it is "${sandbox.mode}")`);
+  else if (sandbox.mode === "process" && authOn && env.NODE_ENV === "production") problems.push(`SANDBOX=docker is needed in ${FILE} with NODE_ENV=production and sign-in on: generated apps of outside users must run in their sandbox, not as processes on this server (Step 33)`);
+  if (sandbox.runtime && sandbox.mode !== "docker") problems.push(`SANDBOX_RUNTIME in ${FILE} needs SANDBOX=docker (it picks the sandbox's container runtime)`);
+  else if (sandbox.runtime && !/^[a-z][a-z0-9_.-]*$/i.test(sandbox.runtime)) problems.push(`SANDBOX_RUNTIME in ${FILE} must be the name of a Docker runtime, for example runsc (it is "${sandbox.runtime}")`);
+
+  const config = { port, host: has("HOST") ? env.HOST : "127.0.0.1", previewPort, mongodbUri, defaultMode, gateway, storage, role, previewOrigin, pageLane, placementMs, auth, keyVaultSecret, quotas, buildParallel, sandbox, modes: MODES };
   return { config, problems };
 }
 

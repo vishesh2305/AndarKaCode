@@ -3,17 +3,20 @@
 // (signed in first when it has a login), and the button is pressed on that row (or on the page).
 // There is no right answer to compare with here, so "works" means it answers: 200, or 400 when the code
 // refuses with a message. 500 (an error, or too long) and 501 (no code) are problems for the repair request.
+// Step 33b: the app runs in a box (verify/box.js): its own sandbox with SANDBOX=docker, else a process here.
 import { randomBytes } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import mongoose from "mongoose";
 import { operationRoute } from "../generator/index.js";
-import { startApp } from "../verify/app-runner.js";
+import { openBox } from "../verify/box.js";
 import { sampleRecord } from "../verify/index.js";
 
 const PRESS_TIMEOUT_MS = 40_000; // the app stops a press after 30 s itself
+const PRESS_MAX_MS = 5 * 60_000; // the sandbox's time limit for one press
 
-/** Saves the code and presses its button once. Resolves with null when it answers, else the problem (text). */
+/** Saves the code and presses its button once. Resolves with null when it answers, else the problem (text).
+ * mongoUri: the throwaway database of a process box (a sandbox has its own inside). */
 export async function pressOnce({ spec, op, appDir, mongoUri, code }) {
   const file = path.join(appDir, "backend", "custom", `${op.name}.js`);
   await mkdir(path.dirname(file), { recursive: true });
@@ -22,17 +25,18 @@ export async function pressOnce({ spec, op, appDir, mongoUri, code }) {
   const entity = spec.entities.find((e) => e.name === op.entity);
   const route = operationRoute(op, entity.name);
   const credentials = { email: "custom@example.com", password: randomBytes(12).toString("base64url") };
+  let box = null;
   let db = null;
-  let app = null;
   try {
-    db = await mongoose.createConnection(mongoUri).asPromise();
+    box = await openBox({ appDir, mongoUri, maxMs: PRESS_MAX_MS }); // after the code is saved: a sandbox copies the app in
+    db = await mongoose.createConnection(box.dbUri("app")).asPromise();
     await db.dropDatabase();
     const collection = db.collection(entity.plural);
     // Two rows: the button is pressed on the first; a row button must leave the other one as it was.
     const { insertedIds } = await collection.insertMany([sampleRecord(entity.name, spec), sampleRecord(entity.name, spec)]);
     const [insertedId, otherId] = [insertedIds[0], insertedIds[1]];
     const other = await collection.findOne({ _id: otherId });
-    app = await startApp({ appDir, mongoUri, env: spec.auth ? { ADMIN_EMAIL: credentials.email, ADMIN_PASSWORD: credentials.password } : {} });
+    const app = await box.startApp({ env: spec.auth ? { ADMIN_EMAIL: credentials.email, ADMIN_PASSWORD: credentials.password } : {} });
 
     const headers = { "Content-Type": "application/json" };
     if (spec.auth) {
@@ -56,8 +60,7 @@ export async function pressOnce({ spec, op, appDir, mongoUri, code }) {
     const cause = err.cause?.code ?? err.cause?.message;
     return `pressing "${op.button}" failed: ${err.message}${cause ? ` (${cause})` : ""}`;
   } finally {
-    await app?.stop().catch(() => {});
-    await db?.dropDatabase().catch(() => {});
-    await db?.close();
+    await db?.close().catch(() => {});
+    await box?.stop().catch(() => {}); // the app, and (a process box) its database
   }
 }

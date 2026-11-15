@@ -2,11 +2,14 @@
 // the Builder API at /preview/<project>/ (one address, nothing new opened to the network). One preview per
 // project; it stops by itself after PREVIEW_IDLE_MS without a request, and its test data is deleted.
 // It starts with the rows the screenshots show (sample-rows.js), so every row button can be tried at once.
+// Step 33b: it runs in a box (box.js): its own sandbox with SANDBOX=docker (at most PREVIEW_MAX_MS, then it
+// stops like an idle one), else a process here on our throwaway database.
 import { randomBytes } from "node:crypto";
 import mongoose from "mongoose";
-import { startApp } from "./app-runner.js";
+import { openBox } from "./box.js";
 
 const IDLE_MS = Number(process.env.PREVIEW_IDLE_MS ?? 15 * 60_000);
+const MAX_MS = Number(process.env.PREVIEW_MAX_MS ?? 4 * 60 * 60_000);
 const previews = new Map(); // projectId -> { hash, app, credentials, timer } or a pending start
 
 export const previewOf = (projectId) => {
@@ -27,8 +30,8 @@ export function touchPreview(projectId) {
 }
 
 // A fresh test database with the starting rows ({ collection: records }), before the app opens it.
-async function fillDatabase(mongoUri, records) {
-  const conn = await mongoose.createConnection(mongoUri).asPromise();
+async function fillDatabase(uri, records) {
+  const conn = await mongoose.createConnection(uri).asPromise();
   try {
     await conn.dropDatabase();
     for (const [collection, docs] of Object.entries(records ?? {})) {
@@ -53,11 +56,20 @@ export async function startPreview({ projectId, hash, appDir, auth, mongoUri, se
   const entry = { hash, credentials, app: null, timer: null };
   const env = credentials ? { ADMIN_EMAIL: credentials.email, ADMIN_PASSWORD: credentials.password } : {};
   entry.pending = (async () => {
-    if (seed) await fillDatabase(mongoUri, await seed());
-    return startApp({ appDir, mongoUri, env });
+    entry.box = await openBox({ appDir, mongoUri, maxMs: MAX_MS });
+    try {
+      if (seed) await fillDatabase(entry.box.dbUri("app"), await seed());
+      return await entry.box.startApp({ env });
+    } catch (err) {
+      await entry.box.stop();
+      throw err;
+    }
   })().then(
     (app) => {
       entry.app = app;
+      // At its time limit the sandbox ends itself: the preview is then gone, as if it had been idle.
+      entry.ends = setTimeout(() => previews.get(projectId) === entry && stopPreview(projectId).catch(() => {}), MAX_MS);
+      entry.ends.unref?.();
       arm(projectId, entry);
       return entry;
     },
@@ -76,6 +88,7 @@ export async function stopPreview(projectId) {
   if (!preview) return;
   previews.delete(projectId);
   clearTimeout(preview.timer);
-  const app = preview.app ?? (await preview.pending.catch(() => null))?.app;
-  await app?.stop({ dropDatabase: true }).catch(() => {});
+  clearTimeout(preview.ends);
+  if (!preview.app) await preview.pending.catch(() => null);
+  await preview.box?.stop().catch(() => {}); // the app, and its test data
 }

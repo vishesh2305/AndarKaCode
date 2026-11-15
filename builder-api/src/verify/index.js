@@ -3,33 +3,26 @@
 //   2. health    - the app starts on a throwaway database and answers
 //   3. person    - every page is used like a person would (Add, Edit, Search, buttons, Delete, sign-in)
 //   4. tests     - the app's own tests pass (on another throwaway database)
+// Step 33b: the app runs in a box (box.js): its own sandbox with SANDBOX=docker, else a process here.
 // Each check: { id, page?, title, status: pass|fail|warn|note|skip, layer?: page|spec|backend, detail }.
-import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import mongoose from "mongoose";
 import { apiMap } from "../wirer/index.js";
-import { appEnv, linkPackages, startApp } from "./app-runner.js";
+import { openBox } from "./box.js";
 import { expectedMarkers, markerCheck, pageMarkers } from "./markers.js";
 import { runDataPage, runLoginPage } from "./person.js";
 
 const TESTS_TIMEOUT_MS = 90_000;
+const VERIFY_MAX_MS = 15 * 60_000; // the sandbox's time limit for one verification
 
-/** Runs the app's own tests; one check. */
-export async function runAppTests(appDir, mongoUri) {
-  await linkPackages(appDir);
-  const child = spawn(process.execPath, ["--test", "--test-reporter=tap", "tests/**/*.test.js"], {
-    cwd: appDir,
-    env: appEnv({ MONGODB_URI_TEST: mongoUri }),
-    stdio: ["ignore", "pipe", "pipe"],
+/** Runs the app's own tests in its box, on the box's "tests" database; one check. */
+export async function runAppTests(box) {
+  const { code, output } = await box.exec(["node", "--test", "--test-reporter=tap", "tests/**/*.test.js"], {
+    env: { MONGODB_URI_TEST: box.insideDbUri("tests") },
+    timeoutMs: TESTS_TIMEOUT_MS,
   });
-  let output = "";
-  child.stdout.on("data", (chunk) => (output += chunk));
-  child.stderr.on("data", (chunk) => (output += chunk));
-  const timer = setTimeout(() => child.kill(), TESTS_TIMEOUT_MS);
-  const code = await new Promise((resolve) => child.once("exit", resolve));
-  clearTimeout(timer);
 
   const count = (word) => Number(output.match(new RegExp(`^# ${word} (\\d+)`, "m"))?.[1] ?? 0);
   const failed = [...output.matchAll(/^\s*not ok \d+ - (.+)$/gm)].map((m) => m[1].trim()).filter((name) => !/^tests[\\/]/.test(name));
@@ -51,15 +44,6 @@ export function sampleRecord(entity, spec) {
   return doc;
 }
 
-async function drop(uri) {
-  const conn = await mongoose.createConnection(uri).asPromise();
-  try {
-    await conn.dropDatabase();
-  } finally {
-    await conn.close();
-  }
-}
-
 /** Another database on the same MongoDB server: databaseUri("mongodb://h:27017/builder_db", "verify_x"). */
 export function databaseUri(base, name) {
   const url = new URL(base);
@@ -69,7 +53,7 @@ export function databaseUri(base, name) {
 
 const summarize = (checks) => Object.fromEntries(["pass", "fail", "warn", "note", "skip"].map((s) => [s, checks.filter((c) => c.status === s).length]));
 
-/** Verifies the wired app in appDir. mongoUri and testsMongoUri are throwaway databases (dropped). */
+/** Verifies the wired app in appDir. mongoUri and testsMongoUri: throwaway databases for a process box (dropped). */
 export async function verifyApp({ spec, appDir, mongoUri, testsMongoUri, customWritten = [] }) {
   const started = Date.now();
   const map = apiMap(spec, { customWritten });
@@ -93,14 +77,16 @@ export async function verifyApp({ spec, appDir, mongoUri, testsMongoUri, customW
 
   // 2 + 3. Start the app and use it like a person.
   const credentials = { email: "verify@example.com", password: randomBytes(12).toString("base64url") };
+  let box = null;
   let app = null;
   let db = null;
   try {
-    app = await startApp({ appDir, mongoUri, env: spec.auth ? { ADMIN_EMAIL: credentials.email, ADMIN_PASSWORD: credentials.password } : {} });
+    box = await openBox({ appDir, mongoUri, databases: { tests: testsMongoUri }, maxMs: VERIFY_MAX_MS });
+    app = await box.startApp({ env: spec.auth ? { ADMIN_EMAIL: credentials.email, ADMIN_PASSWORD: credentials.password } : {} });
     const health = await fetch(`${app.url}/health`).then((r) => r.json()).catch(() => null);
     checks.push({ id: "health", title: "The app starts and reaches its database", ...(health?.ok && health.db ? { status: "pass", detail: "Started, and /health says the database is connected." } : { status: "fail", layer: "backend", detail: "/health did not report a connected database." }) });
 
-    db = await mongoose.createConnection(mongoUri).asPromise();
+    db = await mongoose.createConnection(box.dbUri("app")).asPromise();
     const ensureRecord = async (entityName) => {
       const entity = spec.entities.find((e) => e.name === entityName);
       const collection = db.collection(entity.plural);
@@ -128,12 +114,15 @@ export async function verifyApp({ spec, appDir, mongoUri, testsMongoUri, customW
     checks.push({ id: "health", title: "The app starts and reaches its database", status: "fail", layer: "backend", detail: err.message });
   } finally {
     await db?.close();
-    await app?.stop({ dropDatabase: true }).catch(() => {});
+    await app?.stop().catch(() => {});
   }
 
-  // 4. The app's own tests.
-  checks.push(await runAppTests(appDir, testsMongoUri));
-  await drop(testsMongoUri).catch(() => {});
+  // 4. The app's own tests, in the same box.
+  try {
+    checks.push(box ? await runAppTests(box) : { id: "tests", title: "The app's own tests pass", status: "fail", layer: "backend", detail: "The app could not be started, so its tests were not run." });
+  } finally {
+    await box?.stop();
+  }
 
   const summary = summarize(checks);
   return { ok: summary.fail === 0, summary, checks, seconds: Math.round((Date.now() - started) / 100) / 10 };
