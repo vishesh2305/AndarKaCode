@@ -184,6 +184,15 @@ async function waitFor(id, done) {
   assert.fail(`Timed out in state ${project?.state} (${project?.error ?? "no error"})\n${apiLog.slice(-2000)}`);
 }
 const settled = (p) => ["READY", "NEEDS_ATTENTION"].includes(p.state);
+// Waits until check() is true (a few seconds at most).
+async function until(check) {
+  for (let i = 0; i < 50; i++) {
+    if (await check()) return;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  assert.fail(`Timed out waiting
+${apiLog.slice(-1000)}`);
+}
 
 describe("pipeline: screenshots -> spec -> pages -> SYNCED -> Wire -> Check -> READY", () => {
   it("builds a spec from two screenshots and one page per screenshot", async () => {
@@ -549,7 +558,9 @@ describe("Check (Step 16): a page without markers stops the project", () => {
 // ---- Step 16: the live preview (the Pages tab's "Live" view) ----
 describe("Live preview: the wired app on its own test database, on its own local address", () => {
   // e.g. http://127.0.0.1:4001: another site than the UI, so a generated page can't reach the UI.
+  // Step 34a: each preview's address has a secret of its own: /preview/<project>/<token>/.
   let previewOrigin;
+  let home; // the preview's folder: <origin>/preview/<project>/<token>/
   const origin = () => previewOrigin;
   let id;
   before(async () => {
@@ -564,29 +575,36 @@ describe("Live preview: the wired app on its own test database, on its own local
     const url = new URL(preview.url);
     assert.equal(url.hostname, "127.0.0.1");
     assert.notEqual(url.port, new URL(base).port, "not the UI's address");
-    assert.equal(url.pathname, `/preview/${id}/page-1.html`);
+    assert.match(url.pathname, new RegExp(`^/preview/${id}/[A-Za-z0-9_-]{32}/page-1\\.html$`), "a secret in the address");
     previewOrigin = url.origin;
+    home = preview.url.replace(/page-1\.html$/, "");
     assert.equal(preview.credentials, null, "no login screen: nothing to sign in with");
     assert.match(await (await fetch(preview.url)).text(), /<script src="app\.js"><\/script>/);
-    assert.deepEqual(await (await fetch(`${origin()}/preview/${id}/health`)).json(), { ok: true, db: true });
+    assert.deepEqual(await (await fetch(`${home}health`)).json(), { ok: true, db: true });
     // It starts with the page's sample rows (here the fake page's one row), so row buttons can be tried at once.
-    const { items } = await (await fetch(`${origin()}/preview/${id}/api/employees`)).json();
+    const { items } = await (await fetch(`${home}api/employees`)).json();
     assert.deepEqual(items.map((e) => e.fullName), ["Sample Full Name"]);
+  });
+
+  it("is not there without its secret, or with another one", async () => {
+    assert.equal((await fetch(`${origin()}/preview/${id}/health`)).status, 404);
+    assert.equal((await fetch(`${origin()}/preview/${id}/${"x".repeat(32)}/health`)).status, 404);
+    assert.equal((await fetch(`${origin()}/preview/${id}/page-1.html`)).status, 404);
   });
 
   it("reuses the running preview, and stops on request", async () => {
     const again = await (await fetch(`${base}/projects/${id}/preview`, { method: "POST" })).json();
-    assert.equal(again.url, `${previewOrigin}/preview/${id}/page-1.html`);
+    assert.equal(again.url, `${home}page-1.html`, "the same preview, the same address");
     assert.equal((await fetch(`${base}/projects/${id}/preview`, { method: "DELETE" })).status, 204);
-    assert.equal((await fetch(`${origin()}/preview/${id}/health`)).status, 404);
+    await until(async () => (await fetch(`${home}health`)).status === 404);
   });
 
   it("gives sign-in details for an app with a login screen, and they work", async () => {
     const loginId = await upload(["m4-login.png", "m1-edit-delete.png"], [loginScreen, employeesScreen]);
     assert.equal((await waitFor(loginId, settled)).state, "READY");
-    const { credentials } = await (await fetch(`${base}/projects/${loginId}/preview`, { method: "POST" })).json();
+    const { url, credentials } = await (await fetch(`${base}/projects/${loginId}/preview`, { method: "POST" })).json();
     assert.ok(credentials.email && credentials.password);
-    const login = await fetch(`${origin()}/preview/${loginId}/api/auth/login`, {
+    const login = await fetch(url.replace(/page-\d+\.html$/, "api/auth/login"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(credentials),
@@ -602,10 +620,11 @@ describe("Live preview: the wired app on its own test database, on its own local
   });
 
   it("stops by itself when nobody uses it (PREVIEW_IDLE_MS)", async () => {
-    await fetch(`${base}/projects/${id}/preview`, { method: "POST" });
-    assert.equal((await fetch(`${origin()}/preview/${id}/health`)).status, 200);
+    const { url } = await (await fetch(`${base}/projects/${id}/preview`, { method: "POST" })).json();
+    const health = url.replace(/page-\d+\.html$/, "health");
+    assert.equal((await fetch(health)).status, 200);
     await new Promise((r) => setTimeout(r, 3500));
-    assert.equal((await fetch(`${origin()}/preview/${id}/health`)).status, 404);
+    assert.equal((await fetch(health)).status, 404);
   });
 });
 

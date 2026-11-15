@@ -208,3 +208,18 @@ describe("checkConfig: the verifier service (Step 33c)", () => {
     assert.deepEqual(problemsOf({ ...outside, ROLE: "ui-worker" }), []);
   });
 });
+
+describe("checkConfig: the preview service (Step 34a)", () => {
+  const outside = { AUTH: "on", PUBLIC_URL: "https://andarkacode.com", GITHUB_CLIENT_ID: "id", GITHUB_CLIENT_SECRET: "secret", NODE_ENV: "production" };
+
+  it("ROLE=preview is a service; an api service (which hosts no preview) needs PREVIEW_ORIGIN, the preview service's address", () => {
+    assert.deepEqual(problemsOf({ ROLE: "preview" }), []);
+    assert.match(problemsOf({ ROLE: "api" }).join("\n"), /ROLE=api needs PREVIEW_ORIGIN/);
+    assert.deepEqual(problemsOf({ ROLE: "api", PREVIEW_ORIGIN: "https://andarkacode-preview.app" }), []);
+  });
+
+  it("outside users: the preview service runs apps, so it needs the sandbox; the api service runs none", () => {
+    assert.match(problemsOf({ ...outside, ROLE: "preview" }).join("\n"), /SANDBOX=docker is needed/);
+    assert.deepEqual(problemsOf({ ...outside, ROLE: "api", PREVIEW_ORIGIN: "https://andarkacode-preview.app" }), []);
+  });
+});

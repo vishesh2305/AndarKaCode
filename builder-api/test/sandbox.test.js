@@ -7,7 +7,7 @@ import path from "node:path";
 import { after, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { doorArgs, sandboxArgs } from "../src/verify/sandbox.js";
-import { tarOf } from "../src/verify/tar.js";
+import { tarOf, untarTo } from "../src/verify/tar.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "../..");
@@ -131,6 +131,25 @@ describe("tarOf: the app's files, packed to copy into the sandbox", () => {
     assert.equal(byName["backend/"].type, "5", "folders come first, as folders");
     assert.ok(files.findIndex((f) => f.name === "backend/") < files.findIndex((f) => f.name === "backend/custom/raise.js"));
     assert.ok(!files.some((f) => f.name.startsWith("node_modules")));
+  });
+
+  it("untarTo unpacks it again (the preview service gets the app's files only this way, Step 34a)", async () => {
+    const copy = await mkdtemp(path.join(tmpdir(), "untar-"));
+    try {
+      await untarTo(await tarOf(dir), copy);
+      assert.equal(await readFile(path.join(copy, "package.json"), "utf8"), '{"name":"x"}');
+      assert.equal(await readFile(path.join(copy, "backend/custom/raise.js"), "utf8"), "export default async function () {}\n");
+      assert.equal((await readFile(path.join(copy, `backend/${"a".repeat(60)}/${"b".repeat(60)}.js`), "utf8")).length, 1300);
+    } finally {
+      await rm(copy, { recursive: true, force: true });
+    }
+  });
+
+  it("untarTo refuses a name that would leave its folder", async () => {
+    const evil = Buffer.concat([await tarOf(dir)]);
+    evil.write("../escape.js".padEnd(100, "\0"), 0, 100, "utf8"); // the first entry's name
+    // the header's checksum no longer matches: refused for that, or for the name
+    await assert.rejects(untarTo(evil, path.join(tmpdir(), "untar-evil")), /outside|checksum/);
   });
 });
 
