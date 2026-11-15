@@ -14,7 +14,9 @@ const { app } = await load("backend/server.js");
 await mongoose.connect(process.env.MONGODB_URI);
 if (existsSync(path.join(appDir, "backend/auth/seed.js"))) await (await load("backend/auth/seed.js")).ensureFirstUser();
 
-const server = app.listen(0, "127.0.0.1", () => console.log(`READY ${server.address().port}`));
+// In its own process: 127.0.0.1 and a free port. In a sandbox (Step 33a): PORT=3000 and HOST=0.0.0.0, the
+// sandbox's own network, which only our door reaches.
+const server = app.listen(Number(process.env.PORT ?? 0), process.env.HOST ?? "127.0.0.1", () => console.log(`READY ${server.address().port}`));
 
 async function shutdown() {
   server.close();
@@ -26,3 +28,5 @@ process.on("SIGINT", shutdown);
 // The Builder API is gone (stopped, crashed, killed): stop too, so no app keeps its port. Windows already
 // does this for child processes; macOS and Linux do not.
 process.on("disconnect", shutdown);
+// In a sandbox it is started with `docker exec -i`: when we close its input (or are gone), it stops.
+if (process.env.EXIT_ON_STDIN_END === "1") process.stdin.on("end", shutdown).resume();
