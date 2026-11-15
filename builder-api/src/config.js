@@ -1,5 +1,7 @@
 // Step 20: every Builder API setting, checked once at start-up. A wrong setting stops the start with a
 // message naming the setting and the file; every problem is listed at once; a secret is never printed.
+import { sameSite } from "./sites.js";
+
 const FILE = "builder-api/.env";
 const MODES = ["local", "cloud", "auto"];
 const ROLES = ["all", "api", "orchestrator", "ui-worker", "verifier", "preview"]; // Step 24: one process, or the services (ui-worker: Step 26; verifier: Step 33c; preview: Step 34a)
@@ -86,6 +88,10 @@ export function checkConfig(env) {
   const sessionDays = wholeNumber("SESSION_DAYS", 14, { min: 1, max: 90 });
   const authOn = authSetting === "on";
   if (authOn && !publicUrl) problems.push(`AUTH=on needs PUBLIC_URL in ${FILE}: the address people open (the providers send them back there)`);
+  // Step 34b: the live preview on another site, which the browser never sends the session cookie.
+  if (authOn && publicUrl && previewOrigin && /^https?:\/\//.test(publicUrl) && /^https?:\/\//.test(previewOrigin) && sameSite(publicUrl, previewOrigin)) {
+    problems.push(`PREVIEW_ORIGIN in ${FILE} must be another site than PUBLIC_URL (not the same host, nor a subdomain of it): the browser would send it the session cookie. For example https://andarkacode-preview.app, or on one computer http://127.0.0.1:4001 when people open http://localhost:4000`);
+  }
   if (authOn && !github && !google) problems.push(`AUTH=on needs GitHub or Google sign-in in ${FILE}: GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET, or GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET`);
   const auth = {
     on: authOn,

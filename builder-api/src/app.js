@@ -29,6 +29,7 @@ import { randomUUID } from "node:crypto";
 import { requestPreview, requestStop, waitPreview } from "./preview-queue.js";
 import { startPreviewWorker } from "./preview-worker.js";
 import { previewRoutes } from "./verify/preview-site.js";
+import { defaultPreviewOrigin } from "./sites.js";
 import { previewSeed } from "./verify/sample-rows.js";
 import { tarOf } from "./verify/tar.js";
 
@@ -395,7 +396,8 @@ if (HOSTS_PREVIEWS) {
       console.error(`The live preview could not start on ${HOST}:${PREVIEW_PORT}: ${err.code ?? err.message} (set PREVIEW_PORT to a free port)`);
       return;
     }
-    previewOrigin = config.previewOrigin ?? `http://${HOST}:${previewServer.address().port}`;
+    // Step 34b: another site than the address people open (127.0.0.1 and localhost are two sites)
+    previewOrigin = config.previewOrigin ?? defaultPreviewOrigin({ host: HOST, port: previewServer.address().port, publicUrl: config.auth.publicUrl });
     console.log(`Live preview on ${previewOrigin}`);
   });
 }
