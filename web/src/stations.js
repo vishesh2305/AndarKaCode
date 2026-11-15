@@ -163,5 +163,6 @@ export const STATUS_WORDS = {
   active: "Working on it",
   waiting: "Waiting",
   failed: "Needs attention",
+  held: "Held for review", // Step 35
   soon: "Coming soon",
 };

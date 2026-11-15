@@ -768,9 +768,11 @@ describe("Step 35: a bank-login mock is held for review", () => {
   let id;
   let sent;
   before(async () => {
+    await mongoose.connect(MONGODB_URI); // the reviewer's side works on MongoDB directly (npm run review)
     sent = submissions.length;
     id = await upload(["m4-login.png", "m1-edit-delete.png"], [bankLogin, employeesScreen]);
   });
+  after(() => mongoose.disconnect());
 
   it("is held after reading, before any page is drawn, saying why", async () => {
     const project = await waitFor(id, (p) => p.state === "HELD");
@@ -785,7 +787,7 @@ describe("Step 35: a bank-login mock is held for review", () => {
     const contract = await (await fetch(`${base}/projects/${id}/contract`)).json();
     const edit = await fetch(`${base}/projects/${id}/contract`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(contract.body) });
     assert.equal(edit.status, 409);
-    assert.match((await edit.json()).error, /held for review/);
+    assert.match((await edit.json()).error, /held for review/i);
     assert.equal((await fetch(`${base}/projects/${id}/preview`, { method: "POST" })).status, 409);
     assert.equal((await fetch(`${base}/projects/${id}/download`)).status, 409);
   });

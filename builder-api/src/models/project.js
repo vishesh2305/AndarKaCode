@@ -14,6 +14,8 @@ export const PROJECT_STATES = [
   "PREVIEW_LIVE",
   "SHIPPED",
   "NEEDS_ATTENTION",
+  "HELD", // Step 35: looks like a phishing clone; a person reviews it before it is built
+  "BLOCKED", // Step 35: a reviewer blocked it: no preview, no download
 ];
 
 // One uploaded screenshot = one page of the generated app.
@@ -50,7 +52,9 @@ const projectSchema = new mongoose.Schema(
     mode: { type: String, enum: ["local", "cloud", "auto"], default: "local" }, // which AI providers to use
     useMemory: { type: Boolean, default: true }, // false = "Start fresh": build everything again (Step 14)
     currentContractVersion: { type: Number, default: 0 }, // 0 = no Contract yet
-    error: String, // why the project is NEEDS_ATTENTION
+    error: String, // why the project is NEEDS_ATTENTION (or HELD, or BLOCKED)
+    // Step 35: { status: held | released | blocked, flags: [{ brand, form, screenshot, reason }], by, note, at }
+    review: mongoose.Schema.Types.Mixed,
     // Step 22: who is building this project, until when (src/lease.js), and whether to look again after.
     lease: { owner: String, until: Date },
     rerun: { type: Boolean, default: false },

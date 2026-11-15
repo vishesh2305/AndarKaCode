@@ -6,6 +6,7 @@ import { Header } from "./components/Header.jsx";
 import { Keys } from "./components/Keys.jsx";
 import { MetroLine } from "./components/MetroLine.jsx";
 import { NewProject } from "./components/NewProject.jsx";
+import { ReportProblem } from "./components/ReportProblem.jsx";
 import { ProjectList, ago } from "./components/ProjectList.jsx";
 import { StationInfo } from "./components/StationInfo.jsx";
 import { Backend, Pages, Plan, Screenshots } from "./components/Tabs.jsx";
@@ -21,7 +22,7 @@ function readHash() {
   const named = TABS.find((t) => t.toLowerCase() === (tab ?? "").toLowerCase());
   return { creating: kind === "new", keys: kind === "keys", selectedId: kind === "p" ? id ?? null : null, tab: named ?? "Screenshots" };
 }
-const SETTLED = ["READY", "NEEDS_ATTENTION"];
+const SETTLED = ["READY", "NEEDS_ATTENTION", "HELD", "BLOCKED"]; // Step 35: held and blocked wait for a person
 
 function usePolling(load, ms, deps) {
   useEffect(() => {
@@ -63,6 +64,7 @@ function Builder({ user, onSignOut }) {
   const [selectedId, setSelectedId] = useState(initial.selectedId);
   const [creating, setCreating] = useState(initial.creating);
   const [showKeys, setShowKeys] = useState(initial.keys && Boolean(user)); // Step 31b
+  const [showReport, setShowReport] = useState(false); // Step 35
   const [project, setProject] = useState(null);
   const [station, setStation] = useState(null); // null = follow the current station
   const [tab, setTab] = useState(initial.tab);
@@ -102,7 +104,8 @@ function Builder({ user, onSignOut }) {
 
   return (
     <div className="app">
-      <Header health={health} user={user} onSignOut={onSignOut} onKeys={() => setShowKeys(true)} />
+      <Header health={health} user={user} onSignOut={onSignOut} onKeys={() => setShowKeys(true)} onReport={() => setShowReport(true)} />
+      {showReport && <ReportProblem projectId={selectedId} onClose={() => setShowReport(false)} />}
       <div className="layout">
         <ProjectList projects={projects} selectedId={selectedId} onSelect={select} onNew={() => (setShowKeys(false), setCreating(true))} creating={showForm} />
         {/* Scrolls on its own on wide screens, so the sidebar never makes the page taller (styles.css). */}
@@ -141,6 +144,15 @@ function Builder({ user, onSignOut }) {
                     )}
                   </div>
                 </div>
+
+                {status.review && (
+                  <p className={`review-banner review-${status.review.status}`} role="status">
+                    {status.review.status === "held"
+                      ? "Held for review: a person looks at it before it is built (usually within a day). "
+                      : "Blocked after a review: it can no longer be previewed or downloaded. "}
+                    {project.error}
+                  </p>
+                )}
 
                 <div className="metro-wrap">
                   <MetroLine status={status} selected={shown} onSelect={setStation} />

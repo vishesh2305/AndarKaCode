@@ -5,6 +5,7 @@ import express from "express";
 import mongoose from "mongoose";
 import { MODELS, modelFor } from "../../../shared/models.mjs";
 import { checkKey, PROVIDER_LABELS, PROVIDERS } from "../../../shared/providers.mjs";
+import { actorOf, audit } from "../audit.js";
 import { ApiKey } from "../models/api-key.js";
 import { rateLimit } from "../security.js";
 import { Workspace } from "../models/workspace.js";
@@ -59,6 +60,8 @@ export function createKeysRouter({ keyVaultSecret }) {
       sealed: vault.seal(key, { workspaceId: req.workspace.id, keyId: _id.toString() }),
       checkedAt: new Date(),
     });
+    // Step 35: the key itself never goes to the audit log, only its provider and last four characters.
+    await audit("key.add", { actor: actorOf(req), workspaceId: req.workspace._id, target: { kind: "key", id: _id }, details: { provider, lastFour: saved.lastFour, label: saved.label } });
     res.status(201).json(saved.toJSON());
   });
 
@@ -67,6 +70,7 @@ export function createKeysRouter({ keyVaultSecret }) {
     if (!removed) return res.status(404).json({ error: "No such key" });
     const unset = Object.fromEntries(SLOTS.filter((s) => req.workspace.slots?.[s]?.keyId?.equals(removed._id)).map((s) => [`slots.${s}`, 1]));
     if (Object.keys(unset).length) await Workspace.updateOne({ _id: req.workspace._id }, { $unset: unset });
+    await audit("key.delete", { actor: actorOf(req), workspaceId: req.workspace._id, target: { kind: "key", id: removed._id }, details: { provider: removed.provider, lastFour: removed.lastFour } });
     res.status(204).end();
   });
 
@@ -89,6 +93,7 @@ export function createKeysRouter({ keyVaultSecret }) {
       set[`slots.${slot}`] = { keyId: key._id, model: choice.model };
     }
     const workspace = await Workspace.findByIdAndUpdate(req.workspace._id, { ...(Object.keys(set).length && { $set: set }), ...(Object.keys(unset).length && { $unset: unset }) }, { new: true });
+    await audit("slots.set", { actor: actorOf(req), workspaceId: req.workspace._id, details: { set: Object.fromEntries(Object.entries(set).map(([k, v]) => [k, { keyId: String(v.keyId), model: v.model }])), unset: Object.keys(unset) } });
     res.json(await view(workspace));
   });
 

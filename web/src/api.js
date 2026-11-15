@@ -45,4 +45,6 @@ export const api = {
   // Memory (Step 14): { inventory, page, custom } counts, and forgetting it all (projects stay).
   memory: () => fetch("/api/memory").then(json),
   clearMemory: () => fetch("/api/memory", { method: "DELETE" }).then(json),
+  // Step 35: "Report a problem" -> { id }.
+  report: (body) => send("POST", "/api/reports", body).then(json),
 };

@@ -32,6 +32,8 @@ import { previewRoutes } from "./verify/preview-site.js";
 import { defaultPreviewOrigin } from "./sites.js";
 import { previewSeed } from "./verify/sample-rows.js";
 import { tarOf } from "./verify/tar.js";
+import { actorOf, audit } from "./audit.js";
+import { Report } from "./models/report.js";
 
 // Step 20: every setting is checked before anything starts; a wrong one stops here with every problem listed.
 let config;
@@ -106,6 +108,28 @@ app.use("/api", rateLimit({ name: "api", limit: 600, windowMs: MINUTE, key: (req
 // Step 31b: the workspace's own AI keys (BYOK) and its two slots.
 app.use("/api/keys", createKeysRouter(config));
 
+// Step 35: "Report a problem": a reason (a few words), and the project or address it is about, if any. Kept for
+// a reviewer (npm run review -- reports); at most 10 an hour per person.
+const reportLimit = rateLimit({ name: "reports", limit: 10, windowMs: 60 * MINUTE, key: (req) => String(req.user?.id ?? req.ip), message: "Too many reports" });
+app.post("/api/reports", reportLimit, async (req, res) => {
+  const { reason, projectId, url } = req.body ?? {};
+  const text = typeof reason === "string" ? reason.trim() : "";
+  if (text.length < 5 || text.length > 2000) return res.status(400).json({ error: "Say what is wrong in a few words (a reason of at most 2000 characters)" });
+  if (url !== undefined && (typeof url !== "string" || !/^https?:\/\/\S+$/.test(url.trim()) || url.length > 2000)) return res.status(400).json({ error: "url must be the address where you saw it (http:// or https://)" });
+  if (projectId !== undefined && (typeof projectId !== "string" || !/^[\w-]{1,64}$/.test(projectId))) return res.status(400).json({ error: "projectId must be a project's id" });
+  const user = req.user ?? {};
+  const report = await Report.create({ reporter: { userId: user.id, email: user.email, workspaceId: user.workspaceId }, projectId, url: url?.trim(), reason: text });
+  await audit("report.file", { actor: actorOf(req), workspaceId: user.workspaceId, target: { kind: "report", id: report.id }, details: { projectId, url: url?.trim() } });
+  res.status(201).json({ id: report.id });
+});
+
+// Step 35: what a held or blocked project may not do (edit its spec, start a preview, be downloaded).
+function underReview(project, res) {
+  if (project.state === "BLOCKED") return res.status(403).json({ error: project.error ?? "This project was blocked after a review" }), true;
+  if (project.state === "HELD") return res.status(409).json({ error: project.error ?? "This project is held for review" }), true;
+  return false;
+}
+
 // Lifecycle step 1 (ARCHITECTURE.md §3): hash, shrink, store, create the project.
 // One or more screenshots in "image" fields, in page order; each becomes one page.
 app.post("/api/projects", upload.array("image", MAX_SCREENSHOTS), async (req, res) => {
@@ -149,6 +173,7 @@ app.post("/api/projects", upload.array("image", MAX_SCREENSHOTS), async (req, re
   }
   Object.assign(project, { imagePath: project.screenshots[0].path, imageWidth: shrunk[0].width, imageHeight: shrunk[0].height });
   await project.save();
+  await audit("project.create", { actor: actorOf(req), workspaceId: project.workspaceId, target: { kind: "project", id: project.id }, details: { screenshots: files.length } });
   startPipeline(project._id); // runs in the background; poll GET /api/projects/:id
   res.status(201).json(project);
 });
@@ -186,6 +211,7 @@ app.get("/api/projects/:id/contract", async (req, res) => {
 app.put("/api/projects/:id/contract", async (req, res) => {
   const project = await findProject(req);
   if (!project) return res.status(404).json({ error: "No such project" });
+  if (underReview(project, res)) return;
   const current = await currentContract(project);
   if (!current) return res.status(409).json({ error: `No Contract to edit yet (state: ${project.state})` });
 
@@ -287,6 +313,7 @@ app.delete("/api/memory", async (req, res) => res.json({ deleted: await forgetAl
 app.post("/api/projects/:id/preview", async (req, res) => {
   const project = await findProject(req);
   if (!project) return res.status(404).json({ error: "No such project" });
+  if (underReview(project, res)) return;
   const { contract, backendJob } = await currentBuild(project);
   const appDir = backendJob && path.join(REPO_ROOT, backendJob.artifactPath);
   if (!appDir || !existsSync(path.join(appDir, "frontend", "app.js"))) {
@@ -304,6 +331,7 @@ app.post("/api/projects/:id/preview", async (req, res) => {
     await requestPreview({ projectId: project.id, hash: contract.hash, files: await tarOf(appDir), seed, auth: Boolean(contract.body.auth) });
     previewWorker?.wake();
     const { token, credentials } = await waitPreview(project.id);
+    await audit("preview.start", { actor: actorOf(req), workspaceId: project.workspaceId, target: { kind: "project", id: project.id } });
     const first = contract.body.pages[0]?.screenshot ?? 1;
     res.json({ url: `${previewOrigin}/preview/${project.id}/${token}/page-${first}.html`, credentials });
   } catch (err) {
@@ -323,6 +351,7 @@ app.delete("/api/projects/:id/preview", async (req, res) => {
 app.get("/api/projects/:id/download", async (req, res) => {
   const project = await findProject(req);
   if (!project) return res.status(404).json({ error: "No such project" });
+  if (underReview(project, res)) return;
   const { contract, backendJob, frontendJobs } = await currentBuild(project);
   const verify = await latestVerify(project, contract);
   const anyway = req.query.anyway === "1" && project.state === "NEEDS_ATTENTION" && verify;
@@ -331,6 +360,7 @@ app.get("/api/projects/:id/download", async (req, res) => {
   }
   if (!backendJob) return res.status(409).json({ error: "The generated backend is missing; rebuild the project" });
   const zip = await appArchive({ project, contract, backendJob, frontendJobs, screenshots: screenshotsOf(project), report: verify?.report });
+  await audit("project.download", { actor: actorOf(req), workspaceId: project.workspaceId, target: { kind: "project", id: project.id }, details: { version: contract.version, anyway: Boolean(anyway) } });
   res.type("application/zip").attachment(`${slug(project.name)}-v${contract.version}.zip`).send(zip);
 });
 

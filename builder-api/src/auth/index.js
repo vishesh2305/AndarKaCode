@@ -2,6 +2,7 @@
 // GET /api/health excepted); /auth/<provider>/start and /callback do the sign-in, POST /auth/logout ends it.
 // With AUTH=off nothing changes: this computer only, no accounts.
 import express from "express";
+import { audit } from "../audit.js";
 import { log } from "../log.js";
 import { Login, Session } from "../models/session.js";
 import { User } from "../models/user.js";
@@ -86,7 +87,10 @@ export function createAuth(auth, { quotas } = {}) {
     try {
       const profile = await provider.profile({ code: req.query.code, verifier: login.verifier, redirectUri: redirectUri(provider.name) });
       account = await accountFor(profile);
-      if (account.refused) log.info(`sign-in with ${provider.name} refused: ${account.refused} (${profile.email || "no email"})`);
+      if (account.refused) {
+        log.info(`sign-in with ${provider.name} refused: ${account.refused} (${profile.email || "no email"})`);
+        await audit("auth.refused", { actor: { email: profile.email || undefined, ip: req.ip }, details: { provider: provider.name, reason: account.refused } });
+      }
     } catch (err) {
       log.error(`sign-in with ${provider.name} failed: ${err.message}`);
       return back(res, "failed");
@@ -100,13 +104,15 @@ export function createAuth(auth, { quotas } = {}) {
       expiresAt: new Date(Date.now() + auth.sessionDays * 86_400_000),
     });
     res.setHeader("Set-Cookie", [clearLoginCookie({ secure }), sessionCookie(token, { secure, days: auth.sessionDays })]);
+    await audit("auth.sign-in", { actor: { userId: account.user._id, email: account.user.email, ip: req.ip }, workspaceId: account.workspace._id, details: { provider: provider.name } });
     back(res, null);
   });
 
   router.post("/auth/logout", async (req, res) => {
     if (fromElsewhere(req)) return res.status(403).json({ error: "Sign-out from another site refused" });
     const token = readCookie(req.headers.cookie, SESSION_COOKIE);
-    if (token) await Session.deleteOne({ tokenHash: hashToken(token) });
+    const ended = token && (await Session.findOneAndDelete({ tokenHash: hashToken(token) }).lean());
+    if (ended) await audit("auth.sign-out", { actor: { userId: ended.userId, ip: req.ip }, workspaceId: ended.workspaceId });
     res.setHeader("Set-Cookie", clearSessionCookie({ secure }));
     res.status(204).end();
   });
@@ -117,7 +123,7 @@ export function createAuth(auth, { quotas } = {}) {
     if (fromElsewhere(req)) return res.status(403).json({ error: "A change sent from another site is refused" });
     const signed = await current(req);
     if (!signed) return res.status(401).json({ error: "Sign in first" });
-    req.user = { id: signed.user._id, workspaceId: signed.session.workspaceId };
+    req.user = { id: signed.user._id, email: signed.user.email, workspaceId: signed.session.workspaceId };
     next();
   }
 

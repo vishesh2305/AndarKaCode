@@ -32,6 +32,7 @@ import { readScreenshots } from "./spec/read-all.js";
 import { REPO_ROOT, RUNS_DIR, saveArtifact } from "./storage.js";
 import { databaseUri } from "./verify/index.js";
 import { lane } from "./verify/lane.js";
+import { holdIfFlagged } from "./safety/review.js";
 import { failureLine } from "./verify/report.js";
 import { wireApp } from "./wirer/index.js";
 
@@ -384,6 +385,8 @@ async function run(projectId) {
   if (!project) return;
   try {
     if (project.state === "UPLOADED") await contractStage(project);
+    // Step 35: a brand's login or payment page is held for a person, before any page is drawn.
+    if (project.state === "CONTRACT_DRAFT" && (await holdIfFlagged(project))) return;
     if (["CONTRACT_DRAFT", "BUILDING"].includes(project.state)) await buildStage(project._id);
     if (["SYNCED", "INTEGRATING", "VERIFYING"].includes((await Project.findById(projectId)).state)) await verifyStage(project._id);
   } catch (err) {

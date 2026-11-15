@@ -19,7 +19,9 @@
     "invite": "node --env-file-if-exists=.env scripts/invite.mjs",
     "plan": "node --env-file-if-exists=.env scripts/plan.mjs",
     "test:integration": "node --test --test-concurrency=1 \"integration/**/*.test.js\"",
-    "test:sandbox": "node --test --test-concurrency=1 \"sandbox-tests/**/*.test.js\""
+    "test:sandbox": "node --test --test-concurrency=1 \"sandbox-tests/**/*.test.js\"",
+    "review": "node --env-file-if-exists=.env scripts/review.mjs",
+    "audit": "node --env-file-if-exists=.env scripts/audit.mjs"
   },
   "dependencies": {
     "acorn": "8.18.0",

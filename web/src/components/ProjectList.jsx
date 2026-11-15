@@ -11,8 +11,10 @@ const STATE_WORDS = {
   VERIFYING: "Checking",
   READY: "Ready to download",
   NEEDS_ATTENTION: "Needs attention",
+  HELD: "Held for review", // Step 35
+  BLOCKED: "Blocked",
 };
-const STATE_LOOK = { READY: "done", NEEDS_ATTENTION: "failed" };
+const STATE_LOOK = { READY: "done", NEEDS_ATTENTION: "failed", HELD: "held", BLOCKED: "failed" };
 
 export function ago(date) {
   const s = Math.max(0, Math.round((Date.now() - Date.parse(date)) / 1000));

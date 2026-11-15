@@ -34,9 +34,9 @@ export function StationInfo({ id, project, status }) {
           </div>
         )}
       </div>
-      {s.status === "failed" && status.error && (
+      {(s.status === "failed" || s.status === "held") && status.error && (
         <p className="station-error">
-          <strong>What went wrong: </strong>
+          <strong>{s.status === "held" ? "Why it waits: " : "What went wrong: "}</strong>
           {status.error}
         </p>
       )}

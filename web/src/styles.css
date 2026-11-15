@@ -1577,3 +1577,69 @@ a {
 .live-foot .btn {
   margin-left: 0.4rem;
 }
+
+/* ---------- Step 35: held for review, blocked, and the report form ---------- */
+
+.state-held,
+.status-held {
+  background: var(--sunny);
+}
+
+.review-banner {
+  margin: 0 0 1rem;
+  padding: 0.7rem 0.9rem;
+  border: var(--line);
+  border-radius: 12px;
+  background: #fff4d6;
+}
+
+.review-blocked {
+  background: #ffe3ec;
+}
+
+.report-dialog {
+  width: min(32rem, calc(100vw - 2rem));
+  padding: 1.2rem;
+  border: var(--line);
+  border-radius: 16px;
+  box-shadow: var(--pop);
+  background: var(--white);
+  color: var(--ink);
+}
+
+.report-dialog::backdrop {
+  background: rgb(31 37 71 / 0.35);
+}
+
+.report-dialog h2 {
+  margin: 0 0 0.8rem;
+  font-family: var(--display);
+}
+
+.report-field {
+  display: grid;
+  gap: 0.3rem;
+  margin-bottom: 0.8rem;
+  font-weight: 700;
+}
+
+.report-field textarea,
+.report-field input {
+  padding: 0.5rem;
+  border: var(--line);
+  border-radius: 10px;
+  font: 400 1rem/1.4 var(--body);
+}
+
+.report-check {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  margin-bottom: 0.8rem;
+}
+
+.report-actions {
+  display: flex;
+  gap: 0.6rem;
+  justify-content: flex-end;
+}

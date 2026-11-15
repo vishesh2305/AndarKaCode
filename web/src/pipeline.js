@@ -40,7 +40,8 @@ export function pipelineStatus(project, now = Date.now()) {
   };
 
   // Plan: fixed rules turn the inventory into an App Spec.
-  stations.plan = { status: spec ? "done" : specRejected ? "failed" : "waiting", version: spec?.version ?? null, hash: hash ?? null };
+  // Step 35: a spec that looks like a brand's login or payment page waits for a person (held).
+  stations.plan = { status: state === "HELD" ? "held" : spec ? "done" : specRejected ? "failed" : "waiting", version: spec?.version ?? null, hash: hash ?? null };
 
   // Pages: one Gateway job per screenshot, for the CURRENT spec only.
   const specPages = spec?.body?.pages ?? [];
@@ -131,8 +132,13 @@ export function pipelineStatus(project, now = Date.now()) {
   const order = ["read", "plan", "pages", "backend", "sync", "wire", "verify"];
   const current =
     order.find((id) => stations[id].status === "failed") ??
+    order.find((id) => stations[id].status === "held") ??
     order.find((id) => stations[id].status === "active") ??
     (state === "READY" ? "ready" : "upload");
 
-  return { stations, current, error: project.error ?? null, canDownloadAnyway: state === "NEEDS_ATTENTION" && Boolean(report) };
+  // Step 35: held for review, or blocked after one: why, in plain words.
+  const underReview = ["HELD", "BLOCKED"].includes(state) && ["held", "blocked"].includes(project.review?.status);
+  const review = underReview ? { status: project.review.status, reasons: (project.review.flags ?? []).map((f) => f.reason) } : null;
+
+  return { stations, current, error: project.error ?? null, review, canDownloadAnyway: state === "NEEDS_ATTENTION" && Boolean(report) };
 }
