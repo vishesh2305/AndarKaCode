@@ -82,7 +82,7 @@ describe("callModel under a busy provider", () => {
       const answers = await Promise.all(Array.from({ length: 10 }, () => callModel({ provider: "openai", apiKey: key, model: "m", prompt: "x", purpose: "code" })));
       assert.deepEqual(answers, Array(10).fill("ok"));
       assert.ok(seen.throttled > 0, "the provider did push back");
-      assert.ok(limiterFor("openai", key).limit() < 4, "and the key slowed down");
+      assert.ok(limiterFor("openai", key).slowDowns() > 0, "and the key slowed down (its limit is raised again as calls go through)");
     } finally {
       delete process.env.OPENAI_BASE_URL;
       server.close();

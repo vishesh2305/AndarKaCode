@@ -1,8 +1,10 @@
 // Step 31a: the AI providers a user can bring a key for (BYOK). One call for every purpose, in each
 // provider's own request shape: read a screenshot (image + JSON), draw a page (image + HTML), write code
-// (text). Usage is recorded like every model call (Step 25), a busy provider is tried again, and the key
-// never reaches an error message, even when the provider repeats it back.
+// (text). Usage is recorded like every model call (Step 25), a failing provider is tried again, and the key
+// never reaches an error message, even when the provider repeats it back. Step 32c: "too many requests" slows
+// that key down (shared/limiter.mjs) instead of failing; a wait of more than a few minutes is a daily limit.
 // Each address can be changed with <PROVIDER>_BASE_URL (a proxy, a regional endpoint, the tests).
+import { limiterFor } from "./limiter.mjs";
 import { geminiUsage, recordUsage, secondsSince } from "./meter.mjs";
 
 export const PROVIDERS = ["gemini", "openai", "anthropic", "groq", "openrouter"];
@@ -18,8 +20,10 @@ const baseUrl = (provider) => (process.env[`${provider.toUpperCase()}_BASE_URL`]
 
 const TIMEOUT_MS = 600_000; // a whole page can take minutes
 const ANTHROPIC_MAX_TOKENS = 16_000; // Anthropic needs a limit; a page is well under it
-const TRANSIENT = new Set([429, 500, 502, 503, 504]);
-export const retry = { delays: [2000, 5000, 10000] }; // the tests make these short
+const TRANSIENT = new Set([500, 502, 503, 504]);
+const MAX_THROTTLE_WAIT_S = 300; // a longer wait asked is a daily (or monthly) limit: say so, don't wait
+const MAX_THROTTLES = 8; // slower tries before a 429 counts as a failure (a few minutes in all)
+export const retry = { delays: [2000, 5000, 10000], throttleFloorMs: 500 }; // the tests make these short
 
 // Keys as providers write them (OpenAI sk-, Anthropic sk-ant-, Groq gsk_, OpenRouter sk-or-, Google AIza),
 // including the shortened "sk-abc...wxyz" form some providers echo back.
@@ -94,6 +98,21 @@ ADAPTERS.openai = openaiStyle("openai");
 ADAPTERS.groq = openaiStyle("groq");
 ADAPTERS.openrouter = openaiStyle("openrouter", "/key"); // its model list needs no key; /key does
 
+// How long a 429 asks us to wait, in seconds: the Retry-After header, or Gemini's RetryInfo; null if it doesn't say.
+function waitOf(res, data) {
+  const header = res.headers?.get?.("retry-after");
+  if (header) {
+    const seconds = Number(header);
+    if (Number.isFinite(seconds)) return seconds;
+    const at = Date.parse(header);
+    if (Number.isFinite(at)) return Math.max(0, (at - Date.now()) / 1000);
+  }
+  const info = data?.error?.details?.find?.((d) => d["@type"]?.endsWith("RetryInfo"));
+  const seconds = parseFloat(info?.retryDelay);
+  return Number.isFinite(seconds) ? seconds : null;
+}
+const inAbout = (s) => (s >= 3600 ? `${Math.round(s / 3600)} h` : `${Math.ceil(s / 60)} min`);
+
 const errorOf = (data, status) => data?.error?.message ?? (typeof data?.error === "string" ? data.error : null) ?? data?.message ?? `HTTP ${status}`;
 
 // A model without a JSON mode (Anthropic) may wrap its JSON in prose or a code fence.
@@ -114,22 +133,37 @@ export async function callModel({ provider, apiKey, model, prompt, imageB64 = nu
   if (!adapter) throw new Error(`Unknown provider "${provider}" (one of ${PROVIDERS.join(", ")})`);
   if (!apiKey) throw new Error(`${PROVIDER_LABELS[provider]} needs a key`);
   const { url, headers, body } = adapter.request({ apiKey, model, prompt, imageB64, json, schema, temperature });
-  for (const delay of [...retry.delays, null]) {
-    const started = Date.now();
-    let res;
-    let data;
+  const label = PROVIDER_LABELS[provider];
+  const limiter = limiterFor(provider, apiKey);
+  const delays = [...retry.delays];
+  let throttles = 0;
+  for (;;) {
+    let answer;
     try {
-      res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", ...headers }, body: JSON.stringify(body), signal: AbortSignal.timeout(TIMEOUT_MS) });
-      data = await res.json().catch(() => ({}));
+      // One call within this key's room; a 429 is thrown out of it, so it doesn't count as gone through.
+      answer = await limiter.run(async () => {
+        const started = Date.now();
+        const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", ...headers }, body: JSON.stringify(body), signal: AbortSignal.timeout(TIMEOUT_MS) });
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 429) throw Object.assign(new Error(errorOf(data, 429)), { throttled: waitOf(res, data) });
+        return { res, data, started };
+      });
     } catch (err) {
-      throw new Error(redactKey(`${PROVIDER_LABELS[provider]}: ${err.message}`, apiKey));
+      if (!("throttled" in err)) throw new Error(redactKey(`${label}: ${err.message}`, apiKey));
+      const wait = err.throttled;
+      if (wait !== null && wait > MAX_THROTTLE_WAIT_S) throw new Error(redactKey(`${label}: this key's limit is reached (${err.message}); try again in about ${inAbout(wait)}`, apiKey));
+      if (++throttles > MAX_THROTTLES) throw new Error(redactKey(`${label} 429: ${err.message} (still too many requests after ${MAX_THROTTLES} slower tries)`, apiKey));
+      limiter.slowDown(Math.max(retry.throttleFloorMs, (wait ?? Math.min(30, 2 ** throttles)) * 1000));
+      continue;
     }
+    const { res, data, started } = answer;
     if (res.ok) {
       recordUsage({ purpose, provider, model, ...adapter.usage(data), seconds: secondsSince(started) });
       const text = adapter.text(data);
       return json && provider === "anthropic" ? jsonOnly(text) : text;
     }
-    if (delay === null || !TRANSIENT.has(res.status)) throw new Error(redactKey(`${PROVIDER_LABELS[provider]} ${res.status}: ${errorOf(data, res.status)}`, apiKey));
+    const delay = delays.shift();
+    if (delay === undefined || !TRANSIENT.has(res.status)) throw new Error(redactKey(`${label} ${res.status}: ${errorOf(data, res.status)}`, apiKey));
     await new Promise((r) => setTimeout(r, delay));
   }
 }
