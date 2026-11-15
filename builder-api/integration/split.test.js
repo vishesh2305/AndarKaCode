@@ -89,6 +89,7 @@ async function service(role) {
       DEFAULT_MODE: "local",
       GEMINI_API_KEY: "",
       PREVIEW_PORT: "0",
+      PREVIEW_ORIGIN: "http://127.0.0.1:4999", // Step 34a: an api service names the preview service (none runs here)
     },
   });
   const s = { role, proc, root: `http://127.0.0.1:${port}`, log: "" };

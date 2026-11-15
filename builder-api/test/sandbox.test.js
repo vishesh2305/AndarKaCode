@@ -146,10 +146,14 @@ describe("tarOf: the app's files, packed to copy into the sandbox", () => {
   });
 
   it("untarTo refuses a name that would leave its folder", async () => {
-    const evil = Buffer.concat([await tarOf(dir)]);
-    evil.write("../escape.js".padEnd(100, "\0"), 0, 100, "utf8"); // the first entry's name
-    // the header's checksum no longer matches: refused for that, or for the name
-    await assert.rejects(untarTo(evil, path.join(tmpdir(), "untar-evil")), /outside|checksum/);
+    const evil = await tarOf(dir);
+    evil.write("../escape/".padEnd(100, "\0"), 0, 100, "utf8"); // the first entry (a folder) renamed
+    evil.fill(32, 148, 156); // with a correct checksum, so only the name is wrong
+    evil.write(`${evil.subarray(0, 512).reduce((s, b) => s + b, 0).toString(8).padStart(6, "0")}\0 `, 148, 8, "utf8");
+    await assert.rejects(untarTo(evil, path.join(tmpdir(), "untar-evil")), /outside their folder/);
+    const damaged = await tarOf(dir);
+    damaged[0] ^= 1;
+    await assert.rejects(untarTo(damaged, path.join(tmpdir(), "untar-evil")), /checksum/);
   });
 });
 

@@ -4,6 +4,8 @@
 // It starts with the rows the screenshots show (sample-rows.js), so every row button can be tried at once.
 // Step 33b: it runs in a box (box.js): its own sandbox with SANDBOX=docker (at most PREVIEW_MAX_MS, then it
 // stops like an idle one), else a process here on our throwaway database.
+// Step 34a: the preview service (preview-service.js, or this process with ROLE=all) runs them; each has a
+// secret token in its address, and onEnd() is called however it stops.
 import { randomBytes } from "node:crypto";
 import mongoose from "mongoose";
 import { openBox } from "./box.js";
@@ -43,7 +45,7 @@ async function fillDatabase(uri, records) {
 }
 
 /** Starts (or reuses) the preview for the current spec version. seed() -> the starting rows, for a new start. */
-export async function startPreview({ projectId, hash, appDir, auth, mongoUri, seed }) {
+export async function startPreview({ projectId, hash, appDir, auth, mongoUri, seed, token = null, onEnd = null }) {
   const existing = previews.get(projectId);
   if (existing?.hash === hash) {
     const ready = existing.app ? existing : await existing.pending;
@@ -53,7 +55,7 @@ export async function startPreview({ projectId, hash, appDir, auth, mongoUri, se
   if (existing) await stopPreview(projectId);
 
   const credentials = auth ? { email: "preview@example.com", password: randomBytes(9).toString("base64url") } : null;
-  const entry = { hash, credentials, app: null, timer: null };
+  const entry = { hash, credentials, token, onEnd, app: null, timer: null };
   const env = credentials ? { ADMIN_EMAIL: credentials.email, ADMIN_PASSWORD: credentials.password } : {};
   entry.pending = (async () => {
     entry.box = await openBox({ appDir, mongoUri, maxMs: MAX_MS });
@@ -91,4 +93,5 @@ export async function stopPreview(projectId) {
   clearTimeout(preview.ends);
   if (!preview.app) await preview.pending.catch(() => null);
   await preview.box?.stop().catch(() => {}); // the app, and its test data
+  await preview.onEnd?.();
 }

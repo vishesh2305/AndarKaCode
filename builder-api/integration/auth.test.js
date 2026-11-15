@@ -102,6 +102,7 @@ before(async () => {
       PORT: String(port),
       HOST: "127.0.0.1",
       PREVIEW_PORT: "0",
+      PREVIEW_ORIGIN: "http://127.0.0.1:4999", // Step 34a: an api service names the preview service (none runs here)
       MONGODB_URI,
       GATEWAY_URL: "",
       GATEWAY_API_KEY: "",

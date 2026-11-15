@@ -2,7 +2,7 @@
 // `docker exec -i ... tar -x`. Written here so it works the same on Windows, macOS and Linux (no tar
 // program, no AppleDouble files, no paths of this computer). node_modules is left out: the sandbox image
 // has the packages.
-import { readdir, readFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const BLOCK = 512;
@@ -60,4 +60,31 @@ export async function tarOf(dir, { skip = ["node_modules"] } = {}) {
   await add("");
   chunks.push(Buffer.alloc(BLOCK * 2));
   return Buffer.concat(chunks);
+}
+
+/**
+ * Step 34a: unpacks a tar made by tarOf into dir (the preview service gets an app's files only this way).
+ * Every header's checksum is checked, and a name that would land outside dir is refused.
+ */
+export async function untarTo(buffer, dir) {
+  const root = path.resolve(dir);
+  await mkdir(root, { recursive: true });
+  for (let at = 0; at + BLOCK <= buffer.length; ) {
+    const block = buffer.subarray(at, at + BLOCK);
+    if (block.every((b) => b === 0)) break;
+    const text = (from, length) => block.subarray(from, from + length).toString("utf8").replace(/\0.*$/s, "");
+    const sum = block.reduce((s, b, i) => s + (i >= 148 && i < 156 ? 32 : b), 0);
+    if (parseInt(text(148, 8).trim(), 8) !== sum) throw new Error("The app's files are damaged (a tar checksum does not match)");
+    const name = [text(345, 155), text(0, 100)].filter(Boolean).join("/");
+    const size = parseInt(text(124, 12).trim() || "0", 8);
+    const type = text(156, 1) || "0";
+    const target = path.resolve(root, name);
+    if (target !== root && !target.startsWith(root + path.sep)) throw new Error(`The app's files name a place outside their folder: ${name}`);
+    if (type === "5") await mkdir(target, { recursive: true });
+    else if (type === "0") {
+      await mkdir(path.dirname(target), { recursive: true });
+      await writeFile(target, buffer.subarray(at + BLOCK, at + BLOCK + size));
+    }
+    at += BLOCK + Math.ceil(size / BLOCK) * BLOCK;
+  }
 }

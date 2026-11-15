@@ -2,7 +2,7 @@
 // message naming the setting and the file; every problem is listed at once; a secret is never printed.
 const FILE = "builder-api/.env";
 const MODES = ["local", "cloud", "auto"];
-const ROLES = ["all", "api", "orchestrator", "ui-worker", "verifier"]; // Step 24: one process, or the services (ui-worker: Step 26; verifier: Step 33c)
+const ROLES = ["all", "api", "orchestrator", "ui-worker", "verifier", "preview"]; // Step 24: one process, or the services (ui-worker: Step 26; verifier: Step 33c; preview: Step 34a)
 const PAGE_LANES = ["gateway", "queue"];
 const MIN_GATEWAY_KEY = 16; // what the Gateway itself accepts (gateway/src/server.js)
 const SANDBOXES = ["process", "docker"]; // Step 33b: where generated apps run
@@ -118,7 +118,9 @@ export function checkConfig(env) {
   if (!VERIFY_LANES.includes(verifyLane)) problems.push(`VERIFY_LANE in ${FILE} must be one of ${VERIFY_LANES.join(", ")} (it is "${verifyLane}")`);
   const sandbox = { mode: has("SANDBOX") ? env.SANDBOX : "process", runtime: has("SANDBOX_RUNTIME") ? env.SANDBOX_RUNTIME : null, reach: has("SANDBOX_REACH") ? env.SANDBOX_REACH : "door" };
   if (!REACHES.includes(sandbox.reach)) problems.push(`SANDBOX_REACH in ${FILE} must be one of ${REACHES.join(", ")} (it is "${sandbox.reach}")`);
-  const runsApps = ["all", "api", "verifier"].includes(role) || (role === "orchestrator" && verifyLane === "inline"); // api: the live preview
+  const runsApps = ["all", "verifier", "preview"].includes(role) || (role === "orchestrator" && verifyLane === "inline");
+  // Step 34a: the api service hosts no preview; the browser finds the preview service at PREVIEW_ORIGIN.
+  if (role === "api" && !previewOrigin) problems.push(`ROLE=api needs PREVIEW_ORIGIN in ${FILE}: the address where browsers reach the preview service (ROLE=preview)`);
   if (!SANDBOXES.includes(sandbox.mode)) problems.push(`SANDBOX in ${FILE} must be one of ${SANDBOXES.join(", ")} (it is "${sandbox.mode}")`);
   else if (sandbox.mode === "process" && runsApps && authOn && env.NODE_ENV === "production") problems.push(`SANDBOX=docker is needed in ${FILE} with NODE_ENV=production and sign-in on: generated apps of outside users must run in their sandbox, not as processes on this server (Step 33)`);
   if (sandbox.runtime && sandbox.mode !== "docker") problems.push(`SANDBOX_RUNTIME in ${FILE} needs SANDBOX=docker (it picks the sandbox's container runtime)`);

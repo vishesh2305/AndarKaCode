@@ -1,6 +1,5 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import http from "node:http";
 import express from "express";
 import mongoose from "mongoose";
 import multer from "multer";
@@ -25,9 +24,13 @@ import { forgetAll, memoryCounts } from "./memory/index.js";
 import { checkSpec } from "./spec/check.js";
 import { appArchive, listAppFiles, safeAppPath, slug } from "./package-app.js";
 import { REPO_ROOT, saveScreenshot, sha256, shrinkScreenshot } from "./storage.js";
-import { databaseUri } from "./verify/index.js";
-import { previewOf, startPreview, stopPreview, touchPreview } from "./verify/preview.js";
+import os from "node:os";
+import { randomUUID } from "node:crypto";
+import { requestPreview, requestStop, waitPreview } from "./preview-queue.js";
+import { startPreviewWorker } from "./preview-worker.js";
+import { previewRoutes } from "./verify/preview-site.js";
 import { previewSeed } from "./verify/sample-rows.js";
+import { tarOf } from "./verify/tar.js";
 
 // Step 20: every setting is checked before anything starts; a wrong one stops here with every problem listed.
 let config;
@@ -65,25 +68,15 @@ async function gatewayHealth() {
 
 const app = express();
 
-// The live preview (Step 16) has its own small server on another local port (another site than the UI),
-// so a generated page in the Live view can keep its own login without reaching the UI or its API.
-// /preview/<project>/... goes to that project's running app, untouched.
-let previewOrigin = null; // set once the preview server listens
+// The live preview (Step 16) has its own address, another site than the UI, so a generated page in the Live
+// view can keep its own login without reaching the UI or its API. Step 34a: the preview service runs it
+// (ROLE=preview), asked through MongoDB; with ROLE=all this process is that service too, on PREVIEW_PORT.
+const HOSTS_PREVIEWS = config.role === "all";
+let previewOrigin = config.previewOrigin; // with ROLE=all and no PREVIEW_ORIGIN: set once the preview site listens
 const previewSite = express();
-const PASS_HEADERS = ["content-type", "authorization", "accept"];
-previewSite.use("/preview/:id", (req, res) => {
-  const preview = previewOf(req.params.id);
-  if (!preview) return res.status(404).type("text/plain").send("No live preview is running for this project. Start it from the Pages tab.");
-  touchPreview(req.params.id);
-  const headers = Object.fromEntries(PASS_HEADERS.filter((h) => req.headers[h]).map((h) => [h, req.headers[h]]));
-  const upstream = http.request(new URL(req.url, preview.app.url), { method: req.method, headers }, (answer) => {
-    const { connection, "keep-alive": keepAlive, "transfer-encoding": encoding, ...rest } = answer.headers;
-    res.writeHead(answer.statusCode, rest);
-    answer.pipe(res);
-  });
-  upstream.on("error", () => res.headersSent || res.status(502).type("text/plain").send("The live preview stopped answering."));
-  req.pipe(upstream);
-});
+previewSite.disable("x-powered-by");
+previewSite.use(previewRoutes());
+const previewWorker = HOSTS_PREVIEWS ? startPreviewWorker({ worker: `${os.hostname()}:${process.pid}:${randomUUID().slice(0, 8)}`, mongodbUri: MONGODB_URI, log }) : null;
 
 // Step 32a: security headers and the UI's Content Security Policy on every answer; changes only from our own
 // site (with sign-in off too); no CORS.
@@ -299,24 +292,19 @@ app.post("/api/projects/:id/preview", async (req, res) => {
     return res.status(409).json({ error: `The live preview is available once the app is built and wired (now: ${project.state})` });
   }
   try {
-    const preview = await startPreview({
-      projectId: project.id,
-      hash: contract.hash,
-      appDir,
-      auth: Boolean(contract.body.auth),
-      mongoUri: databaseUri(MONGODB_URI, `preview_${project.id}`),
-      // The rows the screenshots show: from each page's sample array, else from the screenshot's table.
-      seed: async () => {
-        const pages = [];
-        for (const page of contract.body.pages) {
-          const html = await readFile(path.join(appDir, "frontend", `page-${page.screenshot}.html`), "utf8").catch(() => "");
-          pages.push({ screenshot: page.screenshot, html });
-        }
-        return previewSeed({ spec: contract.body, pages, inventories: (project.screenshots ?? []).map((s) => s.inventory) });
-      },
-    });
+    // Step 34a: the request carries the app's files and its starting rows (the preview service shares no disk).
+    // The rows the screenshots show: from each page's sample array, else from the screenshot's table.
+    const pages = [];
+    for (const page of contract.body.pages) {
+      const html = await readFile(path.join(appDir, "frontend", `page-${page.screenshot}.html`), "utf8").catch(() => "");
+      pages.push({ screenshot: page.screenshot, html });
+    }
+    const seed = previewSeed({ spec: contract.body, pages, inventories: (project.screenshots ?? []).map((s) => s.inventory) });
+    await requestPreview({ projectId: project.id, hash: contract.hash, files: await tarOf(appDir), seed, auth: Boolean(contract.body.auth) });
+    previewWorker?.wake();
+    const { token, credentials } = await waitPreview(project.id);
     const first = contract.body.pages[0]?.screenshot ?? 1;
-    res.json({ url: `${previewOrigin}/preview/${project.id}/page-${first}.html`, credentials: preview.credentials });
+    res.json({ url: `${previewOrigin}/preview/${project.id}/${token}/page-${first}.html`, credentials });
   } catch (err) {
     res.status(500).json({ error: `The live preview could not start: ${err.message}` });
   }
@@ -325,7 +313,8 @@ app.post("/api/projects/:id/preview", async (req, res) => {
 app.delete("/api/projects/:id/preview", async (req, res) => {
   const project = await findProject(req);
   if (!project) return res.status(404).json({ error: "No such project" });
-  await stopPreview(project.id);
+  await requestStop(project.id);
+  previewWorker?.wake();
   res.status(204).end();
 });
 
@@ -400,11 +389,13 @@ app.listen(PORT, HOST, (err) => {
   log.info(`Builder API listening on http://${HOST}:${PORT}`);
 });
 
-const previewServer = previewSite.listen(PREVIEW_PORT, HOST, (err) => {
-  if (err) {
-    console.error(`The live preview could not start on ${HOST}:${PREVIEW_PORT}: ${err.code ?? err.message} (set PREVIEW_PORT to a free port)`);
-    return;
-  }
-  previewOrigin = config.previewOrigin ?? `http://${HOST}:${previewServer.address().port}`;
-  console.log(`Live preview on ${previewOrigin}`);
-});
+if (HOSTS_PREVIEWS) {
+  const previewServer = previewSite.listen(PREVIEW_PORT, HOST, (err) => {
+    if (err) {
+      console.error(`The live preview could not start on ${HOST}:${PREVIEW_PORT}: ${err.code ?? err.message} (set PREVIEW_PORT to a free port)`);
+      return;
+    }
+    previewOrigin = config.previewOrigin ?? `http://${HOST}:${previewServer.address().port}`;
+    console.log(`Live preview on ${previewOrigin}`);
+  });
+}
