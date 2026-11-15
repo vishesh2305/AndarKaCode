@@ -9,7 +9,11 @@ try {
   console.error(err.message);
   process.exit(1);
 }
-// Step 24: ROLE=orchestrator is the building service, ROLE=ui-worker draws pages (Step 26); neither has a UI.
-// api and all (the default) serve the UI and API.
-const entry = { orchestrator: "./worker.js", "ui-worker": "./ui-worker.js" }[config.role] ?? "./app.js";
+// Step 33b: sign-in on, but generated apps still run as processes here: fine on this computer, not for others.
+if (config.auth.on && config.sandbox.mode === "process") {
+  console.warn("Warning: sign-in is on, but generated apps run as processes on this computer (SANDBOX=process). Before anyone else uses it, set SANDBOX=docker (Step 33).");
+}
+// Step 24: ROLE=orchestrator is the building service, ROLE=ui-worker draws pages (Step 26), ROLE=verifier runs
+// generated apps (Step 33c); none has a UI. api and all (the default) serve the UI and API.
+const entry = { orchestrator: "./worker.js", "ui-worker": "./ui-worker.js", verifier: "./verifier.js" }[config.role] ?? "./app.js";
 await import(entry);

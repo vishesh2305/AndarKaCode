@@ -7,8 +7,11 @@
 // Our door (door.mjs, a second small container) forwards our connections to the app and its database,
 // published on this computer's loopback only. The Verifier, the button tester and the live preview use the
 // app through it as before: box.startApp() -> { url }, box.dbUri(name) to fill or read its database.
+// Step 33c: SANDBOX_REACH=network, for a verifier that runs in a container itself (Compose): no door; the
+// verifier's container (SANDBOX_JOIN, by default its hostname) joins the sandbox's network while it lives.
 import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { appEnv } from "./app-runner.js";
@@ -82,8 +85,9 @@ async function must(args, options) {
 }
 
 /** Builds the sandbox image from deploy/sandbox/Dockerfile (Docker's cache makes a second build quick). */
-export async function buildSandboxImage({ image = SANDBOX_IMAGE } = {}) {
-  await must(["build", "-q", "-t", image, "-f", path.join(ROOT, "deploy", "sandbox", "Dockerfile"), ROOT], { timeoutMs: 20 * 60_000 });
+// SANDBOX_CONTEXT: in the Builder API's own image (Compose), just the files the sandbox image needs.
+export async function buildSandboxImage({ image = SANDBOX_IMAGE, context = process.env.SANDBOX_CONTEXT || ROOT } = {}) {
+  await must(["build", "-q", "-t", image, "-f", path.join(context, "deploy", "sandbox", "Dockerfile"), context], { timeoutMs: 20 * 60_000 });
 }
 
 const open = new Set();
@@ -103,7 +107,16 @@ const hostPort = async (container, port) => (await must(["port", container, `${p
  * Opens a sandbox with the app in appDir copied in. Resolves to the box:
  *   url, dbUri(name), insideDbUri(name), startApp({ db, env }), exec(args, { env, timeoutMs }), running(), stop().
  */
-export async function openSandbox({ appDir, maxMs = DEFAULT_MAX_MS, runtime = process.env.SANDBOX_RUNTIME || null, image = SANDBOX_IMAGE, limits = {} }) {
+export async function openSandbox({
+  appDir,
+  maxMs = DEFAULT_MAX_MS,
+  runtime = process.env.SANDBOX_RUNTIME || null,
+  reach = process.env.SANDBOX_REACH || "door",
+  join = process.env.SANDBOX_JOIN ?? os.hostname(),
+  image = SANDBOX_IMAGE,
+  limits = {},
+}) {
+  if (reach === "network" && !join) throw new Error("SANDBOX_REACH=network needs the container to join (SANDBOX_JOIN, by default this container's hostname)");
   const name = `sb-${randomBytes(6).toString("hex")}`;
   const apps = new Set();
   let stopped = false;
@@ -188,6 +201,7 @@ export async function openSandbox({ appDir, maxMs = DEFAULT_MAX_MS, runtime = pr
       open.delete(box);
       clearTimeout(timer);
       for (const app of apps) app.child.kill();
+      if (reach === "network") await docker(["network", "disconnect", "-f", name, join]).catch(() => {});
       await docker(["rm", "-f", name, `${name}-door`]).catch(() => {});
       await docker(["network", "rm", name]).catch(() => {});
     },
@@ -201,8 +215,12 @@ export async function openSandbox({ appDir, maxMs = DEFAULT_MAX_MS, runtime = pr
   try {
     await must(["network", "create", "--internal", "--label", "andarkacode.sandbox=network", name]);
     await must(sandboxArgs({ name, image, maxMs, runtime, ...limits }));
-    await must(doorArgs({ name, image, maxMs }));
-    await must(["network", "connect", name, `${name}-door`]);
+    if (reach === "network") {
+      await must(["network", "connect", name, join]);
+    } else {
+      await must(doorArgs({ name, image, maxMs }));
+      await must(["network", "connect", name, `${name}-door`]);
+    }
     if (appDir) await must(["exec", "-i", "-u", "0", name, "tar", "-x", "-f", "-", "-C", "/app", "--no-same-owner", "--no-same-permissions"], { input: await tarOf(appDir) });
     const deadline = Date.now() + START_TIMEOUT_MS;
     for (;;) {
@@ -211,7 +229,8 @@ export async function openSandbox({ appDir, maxMs = DEFAULT_MAX_MS, runtime = pr
       if (Date.now() > deadline || /database stopped/.test(stderr)) throw new Error(`The sandbox's database did not start: ${stderr.trim().split("\n").pop() ?? "no answer"}`);
       await new Promise((r) => setTimeout(r, 200));
     }
-    [appAddress, dbAddress] = await Promise.all([hostPort(`${name}-door`, APP_PORT), hostPort(`${name}-door`, DB_PORT)]);
+    if (reach === "network") [appAddress, dbAddress] = [`${name}:${APP_PORT}`, `${name}:${DB_PORT}`];
+    else [appAddress, dbAddress] = await Promise.all([hostPort(`${name}-door`, APP_PORT), hostPort(`${name}-door`, DB_PORT)]);
   } catch (err) {
     await box.stop();
     throw err;

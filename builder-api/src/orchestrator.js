@@ -6,7 +6,6 @@ import os from "node:os";
 import path from "node:path";
 import { contractHash } from "../../shared/hash.mjs";
 import { checkCustomCode } from "./custom/safety.js";
-import { pressOnce } from "./custom/tester.js";
 import { buttonDatabase, writeButtons } from "./custom/all.js";
 import { writeCustomCode, writtenButtons } from "./custom/writer.js";
 import { generateBackend, writeBackend } from "./generator/index.js";
@@ -31,7 +30,8 @@ import { pageInstructions } from "./spec/instructions.js";
 import { readInventory } from "./spec/inventory.js";
 import { readScreenshots } from "./spec/read-all.js";
 import { REPO_ROOT, RUNS_DIR, saveArtifact } from "./storage.js";
-import { databaseUri, verifyApp } from "./verify/index.js";
+import { databaseUri } from "./verify/index.js";
+import { lane } from "./verify/lane.js";
 import { failureLine } from "./verify/report.js";
 import { wireApp } from "./wirer/index.js";
 
@@ -264,7 +264,7 @@ async function backendBranch(project, contract) {
     job.custom = await writeButtons(customOps, { writeOne: async (op, i) => {
       const started = Date.now();
       const mongoUri = databaseUri(MONGODB_URI, buttonDatabase(project.id, i));
-      const test = (code) => pressOnce({ spec, op, appDir: dir, mongoUri, code });
+      const test = (code) => lane.press({ spec, op, appDir: dir, mongoUri, code, priority: project.priority ?? 0 }); // Step 33c: here, or the verifier service
       // Verified code from memory is pressed in this app first (Step 14): the same button on the same kind of
       // table, else the same button on a table whose fields still fit the code (the library). Only if none
       // passes here does the coding AI write new code.
@@ -357,10 +357,11 @@ async function verifyStage(projectId) {
   await setState(project, "VERIFYING");
   const job = await runJob(project, "verify", async (job) => {
     job.contractHash = contract.hash;
-    job.report = await verifyApp({
+    job.report = await lane.verify({
       spec: contract.body,
       appDir,
       customWritten,
+      priority: project.priority ?? 0,
       mongoUri: databaseUri(MONGODB_URI, `verify_${project.id}`),
       testsMongoUri: databaseUri(MONGODB_URI, `verify_${project.id}_tests`),
     });

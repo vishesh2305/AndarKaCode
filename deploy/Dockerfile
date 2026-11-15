@@ -17,6 +17,13 @@ COPY builder-api/src ./src
 COPY shared /app/shared
 COPY templates /app/templates
 COPY --from=web /app/web/dist /app/web/dist
+# Step 33c: the verifier service starts sandboxes through the Docker socket it is given (only it gets one):
+# the Docker CLI (static), and the few files the sandbox image is built from (SANDBOX_CONTEXT).
+COPY --from=docker:28.5.2-cli /usr/local/bin/docker /usr/local/bin/docker
+COPY --from=docker:28.5.2-cli /usr/local/libexec/docker/cli-plugins/docker-buildx /usr/local/libexec/docker/cli-plugins/docker-buildx
+COPY deploy/sandbox /app/sandbox-context/deploy/sandbox
+COPY builder-api/src/verify/run-app.mjs /app/sandbox-context/builder-api/src/verify/run-app.mjs
+ENV SANDBOX_CONTEXT=/app/sandbox-context
 # runs/ (projects, generated apps, blobs) is a volume shared by both services
 RUN mkdir -p /app/runs && chown -R node:node /app/runs
 USER node

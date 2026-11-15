@@ -2,10 +2,12 @@
 // message naming the setting and the file; every problem is listed at once; a secret is never printed.
 const FILE = "builder-api/.env";
 const MODES = ["local", "cloud", "auto"];
-const ROLES = ["all", "api", "orchestrator", "ui-worker"]; // Step 24: one process, or the services (ui-worker: Step 26)
+const ROLES = ["all", "api", "orchestrator", "ui-worker", "verifier"]; // Step 24: one process, or the services (ui-worker: Step 26; verifier: Step 33c)
 const PAGE_LANES = ["gateway", "queue"];
 const MIN_GATEWAY_KEY = 16; // what the Gateway itself accepts (gateway/src/server.js)
 const SANDBOXES = ["process", "docker"]; // Step 33b: where generated apps run
+const VERIFY_LANES = ["inline", "queue"]; // Step 33c: the orchestrator runs apps itself, or the verifier service does
+const REACHES = ["door", "network"]; // Step 33c: how we reach a sandbox
 
 /** { config, problems }: the settings read from env, and what is wrong with them (plain sentences). */
 export function checkConfig(env) {
@@ -109,14 +111,20 @@ export function checkConfig(env) {
 
   // Step 33b: where generated apps run (the Verifier, the button tester, the live preview). docker: each in
   // its own sandbox (Step 33a; SANDBOX_RUNTIME=runsc for gVisor). process: on this computer, for development.
-  // Outside users (NODE_ENV=production with sign-in on) only with the sandbox.
-  const sandbox = { mode: has("SANDBOX") ? env.SANDBOX : "process", runtime: has("SANDBOX_RUNTIME") ? env.SANDBOX_RUNTIME : null };
+  // Outside users (NODE_ENV=production with sign-in on) only with the sandbox, wherever apps run.
+  // Step 33c: VERIFY_LANE=queue hands "verify" and "press" to the verifier service (ROLE=verifier); a
+  // verifier in a container reaches its sandboxes by joining their networks (SANDBOX_REACH=network).
+  const verifyLane = has("VERIFY_LANE") ? env.VERIFY_LANE : "inline";
+  if (!VERIFY_LANES.includes(verifyLane)) problems.push(`VERIFY_LANE in ${FILE} must be one of ${VERIFY_LANES.join(", ")} (it is "${verifyLane}")`);
+  const sandbox = { mode: has("SANDBOX") ? env.SANDBOX : "process", runtime: has("SANDBOX_RUNTIME") ? env.SANDBOX_RUNTIME : null, reach: has("SANDBOX_REACH") ? env.SANDBOX_REACH : "door" };
+  if (!REACHES.includes(sandbox.reach)) problems.push(`SANDBOX_REACH in ${FILE} must be one of ${REACHES.join(", ")} (it is "${sandbox.reach}")`);
+  const runsApps = ["all", "api", "verifier"].includes(role) || (role === "orchestrator" && verifyLane === "inline"); // api: the live preview
   if (!SANDBOXES.includes(sandbox.mode)) problems.push(`SANDBOX in ${FILE} must be one of ${SANDBOXES.join(", ")} (it is "${sandbox.mode}")`);
-  else if (sandbox.mode === "process" && authOn && env.NODE_ENV === "production") problems.push(`SANDBOX=docker is needed in ${FILE} with NODE_ENV=production and sign-in on: generated apps of outside users must run in their sandbox, not as processes on this server (Step 33)`);
+  else if (sandbox.mode === "process" && runsApps && authOn && env.NODE_ENV === "production") problems.push(`SANDBOX=docker is needed in ${FILE} with NODE_ENV=production and sign-in on: generated apps of outside users must run in their sandbox, not as processes on this server (Step 33)`);
   if (sandbox.runtime && sandbox.mode !== "docker") problems.push(`SANDBOX_RUNTIME in ${FILE} needs SANDBOX=docker (it picks the sandbox's container runtime)`);
   else if (sandbox.runtime && !/^[a-z][a-z0-9_.-]*$/i.test(sandbox.runtime)) problems.push(`SANDBOX_RUNTIME in ${FILE} must be the name of a Docker runtime, for example runsc (it is "${sandbox.runtime}")`);
 
-  const config = { port, host: has("HOST") ? env.HOST : "127.0.0.1", previewPort, mongodbUri, defaultMode, gateway, storage, role, previewOrigin, pageLane, placementMs, auth, keyVaultSecret, quotas, buildParallel, sandbox, modes: MODES };
+  const config = { port, host: has("HOST") ? env.HOST : "127.0.0.1", previewPort, mongodbUri, defaultMode, gateway, storage, role, previewOrigin, pageLane, placementMs, auth, keyVaultSecret, quotas, buildParallel, sandbox, verifyLane, modes: MODES };
   return { config, problems };
 }
 
