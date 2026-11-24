@@ -35,7 +35,7 @@ export async function accountFor(profile) {
       $addToSet: { identities: identity },
       $set: { lastSignInAt: new Date(), ...(profile.name && !user.name && { name: profile.name }), ...(profile.avatarUrl && { avatarUrl: profile.avatarUrl }) },
     },
-    { new: true }
+    { returnDocument: "after" }
   );
   const personal = { ownerId: user._id, personal: true };
   const workspace = await once(
@@ -43,7 +43,7 @@ export async function accountFor(profile) {
       Workspace.findOneAndUpdate(
         personal,
         { $setOnInsert: { ...personal, name: `${user.name || user.email}'s workspace`, members: [{ userId: user._id, role: "owner" }] } },
-        { upsert: true, new: true }
+        { upsert: true, returnDocument: "after" }
       ),
     () => Workspace.findOne(personal)
   );

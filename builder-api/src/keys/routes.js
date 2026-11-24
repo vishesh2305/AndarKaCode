@@ -92,7 +92,7 @@ export function createKeysRouter({ keyVaultSecret }) {
       }
       set[`slots.${slot}`] = { keyId: key._id, model: choice.model };
     }
-    const workspace = await Workspace.findByIdAndUpdate(req.workspace._id, { ...(Object.keys(set).length && { $set: set }), ...(Object.keys(unset).length && { $unset: unset }) }, { new: true });
+    const workspace = await Workspace.findByIdAndUpdate(req.workspace._id, { ...(Object.keys(set).length && { $set: set }), ...(Object.keys(unset).length && { $unset: unset }) }, { returnDocument: "after" });
     await audit("slots.set", { actor: actorOf(req), workspaceId: req.workspace._id, details: { set: Object.fromEntries(Object.entries(set).map(([k, v]) => [k, { keyId: String(v.keyId), model: v.model }])), unset: Object.keys(unset) } });
     res.json(await view(workspace));
   });

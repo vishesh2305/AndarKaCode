@@ -60,7 +60,7 @@ export async function listReports({ status = "open" } = {}) {
 }
 
 export async function closeReport(id, { by, note } = {}) {
-  const report = await Report.findByIdAndUpdate(id, { $set: { status: "closed", closedBy: by, note } }, { new: true });
+  const report = await Report.findByIdAndUpdate(id, { $set: { status: "closed", closedBy: by, note } }, { returnDocument: "after" });
   if (!report) throw new Error(`No report ${id}`);
   await audit("report.close", { actor: { email: by, service: "review script" }, target: { kind: "report", id }, details: { note } });
   return report;
