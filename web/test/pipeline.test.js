@@ -285,3 +285,34 @@ describe("pipelineStatus: held for review (Step 35)", () => {
     assert.equal(pipelineStatus(withSpec({ state: "BUILDING", review: { status: "released", flags } })).review, null);
   });
 });
+
+describe("pipelineStatus: the workspace's own key failed, the local models took over", () => {
+  const why = "Your Gemini key failed (this key's limit is reached); the local models did this instead";
+
+  it("Read, Pages and the custom button each say so", () => {
+    const p = withSpec({
+      state: "READY",
+      jobs: [
+        job("contract", "done", { provider: "local", fallback: why }),
+        job("frontend", "done", { contractHash: HASH, page: 1, provider: "local", fallback: why }),
+        job("frontend", "done", { contractHash: HASH, page: 2, provider: "local" }),
+        job("backend", "done", { contractHash: HASH, custom: [{ operation: "giveRaise", button: "Give Raise", ok: true, provider: "local", answers: 1, fallback: why }] }),
+      ],
+    });
+    const { read, pages, backend } = pipelineStatus(p).stations;
+    assert.equal(read.fallback, why);
+    assert.equal(pages.fallback, why);
+    const facts = (id, s) => Object.fromEntries(STATIONS[id].details(p, s));
+    assert.equal(facts("read", read)["Your key"], why);
+    assert.equal(facts("pages", pages)["Your key"], why);
+    assert.match(facts("backend", backend)["Give Raise"], /written by .*local.*Your Gemini key failed/is);
+  });
+
+  it("no fallback, no line about it", () => {
+    const p = withSpec({ state: "READY", jobs: [job("contract", "done", { provider: "gemini" }), job("frontend", "done", { contractHash: HASH, page: 1, provider: "gemini" })] });
+    const { read, pages } = pipelineStatus(p).stations;
+    assert.equal(read.fallback, null);
+    assert.equal(pages.fallback, null);
+    assert.equal(Object.fromEntries(STATIONS.read.details(p, read))["Your key"], undefined);
+  });
+});
