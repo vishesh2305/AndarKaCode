@@ -34,6 +34,7 @@ export function pipelineStatus(project, now = Date.now()) {
     status: spec || specRejected || reading?.status === "done" ? "done" : reading?.status === "failed" ? "failed" : "active",
     seconds: secondsOf(reading, now),
     provider: reading?.provider ?? null,
+    fallback: reading?.fallback ?? null, // the workspace's key failed; the local models read it (why)
     fromMemory: reading?.fromMemory ?? null,
     remembered: Boolean(reading?.fromMemory),
     saved: savedBy([reading?.fromMemory]),
@@ -61,6 +62,7 @@ export function pipelineStatus(project, now = Date.now()) {
     pages,
     seconds: pageJobs.length ? Math.max(...pageJobs.map((j) => secondsOf(j, now) ?? 0)) : null,
     provider: pageJobs.at(-1)?.provider ?? null,
+    fallback: pageJobs.findLast((j) => j.fallback)?.fallback ?? null,
     remembered: pages.some((p) => p.fromMemory),
     saved: savedBy(pages.map((p) => p.fromMemory)),
   };

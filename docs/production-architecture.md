@@ -146,6 +146,7 @@ PRODUCTION (two servers, cloud models)
   - only ai-router can ask for a key to be decrypted, and keys are never logged;
   - each key is tested when it is saved and then shown only as `…a9F2`; the user can rotate or delete it;
   - a key is used only for its owner's projects.
+- **A key that fails hands its work to the local models** (decided 25 Nov 2026, after a free Gemini key ran out on the Mac). That covers its daily limit, an overloaded provider, or a key the provider refuses. Reading, pages and custom-button code are done by the local models instead, and each one says the key failed and why. The key itself never goes with the work. A deleted key still stops the build. **Before outside users:** decide whether Free (BYOK) workspaces may fall back to our models, since that work is then on our cost.
 - **Verified-models list:** users can only choose models that passed our evaluation suite. The UI shows each model's measured quality and speed.
 - **Free AI capacity:** a small shared quota across several free providers (Gemini, Groq, OpenRouter, GitHub Models, Cloudflare Workers AI) lets people try it without a key. Free tiers may use the data to improve their models, so the privacy note says so.
 
@@ -278,7 +279,7 @@ Our templates are **building blocks**, not whole apps: model, list, search, filt
 4. **Pages run at the same time, as many as the key allows:**
    - cloud: up to N at once, waiting on a per-minute 429 (built in 18.4) and halving N when 429s repeat;
    - local GPU: 1–2 at once (18.4 measured that two pages on one GPU slow each other down).
-5. **The Gemini free tier (20 requests a day) is for development only.** Managed builds use a paid key. A BYOK user whose free key runs out sees "daily limit reached, try again in about N h".
+5. **The Gemini free tier (20 requests a day) is for development only.** Managed builds use a paid key. A BYOK user whose free key runs out sees "daily limit reached, try again in about N h", and the build carries on with the local models (§3.4).
 
 ### Stage 1b: Speed now, in today's app (≈1 week). Added 2 Nov 2026
 Today the two lanes already start together (`Promise.all` in `orchestrator.js`), but three places inside them still work one at a time:

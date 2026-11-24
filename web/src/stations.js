@@ -29,7 +29,8 @@ function pageWords(p) {
 function buttonWords(c) {
   if (c.fromMemory?.similar) return `from the code library: verified in ${quoted(c.fromMemory.sourceName)} (another table)`;
   if (c.fromMemory) return `from memory: verified in ${quoted(c.fromMemory.sourceName)}`;
-  return c.ok ? `written by ${providerName(c.provider)}, ${c.answers} answer${c.answers === 1 ? "" : "s"}` : `not written, says "not available yet": ${c.problem ?? "no answer"}`;
+  const words = c.ok ? `written by ${providerName(c.provider)}, ${c.answers} answer${c.answers === 1 ? "" : "s"}` : `not written, says "not available yet": ${c.problem ?? "no answer"}`;
+  return c.fallback ? `${words}. ${c.fallback}` : words;
 }
 
 function specCounts(project) {
@@ -64,6 +65,7 @@ export const STATIONS = {
     ],
     details: (project, s) => [
       ["Read by", providerName(s.provider)],
+      ...(s.fallback ? [["Your key", s.fallback]] : []),
       ...(s.fromMemory ? [["From memory", `${plural(s.fromMemory.count ?? 1, "screenshot")} read before in ${quoted(s.fromMemory.sourceName)}`]] : []),
       ["Time", secs(s.seconds)],
       ...savedFact(s),
@@ -88,6 +90,7 @@ export const STATIONS = {
     details: (project, s) => [
       ...s.pages.map((p) => [`Page ${p.page}`, pageWords(p)]),
       ["Built by", providerName(s.provider)],
+      ...(s.fallback ? [["Your key", s.fallback]] : []),
       ["Time", secs(s.seconds)],
       ...savedFact(s),
     ],

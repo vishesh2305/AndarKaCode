@@ -19,6 +19,7 @@ const jobSchema = new mongoose.Schema(
     usage: { type: [mongoose.Schema.Types.Mixed], default: undefined }, // Step 25: { purpose, provider, model, inputTokens, outputTokens, thinkingTokens, seconds } per model call
     artifactPath: String, // what the job produced, relative to the repo root (e.g. runs/<id>/frontend/v1.html)
     note: String, // e.g. "placeholder until Step 10"
+    fallback: String, // the workspace's own key failed and the local models did this job: why (no key in it)
     report: mongoose.Schema.Types.Mixed, // verify jobs: the Verifier's report (src/verify/index.js)
     // backend jobs: one entry per custom button, { operation, button, ok, provider, answers, problem? } (Step 13)
     custom: { type: [mongoose.Schema.Types.Mixed], default: undefined },

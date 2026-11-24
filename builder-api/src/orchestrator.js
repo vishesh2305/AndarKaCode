@@ -17,7 +17,7 @@ import { getPage, submitPage } from "./page-queue.js";
 import { Contract } from "./models/contract.js";
 import { withUsage } from "../../shared/meter.mjs";
 import { buildPage } from "../../shared/page.mjs";
-import { callModel } from "../../shared/providers.mjs";
+import { callModel, PROVIDER_LABELS } from "../../shared/providers.mjs";
 import { openSlotKey } from "./keys/slots.js";
 import { askRerun, claimProject, freeProjects, releaseAll, releaseProject, renewLease } from "./lease.js";
 import { toStart } from "./quotas.js";
@@ -101,6 +101,16 @@ function slotModel(project, slot) {
   };
 }
 
+// A workspace key that fails (its daily limit, an overloaded provider, a key the provider refuses) hands that
+// piece of work to the local models, and the job says why; the key itself never goes with it. A deleted key,
+// or a server that can't open keys, still stops the build: those are for the person to fix.
+const KEY_SETUP = /was deleted|KEY_VAULT_SECRET/;
+function fallbackFor(own, err) {
+  if (KEY_SETUP.test(err.message)) return null;
+  const reason = err.message.replace(/^byok: /, "").replace(/^[A-Za-z]+: /, "").slice(0, 300);
+  return `Your ${PROVIDER_LABELS[own.provider] ?? own.provider} key failed (${reason}); the local models did this instead`;
+}
+
 // Projects created before multi-screenshot uploads have only imagePath.
 const screenshotsOf = (project) => (project.screenshots?.length ? project.screenshots : [{ path: project.imagePath }]);
 
@@ -111,15 +121,25 @@ async function contractStage(project) {
     // READY, takes its reading from memory (Step 14).
     const own = slotModel(project, "frontend");
     const ownReader = own && { byok: ({ prompt, schema, imageB64 }) => own.call({ prompt, schema, imageB64, json: true, temperature: 0, purpose: "read" }) };
+    let fellBack = null;
     const { inventories, provider, reused } = await readScreenshots(screenshotsOf(project), {
       recall: (shot) => (project.useMemory !== false && shot.sha256 ? recall("inventory", inventoryKey(shot.sha256), project) : null),
       read: async (shot) => {
         const imageB64 = (await readFile(path.join(REPO_ROOT, shot.path))).toString("base64");
         if (!own) return readInventory(imageB64, { mode: project.mode });
-        return { ...(await readInventory(imageB64, { mode: "byok", providers: ownReader })), provider: own.provider };
+        try {
+          return { ...(await readInventory(imageB64, { mode: "byok", providers: ownReader })), provider: own.provider };
+        } catch (err) {
+          const why = fallbackFor(own, err);
+          if (!why) throw err;
+          fellBack ??= why;
+          log.info(why, { project: project.id });
+          return readInventory(imageB64, { mode: "local" });
+        }
       },
     });
     job.provider = provider; // "cloud" if any screenshot needed the backup
+    if (fellBack) job.fallback = fellBack;
     if (reused.length) {
       job.fromMemory = { ...origin(reused[0]), count: reused.length, seconds: reused.reduce((s, m) => s + (m.seconds ?? 0), 0) };
     }
@@ -180,27 +200,35 @@ async function frontendBranch(project, contract, n) {
   }
 
   // Step 31c: the workspace's own frontend key draws the page right here, twice at most: a user's key never
-  // goes to Laptop B's Gateway (development only), and needs no ui-worker.
+  // goes to Laptop B's Gateway (development only), and needs no ui-worker. If the key fails, the page is drawn
+  // like any other, on the local models (a page already handed over after a restart stays there).
   const own = slotModel(project, "frontend");
-  if (own) {
-    return runJob(project, "frontend", async (job) => {
-      Object.assign(job, { contractHash: contract.hash, page: n, provider: own.provider });
-      const imageB64 = (await readFile(path.join(REPO_ROOT, shot.path))).toString("base64");
-      const draw = ({ prompt }) => own.call({ prompt, imageB64, purpose: "page" });
-      let html;
-      for (let attempt = 1; !html; attempt++) {
-        try {
-          ({ html } = await buildPage({ imageB64, instructions, mode: "byok", providers: { byok: draw } }));
-        } catch (err) {
-          if (attempt >= 2 || /was deleted|KEY_VAULT_SECRET/.test(err.message)) throw err;
+  let fellBack = null;
+  if (own && !existing?.fallback) {
+    try {
+      return await runJob(project, "frontend", async (job) => {
+        Object.assign(job, { contractHash: contract.hash, page: n, provider: own.provider });
+        const imageB64 = (await readFile(path.join(REPO_ROOT, shot.path))).toString("base64");
+        const draw = ({ prompt }) => own.call({ prompt, imageB64, purpose: "page" });
+        let html;
+        for (let attempt = 1; !html; attempt++) {
+          try {
+            ({ html } = await buildPage({ imageB64, instructions, mode: "byok", providers: { byok: draw } }));
+          } catch (err) {
+            if (attempt >= 2 || /was deleted|KEY_VAULT_SECRET|limit is reached/.test(err.message)) throw err;
+          }
         }
-      }
-      job.artifactPath = await saveArtifact(project._id, `frontend/v${contract.version}/page-${n}.html`, html);
-      return job;
-    });
+        job.artifactPath = await saveArtifact(project._id, `frontend/v${contract.version}/page-${n}.html`, html);
+        return job;
+      });
+    } catch (err) {
+      fellBack = fallbackFor(own, err);
+      if (!fellBack) throw err;
+      log.info(fellBack, { project: project.id, page: n });
+    }
   }
 
-  const job = existing ?? (await Job.create({ ...query, status: "running", startedAt: new Date() }));
+  const job = (!fellBack && existing) || (await Job.create({ ...query, status: "running", startedAt: new Date(), ...(fellBack && { fallback: fellBack }) }));
 
   try {
     let remote;
@@ -211,7 +239,7 @@ async function frontendBranch(project, contract, n) {
           imageDataUrl: `data:image/png;base64,${image.toString("base64")}`,
           instructions: pageInstructions(contract.body, n),
           contractHash: contract.hash,
-          mode: project.mode,
+          mode: job.fallback ? "local" : project.mode,
           priority: project.priority ?? 0, // the page queue draws pro pages first (Step 32b)
         });
         job.remoteJobId = submitted.jobId;
@@ -281,9 +309,16 @@ async function backendBranch(project, contract) {
           }
         }
       }
-      result ??= own
-        ? { ...(await writeCustomCode({ spec, op, mode: "byok", test, providers: { byok: (prompt) => own.call({ prompt, purpose: "code" }) } })), provider: own.provider }
-        : await writeCustomCode({ spec, op, mode: project.mode, test });
+      if (!result && own) {
+        result = { ...(await writeCustomCode({ spec, op, mode: "byok", test, providers: { byok: (prompt) => own.call({ prompt, purpose: "code" }) } })), provider: own.provider };
+        // The key gave no answer at all (its limit, an overloaded provider): the local coding AI writes it.
+        const why = !result.ok && !result.answers && fallbackFor(own, new Error(result.unavailable?.[0] ?? result.problem ?? ""));
+        if (why) {
+          log.info(why, { project: project.id, operation: op.name });
+          result = { ...(await writeCustomCode({ spec, op, mode: "local", test })), fallback: why };
+        }
+      }
+      result ??= await writeCustomCode({ spec, op, mode: project.mode, test });
       if (!result.ok) await rm(path.join(dir, "backend", "custom", `${op.name}.js`), { force: true });
       return {
         operation: op.name,
@@ -294,11 +329,12 @@ async function backendBranch(project, contract) {
         seconds: Math.round((Date.now() - started) / 100) / 10,
         ...(result.fromMemory && { fromMemory: result.fromMemory }),
         ...(result.problem && { problem: result.problem.slice(0, 500) }),
+        ...(result.fallback && { fallback: result.fallback }),
       };
     } });
     const written = job.custom.filter((c) => c.ok);
     if (written.length) {
-      job.provider = own ? own.provider : written.some((c) => c.provider === "cloud") ? "cloud" : "local";
+      job.provider = own && written.some((c) => c.provider === own.provider) ? own.provider : written.some((c) => c.provider === "cloud") ? "cloud" : "local";
       const tests = generateBackend(spec, { name: project.name, customWritten: written.map((c) => c.operation) })["tests/api.test.js"];
       await writeBackend(dir, { "tests/api.test.js": tests });
     }
