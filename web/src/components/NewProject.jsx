@@ -25,6 +25,15 @@ export function NewProject({ onCreated }) {
 
   const [samples, setSamples] = useState([]);
   const [picking, setPicking] = useState(null); // the sample being loaded
+  const [chosen, setChosen] = useState(null); // the sample whose screenshots are in the form
+  const [sampleError, setSampleError] = useState(null);
+  const pickedList = useRef(null);
+
+  // A chosen sample's screenshots appear below the cards, often below the window's edge on a laptop:
+  // bring them into view, so the click visibly did something.
+  useEffect(() => {
+    if (chosen) pickedList.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [chosen]);
 
   // Thumbnails use object URLs; release them when the form goes away.
   useEffect(() => () => latest.current.forEach(({ url }) => URL.revokeObjectURL(url)), []);
@@ -36,14 +45,16 @@ export function NewProject({ onCreated }) {
 
   async function pickSample(sample) {
     setPicking(sample.id);
-    setError(null);
+    setSampleError(null);
+    setChosen(null);
     try {
       const picked = (await sampleFiles(sample)).map((file) => ({ file, url: URL.createObjectURL(file) }));
       latest.current.forEach(({ url }) => URL.revokeObjectURL(url));
       setFiles(picked);
       setName(sample.name);
+      setChosen(sample.id);
     } catch (err) {
-      setError(err.message);
+      setSampleError(err.message);
     } finally {
       setPicking(null);
     }
@@ -55,6 +66,7 @@ export function NewProject({ onCreated }) {
     else setError(null);
     const added = images.map((file) => ({ file, url: URL.createObjectURL(file) }));
     setFiles((current) => [...current, ...added].slice(0, 10));
+    setChosen(null); // the form now holds the person's own screenshots too
   }
 
   async function build() {
@@ -106,22 +118,29 @@ export function NewProject({ onCreated }) {
           <ul className="samples-list">
             {samples.map((s) => (
               <li key={s.id}>
-                <button className="sample" onClick={() => pickSample(s)} disabled={picking !== null} aria-label={`Use the sample ${s.name}`}>
+                <button
+                  className={`sample${chosen === s.id ? " sample-on" : ""}`}
+                  onClick={() => pickSample(s)}
+                  disabled={picking !== null}
+                  aria-pressed={chosen === s.id}
+                  aria-label={`Use the sample ${s.name}`}
+                >
                   <img src={s.images[0]} alt="" loading="lazy" />
                   <strong>
                     {s.name}
                     {s.images.length > 1 && <span className="sample-pages"> · {s.images.length} pages</span>}
                   </strong>
-                  <small>{picking === s.id ? "Loading…" : s.about}</small>
+                  <small>{picking === s.id ? "Loading…" : chosen === s.id ? "✓ Added below. Now press Build." : s.about}</small>
                 </button>
               </li>
             ))}
           </ul>
+          {sampleError && <p className="form-error">{sampleError}</p>}
         </div>
       )}
 
       {files.length > 0 && (
-        <ol className="picked">
+        <ol className="picked" ref={pickedList}>
           {files.map(({ file, url }, i) => (
             <li key={url} className="picked-item">
               <img src={url} alt="" />

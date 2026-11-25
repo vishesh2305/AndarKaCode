@@ -1796,3 +1796,14 @@ a {
 .fix-queued {
   background: #fff6db;
 }
+
+.sample-on {
+  background: #e3f9ef;
+  border-color: var(--ink);
+  box-shadow: var(--pop);
+}
+
+.sample-on small {
+  color: var(--ink);
+  font-weight: 700;
+}
