@@ -56,7 +56,7 @@ Every step has four parts:
 - [ ] **Step 17: Our React UI.** ◐ 20 Oct: **UI v1 for the presentation** done early (`web/`, served by the Builder API): upload, live metro-line pipeline with "how it works" per station, screenshots / plan with evidence / pages / backend files, download app as zip once SYNCED. Still to do: edit the spec in the UI. Upload screenshots, review the spec with its evidence, live status, download.
 - [ ] **Step 18: Sandbox preview.** Docker, limits, no secrets, auto-stop.
 - [ ] **Step 19: GitHub login + Publish.** OAuth App, encrypted token, new repo, CI turns green.
-- [ ] **Step 20: Demo rehearsal.** Demo mode, warm cache, backup video, viva practice.
+- [ ] **Step 20: Demo rehearsal.** Demo mode, warm cache, backup video, viva practice. The Phase 2 evaluation plan: [docs/evaluation-plan.md](docs/evaluation-plan.md).
 
 **Cut line for a working prototype: Steps 10–17.** Phase 2 of AndarKaCode (later): text requests and chat-style refinement on the same spec machinery.
 
