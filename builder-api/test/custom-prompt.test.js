@@ -68,3 +68,15 @@ describe("extractCode: the function from the model's answer", () => {
     assert.equal(extractCode("Sorry, I can't do that."), null);
   });
 });
+
+describe("the person's brief in a button's prompt (Step 53a)", () => {
+  const brief = "Recalculate should skip requests that are already approved.";
+  it("is given as notes to follow only where they are about this button", () => {
+    const prompt = customPrompt(opsSpec, op("recalculateLeaveRequest"), { brief });
+    assert.match(prompt, /notes[\s\S]*only where they are about this button[\s\S]*skip requests that are already approved/);
+    assert.match(repairPrompt(opsSpec, op("recalculateLeaveRequest"), "x", "y", { brief }), /already approved/);
+  });
+  it("without a brief, the prompt is exactly as before", () => {
+    assert.equal(customPrompt(opsSpec, op("recalculateLeaveRequest"), { brief: "" }), customPrompt(opsSpec, op("recalculateLeaveRequest")));
+  });
+});

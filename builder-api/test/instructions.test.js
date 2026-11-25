@@ -120,3 +120,16 @@ describe("pageInstructions: a dropdown stored as text", () => {
     assert.match(text, /- team -> label "Team" \(a dropdown\)/);
   });
 });
+
+describe("pageInstructions: the person's brief (Step 53a)", () => {
+  const brief = "Use our college's purple for buttons.";
+  it("comes after the rules, as wishes for the look that never override a rule", () => {
+    const text = pageInstructions(spec, 1, { brief });
+    assert.ok(text.indexOf("Rules:") < text.indexOf(brief), "the rules come first");
+    assert.match(text, /wishes for the look[\s\S]*never change a rule above[\s\S]*Use our college's purple for buttons\./);
+  });
+  it("without a brief, the instructions are exactly as before", () => {
+    assert.equal(pageInstructions(spec, 1, { brief: "" }), pageInstructions(spec, 1));
+    assert.equal(pageInstructions(spec, 1, { brief: "   " }), pageInstructions(spec, 1));
+  });
+});
