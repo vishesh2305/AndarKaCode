@@ -362,7 +362,7 @@ Each service reads its own `.env` (copy it from `.env.example`). `.env` files ar
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | GitHub sign-in (an OAuth App under GitHub's Developer settings) |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google sign-in (an OAuth client in Google Cloud Console) |
 | `SESSION_DAYS` | How long a sign-in lasts (1-90, default 14) |
-| `FREE_BUILDS`, `FREE_BUILDS_DAYS`, `PRO_BUILDS`, `PRO_BUILDS_DAYS` | With sign-in on: builds per plan in a window of days (defaults: free 5 every 30 days, pro 50 a day). `npm run plan -- set <email> pro` moves a workspace (Step 32) |
+| `FREE_BUILDS`, `FREE_BUILDS_DAYS`, `PRO_BUILDS`, `PRO_BUILDS_DAYS` | With sign-in on: builds per plan in a window of days (defaults with `NODE_ENV=production`: free 5 every 30 days, pro 50 a day; in development no limit unless you set one). `npm run plan -- set <email> pro` moves a workspace (Step 32) |
 | `BUILD_PARALLEL` | Projects one orchestrator builds at once (1-50, default 4); the rest wait, pro first, then oldest (Step 32) |
 | `KEY_VAULT_SECRET` | With sign-in on: the secret people's own AI keys are encrypted with (64 hex characters: `openssl rand -hex 32`). The same on every service that builds; without it nobody can save keys (Step 31) |
 | `<PROVIDER>_BASE_URL` | Optional: another address for `GEMINI`, `OPENAI`, `ANTHROPIC`, `GROQ` or `OPENROUTER` (a proxy or regional endpoint) |

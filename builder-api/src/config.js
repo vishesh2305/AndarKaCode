@@ -108,10 +108,12 @@ export function checkConfig(env) {
   if (keyVaultSecret && !/^[0-9a-f]{64}$/i.test(keyVaultSecret)) problems.push(`KEY_VAULT_SECRET in ${FILE} must be 64 hex characters (32 bytes): make one with: openssl rand -hex 32`);
 
   // Step 32b: builds per plan in a window of days (a new project is a build), and projects built at once by
-  // one orchestrator (the rest wait, pro first).
+  // one orchestrator (the rest wait, pro first). In development (NODE_ENV not production) there is no limit
+  // unless FREE_BUILDS / PRO_BUILDS set one: testing builds many apps.
+  const production = env.NODE_ENV === "production";
   const quotas = {
-    free: { builds: wholeNumber("FREE_BUILDS", 5, { min: 0, max: 10000 }), days: wholeNumber("FREE_BUILDS_DAYS", 30, { min: 1, max: 365 }) },
-    pro: { builds: wholeNumber("PRO_BUILDS", 50, { min: 0, max: 10000 }), days: wholeNumber("PRO_BUILDS_DAYS", 1, { min: 1, max: 365 }) },
+    free: { builds: wholeNumber("FREE_BUILDS", production ? 5 : 10000, { min: 0, max: 10000 }), days: wholeNumber("FREE_BUILDS_DAYS", 30, { min: 1, max: 365 }) },
+    pro: { builds: wholeNumber("PRO_BUILDS", production ? 50 : 10000, { min: 0, max: 10000 }), days: wholeNumber("PRO_BUILDS_DAYS", 1, { min: 1, max: 365 }) },
   };
   const buildParallel = wholeNumber("BUILD_PARALLEL", 4, { min: 1, max: 50 });
 
