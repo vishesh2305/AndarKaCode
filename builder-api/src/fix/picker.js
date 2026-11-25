@@ -73,8 +73,12 @@
     }
     place(mark, pageRect(target));
     const label = describe(target);
-    if (target.hasAttribute("data-ak-n")) return send({ kind: "part", n: Number(target.getAttribute("data-ak-n")), label });
     const selector = selectorFor(target);
+    // A part that repeats (a table row's button or cell, the same marker more than once) is fixed by its style,
+    // so every row changes together: that is what a person means by "the Check In button".
+    const repeats = selector && (target.closest("tbody") || document.querySelectorAll(selector).length > 1);
+    if (repeats) return send({ kind: "style", selector, label });
+    if (target.hasAttribute("data-ak-n")) return send({ kind: "part", n: Number(target.getAttribute("data-ak-n")), label });
     return selector ? send({ kind: "style", selector, label }) : send({ error: "That part is drawn by the page's script and has no marker. Mark a button or a cell in it." });
   }
 

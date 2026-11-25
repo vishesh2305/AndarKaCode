@@ -1,7 +1,77 @@
 // The four views of a project: what you uploaded, what was planned, the pages, and the backend code.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
+import { fixWords, pageFixes, pickFrom } from "../fix.js";
 import { startView } from "../pipeline.js";
+
+// Step 54a: draw a box around a part of the page, say what's wrong, and only that part is fixed.
+function FixPanel({ project, page, pick, onClear, onSent, fixes }) {
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  useEffect(() => setError(null), [pick]);
+
+  async function send() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.fixPart(project.id, page, pick, note.trim());
+      setNote("");
+      onSent();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function undo() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.undoFix(project.id, page);
+      onSent({ keepPick: true });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="fix-panel" aria-live="polite">
+      {fixes.latest && <p className={`fix-status fix-${fixes.latest.status}`}>{fixWords(fixes.latest)}</p>}
+      {fixes.fixing ? null : !pick ? (
+        <p className="fix-hint">Draw a box around the part that's wrong, or click it. Only that part will change.</p>
+      ) : pick.error ? (
+        <p className="form-error">{pick.error}</p>
+      ) : (
+        <div className="fix-form">
+          <p className="fix-picked">
+            Marked: <strong>{pick.label || "a part"}</strong>
+            {pick.kind === "style" && <small> (drawn by the page's script: its style can change, every row together)</small>}
+            <button className="btn btn-quiet" onClick={onClear}>
+              Clear
+            </button>
+          </p>
+          <label className="field">
+            <span>What's wrong with it?</span>
+            <textarea value={note} onChange={(e) => setNote(e.target.value)} maxLength={300} rows={2} placeholder="Make it purple and say “Add Student”" />
+          </label>
+          <button className="btn btn-go" disabled={!note.trim() || busy} onClick={send}>
+            {busy ? "Sending…" : "Fix only this part"}
+          </button>
+        </div>
+      )}
+      {error && <p className="form-error">{error}</p>}
+      {fixes.canUndo && !fixes.fixing && (
+        <button className="btn btn-quiet" disabled={busy} onClick={undo}>
+          Undo the last fix
+        </button>
+      )}
+    </div>
+  );
+}
 
 export function Screenshots({ project }) {
   const count = project.screenshots?.length || 1;
@@ -128,11 +198,28 @@ export function Plan({ project }) {
   );
 }
 
-export function Pages({ project, pages, wired }) {
+export function Pages({ project, pages, wired, onChange = () => {} }) {
   const ready = pages.filter((p) => p.status === "done").map((p) => p.page);
   const [page, setPage] = useState(ready[0] ?? pages[0]?.page ?? 1);
-  const [view, setView] = useState("built"); // "built": as Laptop B drew it; "live": the real app on a test database
+  // "built": as Laptop B drew it; "live": the real app on a test database; "fix": mark a part to fix (Step 54a)
+  const [view, setView] = useState("built");
   const [live, setLive] = useState({ url: null, credentials: null, error: null, starting: false });
+  const [pick, setPick] = useState(null);
+  const frame = useRef(null);
+  const fixes = pageFixes(project, page);
+  const canFix = ["READY", "NEEDS_ATTENTION", "REPAIRING"].includes(project.state);
+
+  // The picker in the page's frame says what was marked (only messages from that frame count).
+  useEffect(() => {
+    if (view !== "fix") return undefined;
+    const listen = (event) => {
+      const picked = pickFrom(event, frame.current?.contentWindow);
+      if (picked) setPick(picked);
+    };
+    window.addEventListener("message", listen);
+    return () => window.removeEventListener("message", listen);
+  }, [view]);
+  useEffect(() => setPick(null), [page, view]);
   useEffect(() => {
     if (!ready.includes(page) && ready.length) setPage(ready[0]);
   }, [ready.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -140,8 +227,11 @@ export function Pages({ project, pages, wired }) {
   // A new spec version means a new app. Once it is Ready, open on the working app (started with the
   // screenshots' rows); before that, show Laptop B's drawing.
   const opensLive = startView(project) === "live" && wired;
+  // A region fix (Step 54a) keeps the "Fix a part" view while the page is fixed and checked again.
+  const fixingHere = view === "fix";
   useEffect(() => {
     setLive({ url: null, credentials: null, error: null, starting: false });
+    if (fixingHere) return;
     if (opensLive) goLive({ fresh: true });
     else setView("built");
   }, [project.id, project.contract?.hash, opensLive]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -190,8 +280,29 @@ export function Pages({ project, pages, wired }) {
           >
             Live
           </button>
+          <button
+            role="radio"
+            aria-checked={view === "fix"}
+            className={`chip chip-fix${view === "fix" ? " chip-on" : ""}`}
+            onClick={() => setView("fix")}
+            disabled={!canFix || !ready.includes(page)}
+            title={canFix ? "Mark a part that isn't right, and say what's wrong" : "Available once the build has finished"}
+          >
+            Fix a part
+          </button>
         </div>
       </div>
+
+      {view === "fix" && (
+        <FixPanel
+          project={project}
+          page={page}
+          pick={pick}
+          fixes={fixes}
+          onClear={() => (setPick(null), frame.current?.contentWindow?.postMessage({ type: "ak-clear" }, "*"))}
+          onSent={() => (setPick(null), onChange())}
+        />
+      )}
 
       {view === "live" && live.credentials && (
         <p className="live-note">
@@ -206,7 +317,16 @@ export function Pages({ project, pages, wired }) {
           <span />
           {view === "live" && liveUrl && <span className="browser-address">{liveUrl}</span>}
         </div>
-        {view === "built" ? (
+        {view === "fix" ? (
+          // The same sandbox as "As built"; its parts numbered and a picker added. It reloads after each fix.
+          <iframe
+            ref={frame}
+            key={`fix-${project.contract?.hash}-${page}-${fixes.kept}-${fixes.latest?.id}-${fixes.latest?.status}`}
+            title={`Mark a part of page ${page}`}
+            src={api.pageUrl(project.id, page, { pick: true })}
+            sandbox="allow-scripts"
+          />
+        ) : view === "built" ? (
           ready.includes(page) ? (
             // Generated code runs in a sandbox: scripts yes, but no access to this app or its cookies.
             <iframe key={`${project.contract?.hash}-${page}`} title={`Generated page ${page}`} src={api.pageUrl(project.id, page)} sandbox="allow-scripts" />
@@ -224,7 +344,9 @@ export function Pages({ project, pages, wired }) {
         )}
       </div>
 
-      {view === "built" ? (
+      {view === "fix" ? (
+        <p className="muted">Each fix is checked before it is used (it must keep every button working, and can't add scripts), then the whole app is checked again.</p>
+      ) : view === "built" ? (
         <p className="muted">A drawing only: the page as Laptop B drew it, with the screenshots' sample data. Its buttons don't save anything. Choose Live to use the working app.</p>
       ) : (
         <p className="muted live-foot">

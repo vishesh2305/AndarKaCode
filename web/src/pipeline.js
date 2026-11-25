@@ -56,6 +56,7 @@ export function pipelineStatus(project, now = Date.now()) {
     if (pages.some((p) => p.status === "failed")) pagesStatus = "failed";
     else if (pages.length && pages.every((p) => p.status === "done")) pagesStatus = "done";
     else if (BUILD_STATES.includes(state)) pagesStatus = "active";
+    if (state === "REPAIRING") pagesStatus = "active"; // Step 54a: a person's region fix is being made
   }
   stations.pages = {
     status: pagesStatus,
@@ -63,6 +64,7 @@ export function pipelineStatus(project, now = Date.now()) {
     seconds: pageJobs.length ? Math.max(...pageJobs.map((j) => secondsOf(j, now) ?? 0)) : null,
     provider: pageJobs.at(-1)?.provider ?? null,
     fallback: pageJobs.findLast((j) => j.fallback)?.fallback ?? null,
+    fixed: pageJobs.reduce((n, j) => n + (j.fixes ?? []).filter((f) => f.status === "done").length, 0), // Step 54a
     remembered: pages.some((p) => p.fromMemory),
     saved: savedBy(pages.map((p) => p.fromMemory)),
   };
@@ -125,9 +127,11 @@ export function pipelineStatus(project, now = Date.now()) {
         }
       : null;
   if (lanes) lanes.slower = lanes.pages >= lanes.backend ? "pages" : "backend";
+  // The build ends at the first Check that passed: later checks (after a region fix, Step 54a) aren't the build.
+  const builtAt = jobs.find((j) => j.kind === "verify" && j.contractHash === hash && j.report?.ok)?.finishedAt ?? verify?.finishedAt;
   stations.ready = {
     status: isReady ? "done" : "waiting",
-    builtIn: isReady && project.createdAt && verify?.finishedAt ? Math.round((Date.parse(verify.finishedAt) - Date.parse(project.createdAt)) / 1000) : null,
+    builtIn: isReady && project.createdAt && builtAt ? Math.round((Date.parse(builtAt) - Date.parse(project.createdAt)) / 1000) : null,
     lanes,
   };
 

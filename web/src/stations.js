@@ -91,6 +91,7 @@ export const STATIONS = {
       ...s.pages.map((p) => [`Page ${p.page}`, pageWords(p)]),
       ["Built by", providerName(s.provider)],
       ...(s.fallback ? [["Your key", s.fallback]] : []),
+      ...(s.fixed ? [["Parts you fixed", s.fixed]] : []),
       ["Time", secs(s.seconds)],
       ...savedFact(s),
     ],

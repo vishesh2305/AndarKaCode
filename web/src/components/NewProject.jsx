@@ -13,6 +13,7 @@ const ACCEPT = ["image/png", "image/jpeg", "image/webp"];
 export function NewProject({ onCreated }) {
   const [files, setFiles] = useState([]); // [{ file, url }] in page order
   const [name, setName] = useState("");
+  const [brief, setBrief] = useState(""); // Step 53a: what the screenshots can't show
   const [mode, setMode] = useState("local");
   const [fresh, setFresh] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -60,7 +61,7 @@ export function NewProject({ onCreated }) {
     setBusy(true);
     setError(null);
     try {
-      const project = await api.create(files.map((f) => f.file), { name: name.trim(), mode, fresh });
+      const project = await api.create(files.map((f) => f.file), { name: name.trim(), mode, fresh, brief });
       onCreated(project.id);
     } catch (err) {
       setError(err.message);
@@ -158,6 +159,20 @@ export function NewProject({ onCreated }) {
           ))}
         </fieldset>
       </div>
+
+      <label className="field brief">
+        <span>Anything the screenshots can't show? (optional)</span>
+        <textarea
+          value={brief}
+          onChange={(e) => setBrief(e.target.value)}
+          maxLength={1000}
+          rows={3}
+          placeholder="Use our college's purple for the buttons. Check In should only work for registered students."
+        />
+        <small>
+          Used for the look of the pages and for what custom buttons do. It never overrides what the screenshots show. {brief.length}/1000
+        </small>
+      </label>
 
       <label className={`fresh${fresh ? " fresh-on" : ""}`}>
         <input type="checkbox" checked={fresh} onChange={(e) => setFresh(e.target.checked)} />

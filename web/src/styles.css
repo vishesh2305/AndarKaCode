@@ -1711,3 +1711,88 @@ a {
   gap: 0.6rem;
   justify-content: flex-end;
 }
+
+/* Step 53a: the brief on the upload screen; Step 54a: "Fix a part" in the Pages tab */
+.field textarea {
+  padding: 0.65rem 0.8rem;
+  border: var(--line);
+  border-radius: 12px;
+  font: 400 1rem var(--body);
+  color: var(--ink);
+  background: var(--white);
+  resize: vertical;
+}
+
+.field small {
+  font-weight: 400;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+
+.brief {
+  margin: 0 0 1.2rem;
+}
+
+.chip-fix.chip-on {
+  background: var(--bubblegum);
+  color: var(--white);
+}
+
+.fix-panel {
+  display: grid;
+  gap: 0.6rem;
+  margin: 0 0 0.9rem;
+  padding: 0.9rem 1rem;
+  border: var(--line);
+  border-radius: 16px;
+  background: var(--white);
+  box-shadow: var(--pop-small);
+}
+
+.fix-panel p {
+  margin: 0;
+}
+
+.fix-hint {
+  font-weight: 700;
+}
+
+.fix-picked {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.fix-picked small {
+  color: var(--ink-soft);
+}
+
+.fix-form {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.fix-form .btn-go {
+  justify-self: start;
+}
+
+.fix-status {
+  padding: 0.5rem 0.75rem;
+  border-radius: 10px;
+  background: #eef4ff;
+  font-weight: 700;
+}
+
+.fix-done {
+  background: #e3f9ef;
+}
+
+.fix-failed {
+  background: #ffe8ef;
+}
+
+.fix-running,
+.fix-queued {
+  background: #fff6db;
+}

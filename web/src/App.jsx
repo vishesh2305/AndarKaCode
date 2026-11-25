@@ -169,7 +169,7 @@ function Builder({ user, onSignOut }) {
                 <div className="tab-panel" role="tabpanel" aria-label={tab}>
                   {tab === "Screenshots" && <Screenshots project={project} />}
                   {tab === "Plan" && <Plan project={project} />}
-                  {tab === "Pages" && <Pages project={project} pages={status.stations.pages.pages} wired={status.stations.wire.status === "done"} />}
+                  {tab === "Pages" && <Pages project={project} pages={status.stations.pages.pages} wired={status.stations.wire.status === "done"} onChange={() => api.project(project.id).then(setProject)} />}
                   {tab === "Backend" && <Backend project={project} ready={status.stations.backend.status === "done"} />}
                 </div>
               </>

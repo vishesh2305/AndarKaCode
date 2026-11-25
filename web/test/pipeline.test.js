@@ -241,6 +241,12 @@ describe("pipelineStatus: build time (Step 23d)", () => {
     assert.equal(pipelineStatus(p).stations.ready.builtIn, 108);
   });
 
+  it("a region fix checked later (Step 54a) doesn't change how long the build took", () => {
+    const p = built([at("backend", 30, 31), at("frontend", 30, 75, { page: 1 })]);
+    p.jobs.push(at("verify", 3600, 3610, { report: { ok: true, checks: [] } }));
+    assert.equal(pipelineStatus(p).stations.ready.builtIn, 108);
+  });
+
   it("names the pages lane as the slower one when the app waited for its pages", () => {
     const p = built([at("backend", 30, 31), at("frontend", 30, 75, { page: 1 }), at("frontend", 30, 105, { page: 2 })]);
     assert.deepEqual(pipelineStatus(p).stations.ready.lanes, { pages: 75, backend: 1, slower: "pages" });

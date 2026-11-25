@@ -29,16 +29,20 @@ export const api = {
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? `HTTP ${res.status}`);
       return res.text();
     }),
-  create: (files, { name, mode, fresh = false }) => {
+  create: (files, { name, mode, fresh = false, brief = "" }) => {
     const form = new FormData();
     for (const file of files) form.append("image", file, file.name);
     if (name) form.append("name", name);
+    if (brief.trim()) form.append("brief", brief.trim()); // Step 53a: what the screenshots can't show
     form.append("mode", mode);
     if (fresh) form.append("fresh", "true"); // "Start fresh": don't reuse earlier work from memory
     return fetch("/api/projects", { method: "POST", body: form }).then(json);
   },
   screenshotUrl: (id, n) => `/api/projects/${id}/screenshots/${n}`,
-  pageUrl: (id, n) => `/api/projects/${id}/frontend?page=${n}`,
+  pageUrl: (id, n, { pick = false } = {}) => `/api/projects/${id}/frontend?page=${n}${pick ? "&pick=1" : ""}`,
+  // Step 54a: fix one marked part of a page ({ kind, n | selector, label }, note), or undo the last fix.
+  fixPart: (id, n, pick, note) => send("POST", `/api/projects/${id}/pages/${n}/fixes`, { pick, note }).then(json),
+  undoFix: (id, n) => send("POST", `/api/projects/${id}/pages/${n}/undo`).then(json),
   downloadUrl: (id, { anyway = false } = {}) => `/api/projects/${id}/download${anyway ? "?anyway=1" : ""}`,
   // The live preview: { url (on its own local port), credentials (only for apps with a login screen) }.
   startPreview: (id) => fetch(`/api/projects/${id}/preview`, { method: "POST" }).then(json),
