@@ -7,7 +7,7 @@
 
 // Most specific first: the text a brand matched is taken out before the next one is looked for, so
 // "Google Pay" is Google Pay, not Google too.
-const BRANDS = [
+export const BRANDS = [
   ["Google Pay", /\bgoogle pay\b|\bgpay\b/],
   ["Amazon Pay", /\bamazon pay\b/],
   ["Apple", /\bapple (id|account|pay)\b|\bicloud\b/],
