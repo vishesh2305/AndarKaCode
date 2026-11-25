@@ -1,4 +1,4 @@
-# Phase 2 evaluation: getting the prototype ready to present
+| B1 |undefined| undefined **Done 25 Nov:** 4 samples under the drop zone (TechFest, Employees, Orders Dashboard, Staff & Departments) || A5 |undefined| undefined **Done 25 Nov:** `cd builder-api && npm run demo:check` (`-- --warm` loads the models). Found: Laptop B's vision model runs only 64% on the GPU, so close other GPU apps before the demo || A3 |undefined| undefined **Done 25 Nov:** `samples/mocks/m9-event-registrations` (TechFest 2026): READY, 11/11 checks, 239 s locally (read 29 s, page 203 s). Build it twice more || A2 |undefined| undefined **Done 25 Nov:** installed on Laptop B |# Phase 2 evaluation: getting the prototype ready to present
 
 > This is the old **Step 20 (demo rehearsal)** in [plan.md](../plan.md), done before Stage 6.
 > **Goal:** in about 10 minutes, the audience watches a screenshot become a working, tested app, and nothing breaks on stage.
@@ -53,6 +53,10 @@ Back-up demo projects, already READY before the talk:
 | C3 | **The numbers slide:** build time per mock, local vs cloud, tokens per build (the Step 25 metering), tests (unit 538, integration 242, sandbox 22, gateway 15, web 43) | Every number taken from a real run |
 | C4 | **Q&A sheet**, at least these questions: "How is this different from ChatGPT or screenshot-to-code tools?" · "What if the AI writes wrong code?" · "What does a build cost?" · "Is it safe?" · "What can't it do yet?" · "Why two laptops?" | A short answer for each |
 | C5 | **Two timed rehearsals**, one with a failure drill (stop the Gateway mid-build and recover) | Under time both times; the recovery takes under 30 s |
+
+## Known gaps found while preparing
+- The TechFest card "Total Registrations" is read as a custom metric instead of a count. It still passes; Stage 6 or a reader rule will fix it.
+- Page drawing is the slow lane (about 3.5 min per page locally). The demo runs the build live, and while it draws, you show a back-up project.
 
 ## Order and time
 
