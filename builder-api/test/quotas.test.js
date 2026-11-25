@@ -5,10 +5,16 @@ import { checkConfig } from "../src/config.js";
 import { quotaMessage, toStart } from "../src/quotas.js";
 
 describe("the quota settings", () => {
-  it("free: 5 builds per 30 days; pro: 50 a day (fair use); 4 projects built at once", () => {
-    const { quotas, buildParallel } = checkConfig({}).config;
+  it("in production: free 5 builds per 30 days; pro 50 a day (fair use); 4 projects built at once", () => {
+    const { quotas, buildParallel } = checkConfig({ NODE_ENV: "production" }).config;
     assert.deepEqual(quotas, { free: { builds: 5, days: 30 }, pro: { builds: 50, days: 1 } });
     assert.equal(buildParallel, 4);
+  });
+
+  it("in development (NODE_ENV not production): no build limit, unless one is set", () => {
+    assert.deepEqual(checkConfig({}).config.quotas, { free: { builds: 10000, days: 30 }, pro: { builds: 10000, days: 1 } });
+    assert.deepEqual(checkConfig({ NODE_ENV: "development" }).config.quotas.free, { builds: 10000, days: 30 });
+    assert.deepEqual(checkConfig({ FREE_BUILDS: "2" }).config.quotas.free, { builds: 2, days: 30 });
   });
 
   it("can be changed, within sensible bounds", () => {
