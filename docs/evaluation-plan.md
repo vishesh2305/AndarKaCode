@@ -1,4 +1,4 @@
-| B1 |undefined| undefined **Done 25 Nov:** 4 samples under the drop zone (TechFest, Employees, Orders Dashboard, Staff & Departments) || A5 |undefined| undefined **Done 25 Nov:** `cd builder-api && npm run demo:check` (`-- --warm` loads the models). Found: Laptop B's vision model runs only 64% on the GPU, so close other GPU apps before the demo || A3 |undefined| undefined **Done 25 Nov:** `samples/mocks/m9-event-registrations` (TechFest 2026): READY, 11/11 checks, 239 s locally (read 29 s, page 203 s). Build it twice more || A2 |undefined| undefined **Done 25 Nov:** installed on Laptop B |# Phase 2 evaluation: getting the prototype ready to present
+# Phase 2 evaluation: getting the prototype ready to present
 
 > This is the old **Step 20 (demo rehearsal)** in [plan.md](../plan.md), done before Stage 6.
 > **Goal:** in about 10 minutes, the audience watches a screenshot become a working, tested app, and nothing breaks on stage.
@@ -27,10 +27,10 @@ Back-up demo projects, already READY before the talk:
 | # | Task | Done when |
 |---|---|---|
 | A1 | Finish the Stage 5 Mac check: build the sandbox image visibly, `test:sandbox`, the bank mock held, `npm run review`, `npm run audit` | All pass on the Mac |
-| A2 | Install the models on Laptop B: `ollama pull qwen2.5-coder:7b` (custom buttons in local mode) | m7's custom buttons are written locally |
-| A3 | Make the event-registration mock (HTML → PNG, like `samples/mocks`) and build it 3 times | READY 3/3, and the time of each build noted |
+| A2 | Install the models on Laptop B: `ollama pull qwen2.5-coder:7b` (custom buttons in local mode) | m7's custom buttons are written locally **Done 25 Nov:** installed on Laptop B |
+| A3 | Make the event-registration mock (HTML → PNG, like `samples/mocks`) and build it 3 times | READY 3/3, and the time of each build noted **1 of 3, 25 Nov:** `samples/mocks/m9-event-registrations` (TechFest 2026): READY, 11/11 checks, 239 s locally (read 29 s, page 203 s) |
 | A4 | **A demo database:** start the API on a fresh `MONGODB_URI` (for example `andarkacode-demo`) so no test projects show; build the back-up projects into it | The project list holds only the demo projects |
-| A5 | **`npm run demo:check`:** one command that checks Mongo, Ollama (models loaded), Screenshot-to-Code, the Gateway and the API, and loads the models first so the first build isn't slow | Prints one green line per service, or says which one is down |
+| A5 | **`npm run demo:check`:** one command that checks Mongo, Ollama (models loaded), Screenshot-to-Code, the Gateway and the API, and loads the models first so the first build isn't slow | Prints one green line per service, or says which one is down **Done 25 Nov:** `cd builder-api && npm run demo:check` (`-- --warm` loads the models) |
 | A6 | **The backup video:** a 2–3 minute screen recording of a full build plus the live app, saved offline on both laptops and a USB stick | It plays without internet |
 | A7 | Venue check: projector resolution, the two laptops on one network (a phone hotspot as backup), power for both | Tried once in a similar room |
 
@@ -38,7 +38,7 @@ Back-up demo projects, already READY before the talk:
 
 | # | Task | Done when |
 |---|---|---|
-| B1 | **Try a sample:** on the upload screen, 3–4 sample screenshots to pick with one click (`samples/mocks`) | No file browsing on stage |
+| B1 | **Try a sample:** on the upload screen, 3–4 sample screenshots to pick with one click (`samples/mocks`) | No file browsing on stage **Done 25 Nov:** 4 samples under the drop zone (TechFest, Employees, Orders Dashboard, Staff & Departments) |
 | B2 | **Side by side:** a third view next to *As built* / *Live*: the original screenshot beside the live page | Both fit on one projector screen |
 | B3 | **A Ready card:** when a build finishes, one clear card: "Built in 3 min 12 s · 8/8 checks passed · 14 files · ₹0 (local models)" with *Open live* and *Download* | The result is clear at a glance, from the back of the room |
 | B4 | **Readable from far away:** a presentation zoom (bigger text on the metro map and report), and the projector checked in light and dark | Readable at 1280×720 from 5 metres |
@@ -55,8 +55,9 @@ Back-up demo projects, already READY before the talk:
 | C5 | **Two timed rehearsals**, one with a failure drill (stop the Gateway mid-build and recover) | Under time both times; the recovery takes under 30 s |
 
 ## Known gaps found while preparing
-- The TechFest card "Total Registrations" is read as a custom metric instead of a count. It still passes; Stage 6 or a reader rule will fix it.
+- Laptop B's vision model runs only 64% on the GPU (`demo:check` shows it), so close other GPU apps before the demo.
 - Page drawing is the slow lane (about 3.5 min per page locally). The demo runs the build live, and while it draws, you show a back-up project.
+- The TechFest card "Total Registrations" is read as a custom metric instead of a count. It still passes; Stage 6 or a reader rule will fix it.
 
 ## Order and time
 
