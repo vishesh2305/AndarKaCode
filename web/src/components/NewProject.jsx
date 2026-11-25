@@ -1,6 +1,7 @@
 // Drop screenshots (page order = drop order), name the app, pick where the AI runs, build.
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
+import { sampleFiles } from "../samples.js";
 
 const MODES = [
   { id: "local", label: "Local", hint: "Free, runs on your two laptops" },
@@ -21,8 +22,31 @@ export function NewProject({ onCreated }) {
   const latest = useRef(files);
   latest.current = files;
 
+  const [samples, setSamples] = useState([]);
+  const [picking, setPicking] = useState(null); // the sample being loaded
+
   // Thumbnails use object URLs; release them when the form goes away.
   useEffect(() => () => latest.current.forEach(({ url }) => URL.revokeObjectURL(url)), []);
+
+  // "Try a sample": ready screenshots, so nobody has to find one first. Without them, the form works as before.
+  useEffect(() => {
+    api.samples().then(setSamples, () => setSamples([]));
+  }, []);
+
+  async function pickSample(sample) {
+    setPicking(sample.id);
+    setError(null);
+    try {
+      const picked = (await sampleFiles(sample)).map((file) => ({ file, url: URL.createObjectURL(file) }));
+      latest.current.forEach(({ url }) => URL.revokeObjectURL(url));
+      setFiles(picked);
+      setName(sample.name);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setPicking(null);
+    }
+  }
 
   function add(list) {
     const images = [...list].filter((f) => ACCEPT.includes(f.type));
@@ -74,6 +98,26 @@ export function NewProject({ onCreated }) {
         </button>
         <input ref={input} type="file" accept={ACCEPT.join(",")} multiple hidden onChange={(e) => (add(e.target.files), (e.target.value = ""))} />
       </div>
+
+      {samples.length > 0 && (
+        <div className="samples">
+          <p className="samples-title">No screenshot handy? Try a sample:</p>
+          <ul className="samples-list">
+            {samples.map((s) => (
+              <li key={s.id}>
+                <button className="sample" onClick={() => pickSample(s)} disabled={picking !== null} aria-label={`Use the sample ${s.name}`}>
+                  <img src={s.images[0]} alt="" loading="lazy" />
+                  <strong>
+                    {s.name}
+                    {s.images.length > 1 && <span className="sample-pages"> · {s.images.length} pages</span>}
+                  </strong>
+                  <small>{picking === s.id ? "Loading…" : s.about}</small>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {files.length > 0 && (
         <ol className="picked">

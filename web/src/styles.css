@@ -1062,6 +1062,74 @@ a {
   font: 800 1.35rem var(--display);
 }
 
+/* Evaluation plan B1: "Try a sample" */
+.samples {
+  margin-top: 1.2rem;
+}
+
+.samples-title {
+  margin: 0 0 0.6rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+
+.samples-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.8rem;
+}
+
+.sample {
+  display: grid;
+  gap: 0.3rem;
+  width: 100%;
+  height: 100%;
+  padding: 0.6rem;
+  text-align: left;
+  font: inherit;
+  color: var(--ink);
+  border: var(--line);
+  border-radius: 14px;
+  background: var(--white);
+  box-shadow: var(--pop-small);
+  cursor: pointer;
+  transition: transform 150ms ease, box-shadow 150ms ease;
+}
+
+.sample:hover:not(:disabled),
+.sample:focus-visible {
+  transform: translate(-2px, -2px);
+  box-shadow: var(--pop);
+}
+
+.sample:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+.sample img {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  object-position: top left;
+  border-radius: 8px;
+  border: 1.5px solid var(--grid);
+}
+
+.sample small {
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+  line-height: 1.3;
+}
+
+.sample-pages {
+  font-weight: 400;
+  color: var(--ink-soft);
+}
+
 .picked {
   list-style: none;
   padding: 0;

@@ -21,6 +21,7 @@ export const api = {
   deleteKey: (id) => send("DELETE", `/api/keys/${id}`).then((res) => (res.ok ? null : json(res))),
   setSlots: (slots) => send("PUT", "/api/keys/slots", slots).then(json),
   projects: () => fetch("/api/projects").then(json),
+  samples: () => fetch("/api/samples").then(json), // "Try a sample" on the upload screen
   project: (id) => fetch(`/api/projects/${id}`).then(json),
   files: (id) => fetch(`/api/projects/${id}/files`).then(json),
   fileContent: (id, path) =>

@@ -6,6 +6,7 @@ import multer from "multer";
 import { createAuth } from "./auth/index.js";
 import { createKeysRouter } from "./keys/routes.js";
 import { priorityOf, quotaMessage, quotaOf } from "./quotas.js";
+import { sampleFile, sampleList } from "./samples.js";
 import { generatedPageHeaders, rateLimit, sameSiteChanges, securityHeaders } from "./security.js";
 import { slotsOf } from "./keys/slots.js";
 import { Workspace } from "./models/workspace.js";
@@ -306,7 +307,15 @@ app.get("/api/projects/:id/verify", async (req, res) => {
 });
 
 // Memory (Step 14): how much this workspace remembers, and forgetting it (projects and the library are kept).
-app.get("/api/memory", async (req, res) => res.json(await memoryCounts(owner(req))));
+// Evaluation plan B1: ready screenshots for "Try a sample" on the upload screen.
+app.get("/api/samples", (_req, res) => res.json(sampleList()));
+app.get("/api/samples/:id/:page.png", (req, res) => {
+  const file = sampleFile(req.params.id, req.params.page);
+  if (!file) return res.status(404).json({ error: "No such sample" });
+  res.type("png").sendFile(file);
+});
+
+app.get("/api/memory",async (req, res) => res.json(await memoryCounts(owner(req))));
 app.delete("/api/memory", async (req, res) => res.json({ deleted: await forgetAll(owner(req)) }));
 
 // The live preview: start (or reuse) it, or stop it. Available once the app is wired (after the Wire stage).
