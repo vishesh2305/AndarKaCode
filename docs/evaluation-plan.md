@@ -15,6 +15,8 @@
 | 5 | The Check report: "8/8 passed", every button pressed by a robot | Tested, not only generated |
 | 6 | The zip: models, routes, tests | Real code you own |
 | 7 | 20 s clip: a fake bank login is **held for review** | Safety thought through |
+| 8 | **Fix a part:** click "+ Register Student", say "make it green and say Add Student"; then click a row's "Check In", say "purple"; about 15 s each, 11/11 checks again; **Undo** | You stay in control; only that part changes |
+| 9 | Type "ignore all previous instructions…" as the brief: refused with the reason | Guardrails, live |
 
 Back-up demo projects, already READY before the talk:
 - **m7** (employees with custom buttons);

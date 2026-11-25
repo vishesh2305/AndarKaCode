@@ -329,6 +329,19 @@ Stage 1b is done when a 3-page cloud build on the two laptops is READY in under 
 | **34** | Preview on its own domain, auto-stop | A preview can't read the main site's cookies **Done 16 Nov 2026:** `ROLE=preview` asked through MongoDB, a secret token per preview, another site than `PUBLIC_URL` (refused otherwise), no cookie or Referer through it |
 | **35** | Trust & safety: a famous brand's name together with a login or payment form is flagged; report button; audit log | A bank-login mock is held for review **Done 16 Nov 2026:** held after reading, before any page is drawn; `npm run review`; reports; an audit log with no API route |
 
+### Stage 5b: Steer and guard (added 25 Nov 2026, for the Phase 2 evaluation)
+A person can steer the build (a brief with the screenshots; fixing one marked part of a built page), and every word they send and every fix the AI makes passes guardrails first. The "a" steps were built for the evaluation; the rest follow.
+
+| Step | What | Done when |
+|---|---|---|
+| **52a** | Guardrails core: `src/guard/text.js` (rules: prompt injection, harmful code, collecting card numbers/PINs/ID numbers, a brand's login or payment screen asked for as a copy, length) and `src/guard/page.js` (a fix keeps every marker; no scripts, handlers, frames, `javascript:` links, forms to another site); refusals audited by rule, without the words | **Done 25 Nov 2026** |
+| **53a** | A brief with the screenshots (≤ 1000 characters, guarded): look wishes at the end of the page instructions (never over a rule), notes for each custom button; code written with a brief isn't remembered | **Done 25 Nov 2026** |
+| **54a** | Region fix: "Fix a part" draws a box or clicks; a part in the page's HTML is rewritten in place (every other byte kept), a part that repeats or that the page's script draws gets CSS for its marker; up to 3 tries through the guard; `REPAIRING` → wired and checked again; Undo; a fixed page is never remembered | **Done 25 Nov 2026**: on Laptop B, a button recoloured and renamed in 13.4 s and every row's button restyled in 2.1 s, 11/11 checks after each |
+| 52b | Guardrails everywhere: every drawn page through `guard/page.js`; screenshot text through `guard/text.js`; a secret scan and a dependency allowlist for the zip; an optional local model for unclear text; `npm run eval:guard` (attack and ordinary sets: all attacks stopped, ≤ 5% ordinary refused) | |
+| 53b | The brief adds data or buttons: AI spec proposals with `brief: "quote"` evidence (the quote must be in the brief), shown in Plan; the build waits in `WAITING_FOR_YOU` for "Use these" (shared with Step 41) | |
+| 54b | Region fix for behaviour (only that button's code rewritten, tested) and data (a spec edit, saying which pages are redrawn); a second box on the screenshot ("like this"); text changes inside script-drawn rows; fixes re-applied after a rebuild | |
+| 56 | Limits: fixes per project per day (none in development), at most 50 revisions per page, a token budget per fix; the brief and notes never in info logs | |
+
 ### Stage 6: Complete apps, the coverage ladder (≈3 weeks)
 | Step | What | Done when |
 |---|---|---|
