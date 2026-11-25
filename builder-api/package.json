@@ -21,7 +21,8 @@
     "test:integration": "node --test --test-concurrency=1 \"integration/**/*.test.js\"",
     "test:sandbox": "node --test --test-concurrency=1 \"sandbox-tests/**/*.test.js\"",
     "review": "node --env-file-if-exists=.env scripts/review.mjs",
-    "audit": "node --env-file-if-exists=.env scripts/audit.mjs"
+    "audit": "node --env-file-if-exists=.env scripts/audit.mjs",
+    "demo:check": "node --env-file-if-exists=.env scripts/demo-check.mjs"
   },
   "dependencies": {
     "acorn": "8.18.0",

@@ -27,7 +27,7 @@ function network({ down = [], models = ["qwen3-vl:8b-instruct", "qwen2.5-coder:7
     if (host === "127.0.0.1:4000") return json({ error: "sign in" }, 401);
     if (pathname === "/api/tags") return json({ models: models.map((name) => ({ name })) });
     if (pathname === "/api/generate") return json({ done: true });
-    if (pathname === "/v1/health") return init.headers?.["X-API-Key"] === KEY ? json({ s2cUp: true, ollamaUp: true, models: ["qwen3-vl:8b"], ...gateway }) : json({ error: "key" }, 401);
+    if (pathname === "/v1/health") return init.headers?.["X-API-Key"] === KEY ? json({ s2cUp: true, ollamaUp: true, models: [{ name: "qwen3-vl:8b", gpu: "100% GPU" }], ...gateway }) : json({ error: "key" }, 401);
     return json({}, 404);
   };
   return { fetch, calls };
@@ -42,7 +42,7 @@ describe("demo:check", () => {
     const results = await run(network());
     assert.deepEqual(results.map((r) => r.name), ["MongoDB", "Builder API", "Web app", "Ollama", "Gateway (Laptop B)"]);
     assert.ok(results.every((r) => r.ok), JSON.stringify(results));
-    assert.match(byName(results)["Gateway (Laptop B)"].detail, /Screenshot-to-Code up/);
+    assert.match(byName(results)["Gateway (Laptop B)"].detail, /Screenshot-to-Code up, loaded: qwen3-vl:8b \(100% GPU\)/);
   });
 
   it("a missing local model says which ollama pull fixes it", async () => {
