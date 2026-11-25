@@ -180,7 +180,7 @@ describe("a build with a brief, then region fixes", () => {
     assert.equal(project.state, "READY", project.error);
     const after = await page(project.id);
     assert.match(after, /<h1 data-fixed="yes"/);
-    assert.equal(after.replace(' data-fixed="yes"', ""), before.replace(/<!DOCTYPE html>/i, "<!DOCTYPE html>"), "nothing else on the page changed");
+    assert.equal(after.replace(' data-fixed="yes"', ""), before, "nothing else on the page changed, byte for byte");
     const fix = pageJob(project).fixes.at(-1);
     assert.equal(fix.status, "done");
     assert.equal(fix.kind, "part");
@@ -235,8 +235,13 @@ describe("a build with a brief, then region fixes", () => {
     assert.match(html, /<h1 data-fixed="yes"/, "the part fix before it stays");
   });
 
-  it("the fixed page is not remembered for other projects", async () => {
-    const memory = await mongoose.connection.collection("memories").find({ kind: "page" }).toArray();
-    assert.ok(memory.every((m) => !String(m.payload).includes("data-fixed")));
+  it("a fixed page is not remembered for other projects: the next build of the same screenshot gets the page as drawn", async () => {
+    const form = new FormData(); // the same screenshot and brief, memory on: the page comes from memory
+    form.append("image", new Blob([await readFile(path.join(MOCKS, "m7-custom-buttons.png"))], { type: "image/png" }), "m7.png");
+    form.append("brief", BRIEF);
+    const again = await settled((await (await api.get("/api/projects", me, { method: "POST", body: form })).json()).id);
+    assert.equal(again.state, "READY", again.error);
+    assert.ok(pageJob(again).fromMemory, "the page was reused from memory");
+    assert.ok(!(await page(again.id)).includes("data-fixed"), "and it is the page as drawn, not the fixed one");
   });
 });

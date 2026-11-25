@@ -9,7 +9,7 @@ export const PROJECT_STATES = [
   "SYNCED",
   "INTEGRATING",
   "VERIFYING",
-  "REPAIRING",
+  "REPAIRING", // Step 54a: a person's region fix is being made; then the page is wired and checked again
   "READY",
   "PREVIEW_LIVE",
   "SHIPPED",
@@ -34,6 +34,7 @@ const screenshotSchema = new mongoose.Schema(
 const projectSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true, maxlength: 100 },
+    brief: { type: String, maxlength: 1000 }, // Step 53a: what the screenshots can't show, in the person's words (guarded)
     // Step 30: who made it, and the workspace it belongs to (none when sign-in is off). Every project route
     // finds only the projects of the signed-in person's workspace.
     ownerId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },

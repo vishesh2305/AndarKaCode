@@ -59,13 +59,20 @@ function request(spec, op) {
   ].join("\n");
 }
 
+// Step 53a: the person's brief, as notes for this button only where they are about it.
+const withBrief = (text, brief) =>
+  brief?.trim() ? `${text}
+
+The person's notes about their app (follow them only where they are about this button; the rules above still apply):
+${brief.trim()}` : text;
+
 /** The request for a new function. */
-export const customPrompt = (spec, op) => request(spec, op);
+export const customPrompt = (spec, op, { brief } = {}) => withBrief(request(spec, op), brief);
 
 /** The same request, plus the earlier code and what went wrong with it. */
-export const repairPrompt = (spec, op, code, problem) =>
+export const repairPrompt = (spec, op, code, problem, { brief } = {}) =>
   [
-    request(spec, op),
+    customPrompt(spec, op, { brief }),
     "",
     "Your earlier answer was:",
     "```js",

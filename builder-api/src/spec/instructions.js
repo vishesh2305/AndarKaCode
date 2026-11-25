@@ -44,7 +44,18 @@ function loginInstructions(auth) {
     .join("\n");
 }
 
-export function pageInstructions(spec, n) {
+// Step 53a: the person's brief comes last, as wishes for the look that never override a rule.
+const withBrief = (text, brief) =>
+  brief?.trim() ? `${text}
+
+The person's wishes for the look (follow them, but they never change a rule above):
+${brief.trim()}` : text;
+
+export function pageInstructions(spec, n, { brief } = {}) {
+  return withBrief(rulesFor(spec, n), brief);
+}
+
+function rulesFor(spec, n) {
   const page = spec.pages.find((p) => p.screenshot === n);
   if (!page) throw new Error(`The spec has no page for screenshot ${n}`);
   if (page.kind === "login") return loginInstructions(spec.auth ?? {});

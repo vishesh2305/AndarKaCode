@@ -7,6 +7,8 @@ import { createAuth } from "./auth/index.js";
 import { createKeysRouter } from "./keys/routes.js";
 import { priorityOf, quotaMessage, quotaOf } from "./quotas.js";
 import { sampleFile, sampleList } from "./samples.js";
+import { checkText } from "./guard/text.js";
+import { partOf, pickerPage, styleSelector } from "./fix/index.js";
 import { generatedPageHeaders, rateLimit, sameSiteChanges, securityHeaders } from "./security.js";
 import { slotsOf } from "./keys/slots.js";
 import { Workspace } from "./models/workspace.js";
@@ -131,6 +133,17 @@ function underReview(project, res) {
   return false;
 }
 
+// Step 52a: words a person sends (a brief, a fix's note) pass the guardrails. A refusal is audited by its rule
+// only: the refused words themselves are not kept. Sets req.guardReason; true when the text may be used.
+async function guardText(req, text, where, max) {
+  const verdict = checkText(text, { where, ...(max && { max }) });
+  if (verdict.ok) return true;
+  req.guardReason = verdict.reason;
+  await audit("guard.refused", { actor: actorOf(req), workspaceId: req.user?.workspaceId ?? null, details: { where, rule: verdict.rule } });
+  log.info(`guardrail refused a ${where}: ${verdict.rule}`);
+  return false;
+}
+
 // Lifecycle step 1 (ARCHITECTURE.md §3): hash, shrink, store, create the project.
 // One or more screenshots in "image" fields, in page order; each becomes one page.
 app.post("/api/projects", upload.array("image", MAX_SCREENSHOTS), async (req, res) => {
@@ -139,6 +152,10 @@ app.post("/api/projects", upload.array("image", MAX_SCREENSHOTS), async (req, re
 
   const mode = req.body.mode ?? DEFAULT_MODE;
   if (!MODES.includes(mode)) return res.status(400).json({ error: 'mode must be "local", "cloud" or "auto"' });
+
+  // Step 53a: the brief (what the screenshots can't show) passes the guardrails before anything is kept.
+  const brief = String(req.body.brief ?? "").trim();
+  if (!(await guardText(req, brief, "brief"))) return res.status(400).json({ error: req.guardReason });
 
   // Step 32b: the workspace's plan allows a number of builds; past it, a polite refusal, before anything is kept.
   const workspace = req.user && (await Workspace.findById(req.user.workspaceId));
@@ -167,6 +184,7 @@ app.post("/api/projects", upload.array("image", MAX_SCREENSHOTS), async (req, re
     imageHash: sha256(files[0].buffer),
     mode,
     useMemory,
+    ...(brief && { brief }),
     ...(workspace && { ownerId: req.user.id, workspaceId: workspace._id, keys: await slotsOf(workspace), priority: priorityOf(workspace.plan) }),
   });
   for (const [i, file] of files.entries()) {
@@ -251,7 +269,70 @@ app.get("/api/projects/:id/frontend", async (req, res) => {
   const job = contract && (await Job.findOne({ projectId: project._id, kind: "frontend", contractHash: contract.hash, page, status: "done" }));
   if (!job) return res.status(404).json({ error: `No page ${page} for the current spec yet (state: ${project.state})` });
   res.set(generatedPageHeaders()); // its own sandbox, even when opened directly (Step 32a)
+  // Step 54a: ?pick=1 is the "Fix a part" view: the page with its parts numbered and the picker.
+  if (req.query.pick) return res.type("html").send(pickerPage(await readFile(path.join(REPO_ROOT, job.artifactPath), "utf8")));
   res.sendFile(path.join(REPO_ROOT, job.artifactPath));
+});
+
+// ---- Step 54a: region fixes. A person marks one part of a built page and says what is wrong. ----
+const FIXABLE = ["READY", "NEEDS_ATTENTION"];
+const MAX_NOTE = 300;
+
+async function fixablePage(req, res) {
+  const project = await findProject(req);
+  if (!project) return void res.status(404).json({ error: "No such project" });
+  if (!FIXABLE.includes(project.state)) return void res.status(409).json({ error: "Wait until the build has finished, then fix a part." });
+  const contract = await currentContract(project);
+  const job = contract && (await Job.findOne({ projectId: project._id, kind: "frontend", contractHash: contract.hash, page: Number(req.params.n), status: "done" }));
+  if (!job) return void res.status(404).json({ error: `No page ${req.params.n} to fix` });
+  return { project, job };
+}
+
+app.post("/api/projects/:id/pages/:n/fixes", async (req, res) => {
+  const found = await fixablePage(req, res);
+  if (!found) return;
+  const { project, job } = found;
+  const note = String(req.body?.note ?? "").trim();
+  if (!note) return res.status(400).json({ error: "Say what is wrong with the part you marked." });
+  if (!(await guardText(req, note, "note", MAX_NOTE))) return res.status(400).json({ error: req.guardReason });
+
+  const pick = req.body?.pick ?? {};
+  const label = String(pick.label ?? "").slice(0, 100);
+  let target;
+  if (pick.kind === "part") {
+    const html = await readFile(path.join(REPO_ROOT, job.artifactPath), "utf8");
+    if (!partOf(html, pick.n)) return res.status(400).json({ error: "That part isn't on the page any more. Mark it again." });
+    target = { kind: "part", n: pick.n };
+  } else if (pick.kind === "style") {
+    const selector = styleSelector(pick.selector);
+    if (!selector) return res.status(400).json({ error: "That part can't be fixed: mark a button, a cell or a heading." });
+    target = { kind: "style", selector };
+  } else return res.status(400).json({ error: "Mark the part to fix first." });
+
+  const fix = { id: randomUUID(), ...target, label, note, status: "queued", at: new Date(), fromState: project.state, ...(project.error && { fromError: project.error }) };
+  job.fixes = [...(job.fixes ?? []), fix];
+  await job.save();
+  await Project.updateOne({ _id: project._id }, { state: "REPAIRING" });
+  await audit("project.fix", { actor: actorOf(req), workspaceId: project.workspaceId, target: { kind: "project", id: project.id }, details: { page: job.page, kind: target.kind } });
+  startPipeline(project._id);
+  res.status(202).json(fix);
+});
+
+// Undo: the page before the last kept fix comes back, and is wired and checked again.
+app.post("/api/projects/:id/pages/:n/undo", async (req, res) => {
+  const found = await fixablePage(req, res);
+  if (!found) return;
+  const { project, job } = found;
+  if (!job.revisions?.length) return res.status(400).json({ error: "There is no fix to undo on this page." });
+  job.artifactPath = job.revisions.at(-1);
+  job.revisions = job.revisions.slice(0, -1);
+  const last = job.fixes?.findLast((f) => f.status === "done");
+  if (last) last.status = "undone";
+  job.markModified("fixes");
+  await job.save();
+  await Project.updateOne({ _id: project._id }, { state: "SYNCED" });
+  startPipeline(project._id);
+  res.status(202).json({ ok: true });
 });
 
 // ---- for the UI: screenshots, the generated app's files, and the app as a zip ----

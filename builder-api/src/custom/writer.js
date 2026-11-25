@@ -17,7 +17,7 @@ export const providerOrder = (mode) => (mode === "auto" ? ["cloud", "local"] : [
  * test(code) -> null when the button answers, else what went wrong (text). providers is injectable for tests.
  * Resolves with { ok, code?, provider?, answers, problem?, unavailable }.
  */
-export async function writeCustomCode({ spec, op, mode, test, providers = codeProviders, maxRepairs = MAX_REPAIRS }) {
+export async function writeCustomCode({ spec, op, mode, test, brief, providers = codeProviders, maxRepairs = MAX_REPAIRS }) {
   let answers = 0;
   let problem = null;
   const unavailable = []; // models that did not answer, and why
@@ -26,7 +26,7 @@ export async function writeCustomCode({ spec, op, mode, test, providers = codePr
     for (let attempt = 0; attempt <= maxRepairs; attempt++) {
       let answer;
       try {
-        answer = await providers[provider](attempt === 0 ? customPrompt(spec, op) : repairPrompt(spec, op, code ?? "(no code)", problem));
+        answer = await providers[provider](attempt === 0 ? customPrompt(spec, op, { brief }) : repairPrompt(spec, op, code ?? "(no code)", problem, { brief }));
       } catch (err) {
         unavailable.push(`${provider}: ${err.message}`);
         break;

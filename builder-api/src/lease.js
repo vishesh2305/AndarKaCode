@@ -5,7 +5,7 @@
 // over once its lease runs out.
 import { Project } from "./models/project.js";
 
-const UNFINISHED = ["UPLOADED", "CONTRACT_DRAFT", "BUILDING", "SYNCED", "INTEGRATING", "VERIFYING"];
+const UNFINISHED = ["UPLOADED", "CONTRACT_DRAFT", "BUILDING", "REPAIRING", "SYNCED", "INTEGRATING", "VERIFYING"];
 const free = (now) => ({ $or: [{ "lease.until": { $exists: false } }, { "lease.until": null }, { "lease.until": { $lt: new Date(now) } }] });
 
 /** Takes the project's lease for `ms` when it is free (or already ours). True when we hold it now. */

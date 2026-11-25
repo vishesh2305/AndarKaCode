@@ -141,9 +141,9 @@ export async function rememberProject(project, contract) {
 
   for (const job of current("frontend")) {
     const shot = project.screenshots[job.page - 1];
-    if (!shot || !job.artifactPath) continue;
+    if (!shot || !job.artifactPath || job.revisions?.length) continue; // Step 54a: a fixed page is this person's, not reused
     const html = await readFile(path.join(REPO_ROOT, job.artifactPath), "utf8");
-    const instructions = pageInstructions(spec, job.page);
+    const instructions = pageInstructions(spec, job.page, { brief: project.brief });
     await keep("page", pageKey(shot.sha256, instructions), {
       payload: html,
       provider: job.provider,
@@ -154,7 +154,8 @@ export async function rememberProject(project, contract) {
   }
 
   const backend = current("backend").at(-1);
-  for (const c of backend?.custom ?? []) {
+  // Step 53a: code written with a person's brief follows their notes: it isn't reused for other projects.
+  for (const c of project.brief ? [] : backend?.custom ?? []) {
     const op = spec.operations.find((o) => o.name === c.operation);
     if (!c.ok || !op) continue;
     const code = await readFile(path.join(REPO_ROOT, backend.artifactPath, "backend", "custom", `${op.name}.js`), "utf8").catch(() => null);

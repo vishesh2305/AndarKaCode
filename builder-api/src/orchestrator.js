@@ -34,6 +34,7 @@ import { databaseUri } from "./verify/index.js";
 import { lane } from "./verify/lane.js";
 import { holdIfFlagged } from "./safety/review.js";
 import { failureLine } from "./verify/report.js";
+import { writeFix } from "./fix/index.js";
 import { wireApp } from "./wirer/index.js";
 
 const MONGODB_URI = process.env.MONGODB_URI ?? "mongodb://127.0.0.1:27017/builder_db"; // the Verifier's throwaway databases live next to it
@@ -186,7 +187,7 @@ async function frontendBranch(project, contract, n) {
   // The same screenshot with the same instructions drew a page that passed the Check before (Step 14).
   // Else a copy of that screenshot (resized, re-saved: nearly the same picture) with the same instructions.
   const shot = screenshotsOf(project)[n - 1];
-  const instructions = pageInstructions(contract.body, n);
+  const instructions = pageInstructions(contract.body, n, { brief: project.brief });
   let reuse = null;
   if (!existing && project.useMemory !== false && shot.sha256) {
     const same = await recall("page", pageKey(shot.sha256, instructions), project);
@@ -237,7 +238,7 @@ async function frontendBranch(project, contract, n) {
         const image = await readFile(path.join(REPO_ROOT, screenshotsOf(project)[n - 1].path));
         const submitted = await pages.submit({
           imageDataUrl: `data:image/png;base64,${image.toString("base64")}`,
-          instructions: pageInstructions(contract.body, n),
+          instructions,
           contractHash: contract.hash,
           mode: job.fallback ? "local" : project.mode,
           priority: project.priority ?? 0, // the page queue draws pro pages first (Step 32b)
@@ -298,7 +299,7 @@ async function backendBranch(project, contract) {
       // table, else the same button on a table whose fields still fit the code (the library). Only if none
       // passes here does the coding AI write new code.
       let result = null;
-      if (project.useMemory !== false) {
+      if (project.useMemory !== false && !project.brief) { // Step 53a: a brief's notes make this button's code its own
         const exact = await recall("custom", customKey(spec, op), project);
         const library = (await recallLibrary(spec, op, project)).filter((m) => m.key !== exact?.key);
         const tries = [...(exact ? [{ memory: exact, similar: false }] : []), ...library.map((memory) => ({ memory, similar: true }))];
@@ -310,15 +311,15 @@ async function backendBranch(project, contract) {
         }
       }
       if (!result && own) {
-        result = { ...(await writeCustomCode({ spec, op, mode: "byok", test, providers: { byok: (prompt) => own.call({ prompt, purpose: "code" }) } })), provider: own.provider };
+        result = { ...(await writeCustomCode({ spec, op, mode: "byok", test, brief: project.brief, providers: { byok: (prompt) => own.call({ prompt, purpose: "code" }) } })), provider: own.provider };
         // The key gave no answer at all (its limit, an overloaded provider): the local coding AI writes it.
         const why = !result.ok && !result.answers && fallbackFor(own, new Error(result.unavailable?.[0] ?? result.problem ?? ""));
         if (why) {
           log.info(why, { project: project.id, operation: op.name });
-          result = { ...(await writeCustomCode({ spec, op, mode: "local", test })), fallback: why };
+          result = { ...(await writeCustomCode({ spec, op, mode: "local", test, brief: project.brief })), fallback: why };
         }
       }
-      result ??= await writeCustomCode({ spec, op, mode: project.mode, test });
+      result ??= await writeCustomCode({ spec, op, mode: project.mode, test, brief: project.brief });
       if (!result.ok) await rm(path.join(dir, "backend", "custom", `${op.name}.js`), { force: true });
       return {
         operation: op.name,
@@ -416,10 +417,40 @@ async function verifyStage(projectId) {
   else await setState(project, "NEEDS_ATTENTION", failureLine(job.report).slice(0, 500));
 }
 
+// Step 54a: REPAIRING -> a person's region fix is made on its page -> SYNCED (wired and checked again, like any
+// build). A fix the AI can't make within the guard's rules leaves the page as it was, with the reason.
+async function fixStage(projectId) {
+  const project = await Project.findById(projectId);
+  const contract = await currentContract(project);
+  const job = await Job.findOne({ projectId: project._id, kind: "frontend", contractHash: contract.hash, status: "done", "fixes.status": "queued" });
+  if (!job) return setState(project, "SYNCED"); // nothing waiting (a restart after it was made): check the page as it is
+  const fix = job.fixes.findLast((f) => f.status === "queued");
+  const started = Date.now();
+  fix.status = "running";
+  job.markModified("fixes");
+  await job.save();
+
+  const html = await readFile(path.join(REPO_ROOT, job.artifactPath), "utf8");
+  const pick = fix.kind === "part" ? { kind: "part", n: fix.n } : { kind: "style", selector: fix.selector, label: fix.label };
+  const result = await writeFix({ html, pick, note: fix.note, mode: project.mode }).catch((err) => ({ ok: false, answers: 0, problem: err.message }));
+  Object.assign(fix, { status: result.ok ? "done" : "failed", provider: result.provider ?? null, answers: result.answers, seconds: Math.round((Date.now() - started) / 100) / 10 });
+  if (result.ok) {
+    const revisions = [...(job.revisions ?? []), job.artifactPath];
+    job.artifactPath = await saveArtifact(project._id, `frontend/v${contract.version}/page-${job.page}.fix-${revisions.length}.html`, result.html);
+    job.revisions = revisions;
+  } else fix.problem = result.problem.slice(0, 1000);
+  job.markModified("fixes");
+  await job.save();
+  log.info(`region fix ${fix.status} on page ${job.page}${result.ok ? "" : `: ${fix.problem}`}`, { project: project.id });
+  if (result.ok) return setState(project, "SYNCED");
+  await setState(project, fix.fromState === "NEEDS_ATTENTION" ? "NEEDS_ATTENTION" : "READY", fix.fromState === "NEEDS_ATTENTION" ? fix.fromError : undefined);
+}
+
 async function run(projectId) {
   const project = await Project.findById(projectId);
   if (!project) return;
   try {
+    if (project.state === "REPAIRING") await fixStage(project._id);
     if (project.state === "UPLOADED") await contractStage(project);
     // Step 35: a brand's login or payment page is held for a person, before any page is drawn.
     if (project.state === "CONTRACT_DRAFT" && (await holdIfFlagged(project))) return;

@@ -25,6 +25,10 @@ const jobSchema = new mongoose.Schema(
     custom: { type: [mongoose.Schema.Types.Mixed], default: undefined },
     // reused work (Step 14): { sourceProjectId, sourceName, seconds } (+ count for readings)
     fromMemory: mongoose.Schema.Types.Mixed,
+    // Step 54a, frontend jobs: region fixes { id, kind, n?, selector?, label, note, status, problem?, provider? },
+    // and the pages before each kept fix (artifact paths; Undo takes the last one back)
+    fixes: { type: [mongoose.Schema.Types.Mixed], default: undefined },
+    revisions: { type: [String], default: undefined },
     error: String,
     startedAt: Date,
     finishedAt: Date,
